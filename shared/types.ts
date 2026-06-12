@@ -155,6 +155,9 @@ export interface GauntletResult {
   youGoals: number;
   oppGoals: number;
   outcome: "win" | "draw" | "loss";
+  shootout: ShootoutKick[] | null;
+  penaltyScore: Record<string, number> | null;
+  winnerId: string | null;
 }
 
 /** A player's lineup submitted at halftime (used to re-simulate the 2nd half). */

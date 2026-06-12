@@ -583,10 +583,14 @@ export function simInputFromTeam(team: Team, formationId: string, mentality: Men
 }
 
 /**
- * Simulate one campaign match: a single full match (no interactive halftime, no
- * shootout). The player's mentality counts double. A draw is NOT a win.
+ * Simulate one campaign match: a single full match with optional shootout for
+ * knockout rounds. The player's mentality counts double.
  */
-export function simulateGauntletMatch(you: SimInput, opp: SimInput): GauntletResult {
+export function simulateGauntletMatch(
+  you: SimInput,
+  opp: SimInput,
+  settleDrawWithShootout = false
+): GauntletResult {
   const a = makeSide(you, 2); // player's mentality has double weight
   const b = makeSide(opp, 1);
   const rng = makeRng(Math.floor(Math.random() * 2 ** 31));
@@ -601,7 +605,20 @@ export function simulateGauntletMatch(you: SimInput, opp: SimInput): GauntletRes
 
   const youGoals = ga1 + ga2;
   const oppGoals = gb1 + gb2;
-  const outcome = youGoals > oppGoals ? "win" : youGoals === oppGoals ? "draw" : "loss";
+  let outcome: "win" | "draw" | "loss" = youGoals > oppGoals ? "win" : youGoals === oppGoals ? "draw" : "loss";
+  let shootout: ShootoutKick[] | null = null;
+  let penaltyScore: Record<string, number> | null = null;
+  let winnerId: string | null =
+    outcome === "win" ? you.id : outcome === "loss" ? opp.id : null;
+
+  if (outcome === "draw" && settleDrawWithShootout) {
+    const so = runShootout(a.side, b.side, rng);
+    shootout = so.kicks;
+    penaltyScore = { [you.id]: so.h, [opp.id]: so.a };
+    winnerId = so.h > so.a ? you.id : opp.id;
+    outcome = winnerId === you.id ? "win" : "loss";
+  }
+
   return {
     youId: you.id,
     oppId: opp.id,
@@ -610,6 +627,9 @@ export function simulateGauntletMatch(you: SimInput, opp: SimInput): GauntletRes
     youGoals,
     oppGoals,
     outcome,
+    shootout,
+    penaltyScore,
+    winnerId,
   };
 }
 

@@ -8,6 +8,7 @@ import type {
   MatchEvent,
   Player,
   SquadPick,
+  ShootoutKick,
   Team,
   GauntletResult,
 } from "../../shared/types.js";
@@ -19,6 +20,7 @@ import {
 } from "../../shared/formations.js";
 import { MENTALITIES } from "../../shared/mentalities.js";
 import {
+  computeStrength,
   effectiveRating,
   simInputFromTeam,
   simulateGauntletMatch,
@@ -96,6 +98,11 @@ interface CupGroupRow {
   ga: number;
   points: number;
 }
+interface LiveStatLine {
+  goals: number;
+  assists: number;
+  side: "you" | "opp";
+}
 interface CampaignState {
   phase: CampaignPhase;
   formationId: string;
@@ -108,6 +115,8 @@ interface CampaignState {
   currentOpp: Team | null; // opponent for the current round
   lastResult: GauntletResult | null;
   rerollsRemaining: number;
+  campaignGoals: Record<string, number>;
+  campaignAssists: Record<string, number>;
   groupTeams: Team[];
   groupTable: CupGroupRow[];
   groupQualified: boolean | null;
@@ -220,6 +229,42 @@ function renderToast() {
   t.className = "toast";
   t.textContent = L.toast;
   document.body.appendChild(t);
+}
+
+function bumpStat(
+  stats: Map<string, LiveStatLine>,
+  name: string | undefined,
+  side: "you" | "opp",
+  field: "goals" | "assists",
+) {
+  if (!name) return;
+  const current = stats.get(name) ?? { goals: 0, assists: 0, side };
+  current[field]++;
+  current.side = side;
+  stats.set(name, current);
+}
+
+function renderLiveStats(target: HTMLElement, stats: Map<string, LiveStatLine>) {
+  const leaders = [...stats.entries()]
+    .filter(([, s]) => s.goals || s.assists)
+    .sort((a, b) => b[1].goals - a[1].goals || b[1].assists - a[1].assists || a[0].localeCompare(b[0]))
+    .slice(0, 5);
+  target.innerHTML = `
+    <div class="live-stat-head">
+      <span>Participações em gol</span>
+      <small>Gols / Assist.</small>
+    </div>
+    ${
+      leaders.length
+        ? `<div class="live-stat-list">${leaders
+            .map(([name, s]) => `
+              <div class="live-stat-row ${s.side}">
+                <strong>${escapeHtml(name)}</strong>
+                <span>${s.goals}G ${s.assists}A</span>
+              </div>`)
+            .join("")}</div>`
+        : `<div class="live-stat-empty">Aguardando o primeiro gol.</div>`
+    }`;
 }
 
 // ---------------- Home ----------------
@@ -358,6 +403,8 @@ function startCampaign() {
     currentOpp: null,
     lastResult: null,
     rerollsRemaining: 3,
+    campaignGoals: {},
+    campaignAssists: {},
     groupTeams: [],
     groupTable: [],
     groupQualified: null,
@@ -499,11 +546,12 @@ function campaignRerollTeam() {
 
 function campaignPlace(slotId: string, player: Player) {
   const c = L.campaign!;
+  const slot = getFormation(c.formationId)?.slots.find((s) => s.id === slotId);
   c.picks.push({
     slotId,
     player,
     fromTeamId: c.currentTeam!.id,
-    effectiveRating: player.rating,
+    effectiveRating: slot ? effectiveRating(player, slot.pos) : player.rating,
   });
   c.usedTeamIds.push(c.currentTeam!.id);
   c.selectedPlayer = null;
@@ -529,6 +577,70 @@ function campaignAvgNumber(): number {
   return Math.round(
     c.picks.reduce((s, p) => s + p.effectiveRating, 0) / c.picks.length,
   );
+}
+
+function campaignStrengthSummary(): string {
+  const c = L.campaign!;
+  if (!c.picks.length) {
+    return `<div class="cup-draft-rating"><strong>--</strong><span>Ataque -- · Meio -- · Defesa --</span></div>`;
+  }
+  const s = computeStrength(c.picks, c.formationId);
+  return `
+    <div class="cup-draft-rating">
+      <strong>${Math.round(s.overall)}</strong>
+      <span>Ataque ${Math.round(s.attack)} · Meio ${Math.round(s.midfield)} · Defesa ${Math.round(s.defense)}</span>
+    </div>`;
+}
+
+function renderCampaignSquadRows(): string {
+  const c = L.campaign!;
+  const f = getFormation(c.formationId)!;
+  const bySlot = new Map(c.picks.map((p) => [p.slotId, p]));
+  return `
+    <ol class="cup-squad-list">
+      ${f.slots
+        .map((slot) => {
+          const pick = bySlot.get(slot.id);
+          return `
+          <li class="${pick ? "filled" : "empty"}">
+            <span>${posLabel(slot.pos)}</span>
+            <strong>${pick ? escapeHtml(pick.player.name) : "--"}</strong>
+            <em>${pick ? pick.effectiveRating : "--"}</em>
+          </li>`;
+        })
+        .join("")}
+    </ol>`;
+}
+
+function addCampaignJourneyStats(r: GauntletResult) {
+  const c = L.campaign!;
+  for (const ev of r.timeline) {
+    if (ev.type !== "goal" || ev.side !== "home") continue;
+    if (ev.player) {
+      c.campaignGoals[ev.player] = (c.campaignGoals[ev.player] ?? 0) + 1;
+    }
+    if (ev.assist) {
+      c.campaignAssists[ev.assist] = (c.campaignAssists[ev.assist] ?? 0) + 1;
+    }
+  }
+}
+
+function campaignTopStat(source: Record<string, number>) {
+  return (
+    Object.entries(source).sort(
+      (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
+    )[0] ?? null
+  );
+}
+
+function renderCampaignJourneyLeaders(): string {
+  const scorer = campaignTopStat(L.campaign!.campaignGoals);
+  const assist = campaignTopStat(L.campaign!.campaignAssists);
+  return `
+    <div class="leaders cup-journey-leaders">
+      ${leaderCard("Artilheiro da campanha", scorer ? { name: scorer[0], val: `${scorer[1]} gol${scorer[1] > 1 ? "s" : ""}`, side: "you" } : null)}
+      ${leaderCard("Garçom da campanha", assist ? { name: assist[0], val: `${assist[1]} assistência${assist[1] > 1 ? "s" : ""}`, side: "you" } : null)}
+    </div>`;
 }
 
 function groupRow(team: Pick<Team, "id" | "name" | "season">): CupGroupRow {
@@ -715,11 +827,17 @@ function renderKnockoutBracket(): string {
             const opp = c.knockoutPath[idx];
             const state =
               idx < currentIdx ? "done" : idx === currentIdx ? "next" : "";
+            const oppLabel =
+              idx === currentIdx && opp
+                ? `${opp.name}${opp.season ? ` ${opp.season}` : ""}`
+                : idx < currentIdx
+                  ? "fase concluída"
+                  : "adversário oculto";
             return `
             <div class="bracket-round ${state}">
               <span>${label}</span>
               <strong>${idx < currentIdx ? "Seu time" : "Seu time"}</strong>
-              <em>vs ${escapeHtml(opp ? `${opp.name}${opp.season ? ` ${opp.season}` : ""}` : "A definir")}</em>
+              <em>${idx === currentIdx ? "vs " : ""}${escapeHtml(oppLabel)}</em>
             </div>`;
           })
           .join("")}
@@ -744,20 +862,16 @@ function renderCampaignDraft() {
     ? team.players.find((p) => p.name === c.selectedPlayer)
     : null;
   app.innerHTML = `
-    <div class="screen cup-screen draft">
+    <div class="screen cup-screen cup-draft-screen">
       <div class="topbar">
         <div class="room-code">Copa do Mundo — Draft</div>
         <div class="round-info">Jogador <strong>${c.picks.length + 1}</strong> / 11</div>
         <button id="cup-exit" class="ghost" style="margin-left:auto">Sair</button>
       </div>
-      <div class="draft-layout">
-        <section class="board you-board">
-          <h3>Seu time <span class="ovr">${campaignAvg()}</span></h3>
-          ${renderPitch(f, c.picks, !!c.selectedPlayer, true)}
-        </section>
-        <section class="draw-panel">
+      <div class="cup-draft-layout">
+        <section class="draw-panel cup-draft-source">
           <div class="draw-head">
-            <span class="draw-label">Seleção sorteada</span>
+            <span class="draw-label">Saiu no sorteio</span>
             <h2>${escapeHtml(team.name)} ${team.season}</h2>
             <span class="draw-league">${escapeHtml(team.league)}</span>
             <button id="cup-reroll-team" class="ghost reroll" ${c.rerollsRemaining <= 0 ? "disabled" : ""}>
@@ -779,11 +893,21 @@ function renderCampaignDraft() {
           <p class="draft-hint">${
             c.selectedPlayer
               ? `Clique numa <strong>vaga compatível</strong> (mesmo setor) para escalar <strong>${escapeHtml(c.selectedPlayer)}</strong>.`
-              : "Sem penalidade: só escala na posição certa. Quem não encaixa em nenhuma vaga aberta fica apagado."
+              : "Escolha jogadores que encaixem no setor aberto. Posição exata mantém o over cheio; adaptações próximas perdem um pouco."
           }</p>
         </section>
-        <section class="board cup-side">
-          <h3>A jornada</h3>
+
+        <section class="board you-board cup-draft-pitch">
+          <h3>Seu time <span class="ovr">${campaignAvg()}</span></h3>
+          ${renderPitch(f, c.picks, !!c.selectedPlayer, true)}
+        </section>
+
+        <section class="board cup-draft-summary">
+          <div class="cup-summary-head">
+            <span>Box score</span>
+            ${campaignStrengthSummary()}
+          </div>
+          ${renderCampaignSquadRows()}
           ${campaignProgress(0)}
           <p class="cup-note">Monte os 11 e entre na fase de grupos. Depois dela, o chaveamento começa nos 16-avos.</p>
         </section>
@@ -858,8 +982,8 @@ function renderCampaignPreMatch() {
           isGroup
             ? "Fase de grupos: pontos, saldo e gols marcados definem sua colocação. Os 2 primeiros passam; alguns terceiros também."
             : isFinal
-              ? "A GRANDE FINAL — vença para levantar a taça."
-              : "Mata-mata em jogo único: empate ou derrota elimina."
+              ? "A GRANDE FINAL — se empatar, a taça será decidida nos pênaltis."
+              : "Mata-mata em jogo único: empate leva a disputa para os pênaltis."
         }</p>
         <div class="lobby-actions"><button id="cup-play" class="primary big">Entrar em campo</button></div>
       </div>
@@ -875,6 +999,7 @@ function campaignAdvance() {
   const c = L.campaign!;
   L.playing = false;
   const r = c.lastResult!;
+  addCampaignJourneyStats(r);
   if (c.round < 3) {
     recordGroupMatch("you", c.currentOpp!.id, r.youGoals, r.oppGoals);
     simulateOtherGroupFixture(c.round);
@@ -919,7 +1044,7 @@ function renderCampaignMatch() {
     mentality: c.mentality,
   };
   const oppSim = simInputFromTeam(oppTeam, "4-3-3", "equilibrada");
-  const r = simulateGauntletMatch(youSim, oppSim);
+  const r = simulateGauntletMatch(youSim, oppSim, c.round >= 3);
   c.lastResult = r;
   L.playing = true;
 
@@ -932,11 +1057,31 @@ function renderCampaignMatch() {
           <div class="sb-team right"><span class="sb-name">${escapeHtml(oppTeam.name)}</span><span class="sb-badge opp">ADV</span></div>
         </div>
         <div class="live-sub"><span class="sb-leg" id="half-label">1º Tempo</span><span class="agg-mini">${escapeHtml(WC_LADDER[c.round].label)}</span></div>
-        <div class="ballfield">${ballFieldSvg()}<div class="bf-ball" id="bf-ball">${soccerBallSvg()}</div></div>
+        <div class="ballfield">
+          ${ballFieldSvg()}
+          <div class="bf-ball" id="bf-ball">${soccerBallSvg()}</div>
+        </div>
         <div class="speed-row">
           <span class="spd-label">Velocidade</span>
           ${[1, 1.5, 2].map((v) => `<button class="spd ${v === L.matchSpeed ? "active" : ""}" data-spd="${v}">${v}x</button>`).join("")}
           <button id="skip" class="ghost skip">Pular</button>
+        </div>
+        <div class="live-leaders" id="live-leaders"></div>
+        <div class="shootout-panel" id="shootout-panel" hidden>
+          <div class="shootout-head">
+            <span>Disputa de pênaltis</span>
+            <strong id="pen-score">0 x 0</strong>
+          </div>
+          <div class="shootout-lanes">
+            <div>
+              <h4>Seu time</h4>
+              <ul id="pen-you"></ul>
+            </div>
+            <div>
+              <h4>${escapeHtml(oppTeam.name)}</h4>
+              <ul id="pen-opp"></ul>
+            </div>
+          </div>
         </div>
         <div class="goal-overlay" id="goal-ov"><div class="goal-word">GOL!</div><div class="goal-scorer" id="goal-scorer"></div></div>
         <ul class="event-feed" id="feed"></ul>
@@ -950,9 +1095,16 @@ function renderCampaignMatch() {
     halfLabel = $("half-label"),
     feed = $("feed");
   const goalOv = $("goal-ov"),
-    goalScorer = $("goal-scorer"),
-    ball = $("bf-ball") as HTMLDivElement;
+    goalScorer = $("goal-scorer");
+  const ball = $("bf-ball") as HTMLDivElement;
+  const liveLeaders = $("live-leaders");
+  const shootoutPanel = $("shootout-panel");
+  const penScore = $("pen-score");
+  const penYou = $("pen-you");
+  const penOpp = $("pen-opp");
   const goals = { you: 0, opp: 0 };
+  const liveStats = new Map<string, LiveStatLine>();
+  renderLiveStats(liveLeaders, liveStats);
   let minute = 0,
     evIdx = 0,
     timer: number | undefined,
@@ -1025,6 +1177,11 @@ function renderCampaignMatch() {
       if (ev.type === "goal") {
         const p = pidOf(ev.side);
         if (p) goals[p as "you" | "opp"]++;
+        if (p) {
+          bumpStat(liveStats, ev.player, p, "goals");
+          bumpStat(liveStats, ev.assist, p, "assists");
+          renderLiveStats(liveLeaders, liveStats);
+        }
         updateScore();
         goalAnim(ev.player);
       }
@@ -1032,13 +1189,41 @@ function renderCampaignMatch() {
       return;
     }
     if (minute >= 90) {
-      schedule(1100, finish);
+      if (r.shootout?.length) schedule(1000, playShootout);
+      else schedule(1100, finish);
       return;
     }
     minute++;
     clk.textContent = String(Math.min(minute, 90));
     halfLabel.textContent = minute <= 45 ? "1º Tempo" : "2º Tempo";
     schedule(130 / L.matchSpeed);
+  }
+  function renderKick(kick: ShootoutKick, score: { you: number; opp: number }) {
+    const side = kick.side === "home" ? "you" : "opp";
+    if (kick.scored) score[side]++;
+    penScore.textContent = `${score.you} x ${score.opp}`;
+    const li = document.createElement("li");
+    li.className = `pen-kick ${kick.scored ? "made" : "missed"}`;
+    li.innerHTML = `<strong>${escapeHtml(kick.taker)}</strong><span>${kick.scored ? "converteu" : "perdeu"}</span>`;
+    (side === "you" ? penYou : penOpp).appendChild(li);
+  }
+  function playShootout() {
+    if (!r.shootout?.length) return finish();
+    shootoutPanel.hidden = false;
+    halfLabel.textContent = "Pênaltis";
+    const score = { you: 0, opp: 0 };
+    let kickIdx = 0;
+    const nextKick = () => {
+      if (!L.playing) return;
+      const kick = r.shootout![kickIdx++];
+      if (!kick) {
+        schedule(1300, finish);
+        return;
+      }
+      renderKick(kick, score);
+      schedule(900 / L.matchSpeed, nextKick);
+    };
+    nextKick();
   }
   function finish() {
     clearTimeout(timer);
@@ -1070,14 +1255,20 @@ function renderCampaignGameOver() {
     : `Eliminado em ${campaignStageLabel(c.round)}`;
   const detail = fellInGroup
     ? `Você terminou como ${c.groupQualifiedLabel}.`
-    : `Resultado contra ${r.oppName}: ${r.youGoals} x ${r.oppGoals} (${r.outcome === "draw" ? "empate" : "derrota"}).`;
+    : r.penaltyScore
+      ? `Empate contra ${r.oppName}: ${r.youGoals} x ${r.oppGoals}. Nos pênaltis, ${r.penaltyScore[r.youId]} x ${r.penaltyScore[r.oppId]}.`
+      : `Resultado contra ${r.oppName}: ${r.youGoals} x ${r.oppGoals} (${r.outcome === "draw" ? "empate" : "derrota"}).`;
+  const penLine = r.penaltyScore
+    ? `<div class="cup-end-pens">Pênaltis ${r.penaltyScore[r.youId]} x ${r.penaltyScore[r.oppId]}</div>`
+    : "";
   app.innerHTML = `
     <div class="screen cup-screen cup-end">
       <div class="cup-end-card lose">
         <span class="cup-tag">Game Over</span>
         <h1>${escapeHtml(title)}</h1>
         <p class="cup-end-msg">${escapeHtml(detail)}</p>
-        <div class="cup-end-score">${r.youGoals} <span class="x">x</span> ${r.oppGoals}<div class="cup-end-opp">contra ${escapeHtml(r.oppName)}</div></div>
+        <div class="cup-end-score">${r.youGoals} <span class="x">x</span> ${r.oppGoals}${penLine}<div class="cup-end-opp">contra ${escapeHtml(r.oppName)}</div></div>
+        ${renderCampaignJourneyLeaders()}
         ${fellInGroup ? renderGroupTable() : renderKnockoutBracket()}
         ${campaignProgress(completed)}
         <div class="lobby-actions">
@@ -1099,6 +1290,7 @@ function renderCampaignVictory() {
         <span class="cup-tag">Campeão do Mundo</span>
         <h1>CAMPEÃO DO MUNDO!</h1>
         <p class="cup-end-msg">Você passou pelo grupo como ${escapeHtml(c.groupQualifiedLabel ?? "classificado")} e venceu todo o mata-mata.</p>
+        ${renderCampaignJourneyLeaders()}
         ${renderKnockoutBracket()}
         ${campaignProgress(8)}
         <div class="lobby-actions">
@@ -1615,6 +1807,7 @@ function renderLiveMatch() {
           ${vsAI ? "" : `<span class="speed-note">Velocidade extra só contra a máquina</span>`}
           <button id="skip" class="ghost skip">Pular</button>
         </div>
+        <div class="live-leaders" id="live-leaders"></div>
         <div class="halftime-panel" id="half-panel" hidden>
           <div class="section-head">
             <h3>Intervalo</h3>
@@ -1682,6 +1875,9 @@ function renderLiveMatch() {
   const cardFlash = document.getElementById("card-flash")!;
   const cardName = document.getElementById("card-name")!;
   const ball = document.getElementById("bf-ball") as HTMLDivElement;
+  const liveLeaders = document.getElementById("live-leaders")!;
+  const liveStats = new Map<string, LiveStatLine>();
+  renderLiveStats(liveLeaders, liveStats);
 
   // engine coords have "home" attacking toward bx=105; rotate 180° if you are the
   // away player so YOUR team always attacks to the right on screen.
@@ -1905,6 +2101,12 @@ function renderLiveMatch() {
       const pid = sideToPid(ev.side);
       addFeed(ev);
       if (pid) goals[pid]++;
+      if (pid) {
+        const side = pid === you.id ? "you" : "opp";
+        bumpStat(liveStats, ev.player, side, "goals");
+        bumpStat(liveStats, ev.assist, side, "assists");
+        renderLiveStats(liveLeaders, liveStats);
+      }
       updateScore();
       goalAnim(ev.player);
     } else if (ev.type === "card") {
