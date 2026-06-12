@@ -6,11 +6,13 @@ import type {
   Mentality,
   Team,
   SquadPick,
+  HalftimeLineup,
+  Position,
 } from "../../shared/types.js";
 import { TEAMS, getTeam } from "../../shared/data/teams.js";
 import { getFormation } from "../../shared/formations.js";
 import { randomManager } from "../../shared/data/managers.js";
-import { effectiveRating, openSlots, positionPenalty, simulateMatch } from "../../shared/engine.js";
+import { effectiveRating, openSlots, positionPenalty, simulateFirstHalf, simulateSecondHalf } from "../../shared/engine.js";
 
 const TOTAL_SLOTS = 11;
 
@@ -55,6 +57,7 @@ function newPlayer(name: string, socketId: string | null, isAI = false): Interna
     mentality: null,
     picks: [],
     rerollsRemaining: 3,
+    halftimeReady: isAI,
     socketId,
     isAI,
   };
@@ -239,15 +242,78 @@ function advanceTurn(room: Room) {
   beginTurn(room);
 }
 
+function simInput(p: InternalPlayer) {
+  return { id: p.id, name: p.name, picks: p.picks, formationId: p.formationId!, mentality: p.mentality! };
+}
+
 function finishDraft(room: Room) {
   const [p1, p2] = room.players;
-  room.result = simulateMatch(
-    { id: p1.id, name: p1.name, picks: p1.picks, formationId: p1.formationId!, mentality: p1.mentality! },
-    { id: p2.id, name: p2.name, picks: p2.picks, formationId: p2.formationId!, mentality: p2.mentality! }
-  );
+  room.players.forEach((p) => {
+    p.halftimeReady = p.isAI;
+  });
+  // only the first half is simulated now; the second half waits for halftime lineups
+  const fh = simulateFirstHalf(simInput(p1), simInput(p2));
+  room.result = {
+    homeId: p1.id,
+    awayId: p2.id,
+    timeline: fh.timeline,
+    secondHalfReady: false,
+    firstHalfGoals: fh.goals,
+    goals: fh.goals,
+    shootout: null,
+    penaltyScore: null,
+    strengths: fh.strengths,
+    winnerId: "",
+    summary: "",
+  };
   room.phase = "result";
   room.currentTeam = null;
   room.activePlayerId = null;
+}
+
+/** Rebuild a player's lineup from a halftime submission (formation, mentality, slots). */
+function applyHalftimeLineup(p: InternalPlayer, lineup: HalftimeLineup) {
+  const formation = getFormation(lineup.formationId);
+  if (!formation) return;
+  if (lineup.picks.length !== TOTAL_SLOTS) return;
+  const slotIds = new Set(formation.slots.map((s) => s.id));
+  if (new Set(lineup.picks.map((pk) => pk.slotId)).size !== TOTAL_SLOTS) return;
+  if (!lineup.picks.every((pk) => slotIds.has(pk.slotId))) return;
+
+  const newPicks: SquadPick[] = lineup.picks.map((pk) => {
+    const slot = formation.slots.find((s) => s.id === pk.slotId)!;
+    const player = {
+      name: String(pk.name).slice(0, 40),
+      pos: pk.pos as Position,
+      rating: Math.max(50, Math.min(99, Math.round(pk.rating))),
+    };
+    return { slotId: pk.slotId, player, fromTeamId: pk.fromTeamId, effectiveRating: effectiveRating(player, slot.pos) };
+  });
+  p.formationId = lineup.formationId;
+  p.mentality = lineup.mentality;
+  p.picks = newPicks;
+}
+
+export function readyHalftime(room: Room, playerId: string, lineup?: HalftimeLineup) {
+  if (room.phase !== "result" || !room.result) return;
+  const p = room.players.find((pl) => pl.id === playerId);
+  if (!p) return;
+  if (lineup) applyHalftimeLineup(p, lineup);
+  p.halftimeReady = true;
+
+  // once both confirmed, simulate the second half with the updated lineups
+  if (!room.result.secondHalfReady && room.players.every((pl) => pl.halftimeReady)) {
+    const [p1, p2] = room.players;
+    const sh = simulateSecondHalf(simInput(p1), simInput(p2), room.result.firstHalfGoals);
+    room.result.timeline = [...room.result.timeline, ...sh.timeline];
+    room.result.secondHalfReady = true;
+    room.result.goals = sh.goals;
+    room.result.shootout = sh.shootout;
+    room.result.penaltyScore = sh.penaltyScore;
+    room.result.strengths = sh.strengths;
+    room.result.winnerId = sh.winnerId;
+    room.result.summary = sh.summary;
+  }
 }
 
 /** Is it the AI's turn to pick? */
@@ -288,6 +354,7 @@ export function rematch(room: Room) {
   for (const p of room.players) {
     p.picks = [];
     p.rerollsRemaining = 3;
+    p.halftimeReady = p.isAI;
     // the AI comes back ready; the human confirms again
     p.ready = p.isAI;
     // keep chosen formation/mentality to save time
@@ -305,6 +372,7 @@ export function toPublic(room: Room): RoomState {
     isAI: p.isAI,
     rerollsRemaining: p.rerollsRemaining,
     ready: p.ready,
+    halftimeReady: p.halftimeReady,
     formationId: p.formationId,
     mentality: p.mentality,
     picks: p.picks.map((pk) =>

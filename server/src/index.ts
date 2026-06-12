@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import express from "express";
 import { Server } from "socket.io";
-import type { AckResult, Mentality } from "../../shared/types.js";
+import type { AckResult, Mentality, HalftimeLineup } from "../../shared/types.js";
 import {
   createRoom,
   joinRoom,
@@ -14,6 +14,7 @@ import {
   ready,
   pick,
   rerollTeam,
+  readyHalftime,
   rematch,
   toPublic,
   isAITurn,
@@ -112,6 +113,15 @@ io.on("connection", (socket) => {
     if (!player) return;
     const err = rerollTeam(room, player.id);
     if (err) socket.emit("errorMsg", err);
+    broadcast(room.code);
+  });
+
+  socket.on("halftimeReady", (data?: HalftimeLineup) => {
+    const room = findRoomBySocket(socket.id);
+    if (!room) return;
+    const player = room.players.find((p) => p.socketId === socket.id);
+    if (!player) return;
+    readyHalftime(room, player.id, data);
     broadcast(room.code);
   });
 

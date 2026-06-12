@@ -44,10 +44,14 @@ servidor no mesmo host (porta 3001). Libere essas portas no firewall se necessá
 3. **Simulação ao vivo** — uma **única partida** (1º e 2º tempo, 90 min) narrada
    **minuto a minuto**: relógio correndo, placar atualizando e um feed de lances reais —
    gols (com **animação de GOL** e VAR), **cartões amarelos e vermelhos** (com animação),
-   faltas, defesas, escanteios, impedimentos, substituições e até lesões. Dá pra assistir
-   em **1x, 1.5x ou 2x** (ou pular). Empate no tempo normal vai para **disputa de pênaltis**,
-   também cobrança a cobrança. O motor compara ataque, meio e defesa (com a mentalidade
-   aplicada) e gera os gols com um fator de sorte.
+   faltas, defesas, escanteios, impedimentos, lesões e linhas de **posse de bola** a cada
+   minuto. Dá pra assistir em **1x, 1.5x ou 2x** (ou pular). Empate no tempo normal vai
+   para **disputa de pênaltis**, cobrança a cobrança.
+4. **Intervalo** — no fim do 1º tempo os dois param e podem **mexer na escalação**: trocar
+   a formação/mentalidade, **reposicionar** jogadores (ex: meia vira atacante) e usar o
+   **banco de reservas** (até 5 trocas). Quando os dois clicam *voltar para o jogo*, o
+   servidor **re-simula o 2º tempo** com as escalações novas — então o que você muda
+   importa de verdade e os lances ficam coerentes.
 
 > As posições usam siglas em português estilo EA FC: **GOL, ZAG, LD, LE, ALD, ALE, VOL,
 > MC, MEI, MD, ME, PD, PE, SA, CA** (Centroavante).

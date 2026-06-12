@@ -63,10 +63,32 @@ async function main() {
   }
 
   await wait(300);
+  const mid = snap()!;
+  console.log("\n=== 1º TEMPO ===");
+  console.log("2º tempo pronto?", mid.result?.secondHalfReady, "| eventos:", mid.result?.timeline.length);
+
+  // both confirm halftime -> server re-simulates the 2nd half
+  for (const [sock, id] of [[a, idA], [b, idB]] as const) {
+    const p = mid.players.find((pl) => pl.id === id)!;
+    sock.emit("halftimeReady", {
+      formationId: p.formationId,
+      mentality: p.mentality,
+      picks: p.picks.map((pk) => ({
+        slotId: pk.slotId,
+        name: pk.player.name,
+        pos: pk.player.pos,
+        rating: pk.player.rating,
+        fromTeamId: pk.fromTeamId,
+      })),
+    });
+    await wait(120);
+  }
+  await wait(400);
+
   const fin = snap();
   const finB = stateB as RoomState | null;
-  console.log("\n=== RESULTADO ===");
-  console.log("phase:", fin?.phase);
+  console.log("\n=== RESULTADO FINAL ===");
+  console.log("phase:", fin?.phase, "| 2º tempo pronto?", fin?.result?.secondHalfReady);
   const r = fin?.result;
   if (r && fin) {
     console.log("summary:", r.summary);

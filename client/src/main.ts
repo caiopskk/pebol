@@ -26,10 +26,12 @@ import {
   sendReady,
   sendPick,
   sendRerollTeam,
+  sendHalftimeReady,
   sendRematch,
 } from "./net.js";
 
 const app = document.getElementById("app")!;
+let syncLiveUi: (() => void) | null = null;
 
 interface Local {
   youId: string | null;
@@ -49,7 +51,6 @@ interface Local {
   selectedSubOut: string | null;
   selectedSubIn: string | null;
   intervalSubCount: number;
-  aiHalftimeSubsDone: boolean;
 }
 
 const L: Local = {
@@ -67,7 +68,6 @@ const L: Local = {
   selectedSubOut: null,
   selectedSubIn: null,
   intervalSubCount: 0,
-  aiHalftimeSubsDone: false,
 };
 
 onRoomUpdate((s) => {
@@ -103,15 +103,16 @@ function render() {
   if (L.state?.phase !== "result") {
     L.matchPlayed = false;
     L.playing = false;
+    syncLiveUi = null;
     L.halftimeAdjusted = false;
     L.intervalBench = null;
     L.selectedSubOut = null;
     L.selectedSubIn = null;
     L.intervalSubCount = 0;
-    L.aiHalftimeSubsDone = false;
   }
   // during live playback, don't re-render (preserve the animation)
   if (L.playing) {
+    syncLiveUi?.();
     renderToast();
     return;
   }
@@ -364,13 +365,13 @@ function renderDraft() {
 
       <div class="draft-layout">
         <!-- Seu time -->
-        <section class="board you-board">
+        <section class="board you-board ${yourTurn ? "active-turn" : ""}">
           <h3>Seu time <span class="ovr">${avgLabel(you)}</span></h3>
           ${renderPitch(yourForm, you.picks, yourTurn && !!L.selectedPlayer, true)}
         </section>
 
         <!-- Time sorteado -->
-        <section class="draw-panel">
+        <section class="draw-panel ${yourTurn ? "your-turn" : ""}">
           <div class="draw-head">
             <span class="draw-label">Time sorteado</span>
             <h2>${team ? escapeHtml(`${team.name} ${team.season}`) : "—"}</h2>
@@ -398,7 +399,7 @@ function renderDraft() {
         </section>
 
         <!-- Adversário -->
-        <section class="board opp-board">
+        <section class="board opp-board ${!yourTurn ? "active-turn" : ""}">
           <h3>${escapeHtml(opp?.name ?? "Adversário")} <span class="ovr">${opp ? avgLabel(opp) : ""}</span></h3>
           ${opp && opp.formationId ? renderPitch(getFormation(opp.formationId)!, opp.picks, false, false, true) : ""}
         </section>
@@ -451,6 +452,7 @@ function renderPitch(
   highlightEmpty = false,
   interactive = false,
   small = false,
+  showPos = false,
 ): string {
   const bySlot = new Map(picks.map((p) => [p.slotId, p]));
   const nodes = formation.slots
@@ -468,10 +470,15 @@ function renderPitch(
         pick.effectiveRating < pick.player.rating
           ? `<span class="slot-pen" title="Fora de posição">▼</span>`
           : "";
+      const posTag =
+        filled && showPos
+          ? `<span class="slot-postag">${posLabel(slot.pos)}</span>`
+          : "";
       const label = filled ? lastName(pick!.player.name) : posLabel(slot.pos);
       return `
         <div class="slot ${cls}" data-slot="${slot.id}"
              style="left:${slot.x}%; bottom:${slot.y}%">
+          ${posTag}
           <div class="slot-dot pos-${groupOf(slot.pos).toLowerCase()}">
             ${rating}${penal}
           </div>
@@ -574,26 +581,35 @@ function applyIntervalSubstitution(
   };
 }
 
-function runAISubstitutions(player: PlayerPublic): string {
-  let bench = buildIntervalBench(player);
-  const changes: string[] = [];
-  for (let i = 0; i < 5 && bench.length; i++) {
-    let best: { slotId: string; reserve: Player & { fromTeamId: string }; delta: number } | null = null;
-    for (const pick of player.picks) {
-      const formation = player.formationId ? getFormation(player.formationId) : null;
-      const slot = formation?.slots.find((s) => s.id === pick.slotId);
-      if (!slot) continue;
-      for (const reserve of bench) {
-        const delta = effectiveRating(reserve, slot.pos) - pick.effectiveRating;
-        if (!best || delta > best.delta) best = { slotId: pick.slotId, reserve, delta };
-      }
-    }
-    if (!best) break;
-    const result = applyIntervalSubstitution(player, best.slotId, best.reserve.name, bench);
-    bench = bench.filter((p) => p.name !== best!.reserve.name);
-    if (result) changes.push(`${result.in} por ${result.out}`);
-  }
-  return changes.length ? changes.join("; ") : "sem mudanças";
+function swapLineupSlots(player: PlayerPublic, slotA: string, slotB: string) {
+  if (slotA === slotB) return null;
+  const formation = player.formationId ? getFormation(player.formationId) : null;
+  const pickA = player.picks.find((pick) => pick.slotId === slotA);
+  const pickB = player.picks.find((pick) => pick.slotId === slotB);
+  const formationSlotA = formation?.slots.find((slot) => slot.id === slotA);
+  const formationSlotB = formation?.slots.find((slot) => slot.id === slotB);
+  if (!pickA || !pickB || !formationSlotA || !formationSlotB) return null;
+
+  const oldTotal = pickA.effectiveRating + pickB.effectiveRating;
+  const nextA = {
+    ...pickB,
+    slotId: slotA,
+    effectiveRating: effectiveRating(pickB.player, formationSlotA.pos),
+  };
+  const nextB = {
+    ...pickA,
+    slotId: slotB,
+    effectiveRating: effectiveRating(pickA.player, formationSlotB.pos),
+  };
+  player.picks = player.picks.map((pick) =>
+    pick.slotId === slotA ? nextA : pick.slotId === slotB ? nextB : pick,
+  );
+  const delta = nextA.effectiveRating + nextB.effectiveRating - oldTotal;
+  return {
+    a: pickA.player.name,
+    b: pickB.player.name,
+    delta,
+  };
 }
 
 function lastName(full: string): string {
@@ -616,11 +632,68 @@ function renderResult() {
 
 // ---------------- Live match (animated simulation) ----------------
 
-const TICK_BASE_MS = 260; // ms per match "minute" at 1x
+const TICK_BASE_MS = 130; // ms per match "minute" at 1x
+
+// Mini pitch (viewBox in meters: 105 x 68) with a light grid and standard markings.
+function ballFieldSvg(): string {
+  const grid: string[] = [];
+  for (let x = 5; x < 105; x += 5) grid.push(`<line x1="${x}" y1="0" x2="${x}" y2="68" class="bf-grid"/>`);
+  for (let y = 5; y < 68; y += 5) grid.push(`<line x1="0" y1="${y}" x2="105" y2="${y}" class="bf-grid"/>`);
+  return `
+    <svg class="bf-svg" viewBox="0 0 105 68" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
+      <rect x="0" y="0" width="105" height="68" class="bf-pitch"/>
+      <g>${grid.join("")}</g>
+      <g class="bf-lines">
+        <rect x="0.5" y="0.5" width="104" height="67"/>
+        <line x1="52.5" y1="0.5" x2="52.5" y2="67.5"/>
+        <circle cx="52.5" cy="34" r="9.15" fill="none"/>
+        <circle cx="52.5" cy="34" r="0.6" class="bf-spot"/>
+        <rect x="0.5" y="13.84" width="16.5" height="40.32" fill="none"/>
+        <rect x="88" y="13.84" width="16.5" height="40.32" fill="none"/>
+        <rect x="0.5" y="24.84" width="5.5" height="18.32" fill="none"/>
+        <rect x="99" y="24.84" width="5.5" height="18.32" fill="none"/>
+        <circle cx="11" cy="34" r="0.6" class="bf-spot"/>
+        <circle cx="94" cy="34" r="0.6" class="bf-spot"/>
+      </g>
+    </svg>`;
+}
+
+// Classic black/white soccer ball: a center pentagon and five rim pentagons
+// clipped to the circle, with a spherical light/shadow overlay for a 3D look.
+function soccerBallSvg(): string {
+  const pent = (cx: number, cy: number, r: number, rot: number) =>
+    Array.from({ length: 5 }, (_, i) => {
+      const a = ((rot + i * 72 - 90) * Math.PI) / 180;
+      return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
+    }).join(" ");
+  const rim: string[] = [];
+  for (let i = 0; i < 5; i++) {
+    const t = ((i * 72 - 90) * Math.PI) / 180;
+    rim.push(pent(50 + 46 * Math.cos(t), 50 + 46 * Math.sin(t), 14, i * 72));
+  }
+  return `
+    <svg class="bf-ball-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
+      <defs>
+        <clipPath id="bfClip"><circle cx="50" cy="50" r="47.5"/></clipPath>
+        <radialGradient id="bfShine" cx="34%" cy="28%" r="80%">
+          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.55"/>
+          <stop offset="42%" stop-color="#ffffff" stop-opacity="0"/>
+          <stop offset="100%" stop-color="#000000" stop-opacity="0.34"/>
+        </radialGradient>
+      </defs>
+      <circle cx="50" cy="50" r="47.5" fill="#f2f2f2"/>
+      <g clip-path="url(#bfClip)" fill="#1a1a1a">
+        <polygon points="${pent(50, 50, 15, 0)}"/>
+        ${rim.map((p) => `<polygon points="${p}"/>`).join("")}
+      </g>
+      <circle cx="50" cy="50" r="47.5" fill="url(#bfShine)"/>
+      <circle cx="50" cy="50" r="47" fill="none" stroke="#c2c2c2" stroke-width="1"/>
+    </svg>`;
+}
 
 function renderLiveMatch() {
   const s = L.state!;
-  const r = s.result!;
+  let r = s.result!;
   const you = me()!;
   const opp = opponent()!;
   const vsAI = s.players.some((p) => p.isAI);
@@ -646,6 +719,10 @@ function renderLiveMatch() {
         <div class="live-sub">
           <span class="sb-leg" id="half-label">1º Tempo</span>
           <span class="agg-mini" id="pen-label"></span>
+        </div>
+        <div class="ballfield">
+          ${ballFieldSvg()}
+          <div class="bf-ball" id="bf-ball">${soccerBallSvg()}</div>
         </div>
         <div class="speed-row">
           <span class="spd-label">Velocidade</span>
@@ -720,6 +797,25 @@ function renderLiveMatch() {
   const cardOv = document.getElementById("card-ov")!;
   const cardFlash = document.getElementById("card-flash")!;
   const cardName = document.getElementById("card-name")!;
+  const ball = document.getElementById("bf-ball") as HTMLDivElement;
+
+  // engine coords have "home" attacking toward bx=105; rotate 180° if you are the
+  // away player so YOUR team always attacks to the right on screen.
+  const youAreAway = r.awayId === you.id;
+  const displayCoord = (ev: MatchEvent) => {
+    let bx = ev.bx ?? 53;
+    let by = ev.by ?? 34;
+    if (youAreAway) { bx = 106 - bx; by = 69 - by; }
+    return { bx, by };
+  };
+  function moveBall(ev: MatchEvent, durationMs: number) {
+    if (ev.bx === undefined) return;
+    const { bx, by } = displayCoord(ev);
+    ball.style.transitionDuration = `${Math.max(180, Math.min(1300, durationMs * 0.85))}ms`;
+    ball.style.left = `${((bx - 0.5) / 105) * 100}%`;
+    ball.style.top = `${((by - 0.5) / 68) * 100}%`;
+    ball.classList.toggle("goal", ev.type === "goal");
+  }
 
   const goals: Record<string, number> = { [you.id]: 0, [opp.id]: 0 };
   let minute = 0;
@@ -738,7 +834,12 @@ function renderLiveMatch() {
       ev.type === "card" ? (ev.card === "red" ? " red" : " yellow") : "";
     li.className = `ev ${ev.type}${cardCls}`;
     const min = Math.min(ev.minute, 90);
-    li.innerHTML = `<span class="ev-min">${min}'</span><span class="ev-tx">${escapeHtml(ev.text)}</span>`;
+    let posTag = "";
+    if (ev.bx !== undefined) {
+      const { bx, by } = displayCoord(ev);
+      posTag = `<span class="ev-pos">${bx}-${by}</span>`;
+    }
+    li.innerHTML = `<span class="ev-min">${min}'</span><span class="ev-tx">${escapeHtml(ev.text)}</span>${posTag}`;
     feed.prepend(li);
   }
 
@@ -760,6 +861,7 @@ function renderLiveMatch() {
       .join("");
     reserveList.querySelectorAll<HTMLButtonElement>(".reserve-option").forEach((btn) => {
       btn.onclick = () => {
+        if (you.halftimeReady) return;
         if (L.intervalSubCount >= 5) return;
         L.selectedSubIn = btn.dataset.reserve ?? null;
         if (!L.selectedSubOut || !L.selectedSubIn) {
@@ -783,8 +885,20 @@ function renderLiveMatch() {
     halfPitch.innerHTML = renderPitch(getFormation(you.formationId ?? L.formationId)!, you.picks, false, false, true);
     halfPitch.querySelectorAll<HTMLElement>(".slot.filled").forEach((slot) => {
       slot.onclick = () => {
+        if (you.halftimeReady) return;
+        const clickedSlot = slot.dataset.slot ?? null;
+        if (L.selectedSubOut && clickedSlot && !L.selectedSubIn) {
+          const result = swapLineupSlots(you, L.selectedSubOut, clickedSlot);
+          L.selectedSubOut = null;
+          if (result) {
+            refreshHalftimeSquad(
+              `Troca de posição: ${result.a} e ${result.b} (${result.delta >= 0 ? "+" : ""}${result.delta} no encaixe combinado).`,
+            );
+            return;
+          }
+        }
         if (L.intervalSubCount >= 5) return;
-        L.selectedSubOut = slot.dataset.slot ?? null;
+        L.selectedSubOut = clickedSlot;
         if (L.selectedSubOut && L.selectedSubIn) {
           const result = applyIntervalSubstitution(you, L.selectedSubOut, L.selectedSubIn);
           if (!result) return;
@@ -835,35 +949,37 @@ function renderLiveMatch() {
   }
 
   function eventDelay(ev: MatchEvent, isGoalSetup: boolean): number {
-    if (isGoalSetup) return 4200;
+    if (isGoalSetup) return 2100;
     switch (ev.type) {
       case "goal":
-        return 3900;
+        return 1950;
       case "chance":
       case "save":
       case "corner":
       case "var":
-        return 2200;
+        return 1100;
       case "card":
-        return 1700;
+        return 880;
       case "foul":
       case "offside":
       case "injury":
-        return 1600;
-      case "sub":
+        return 820;
       case "info":
-        return 1500;
+        return 780;
+      case "possession":
+        return 340;
       case "halftime":
       case "fulltime":
-        return 1200;
+        return 650;
       default:
-        return 1300;
+        return 680;
     }
   }
 
   function processEvent(ev: MatchEvent): number | null {
     const nextEv = r.timeline[evIdx];
     const isGoalSetup = isGoalSetupEvent(ev, nextEv);
+    moveBall(ev, eventDelay(ev, isGoalSetup));
 
     if (ev.type === "goal") {
       const pid = sideToPid(ev.side);
@@ -948,6 +1064,80 @@ function renderLiveMatch() {
     L.halftimeAdjusted = true;
     halfPanel.hidden = false;
     refreshHalftimeSquad();
+    let halftimeResumeStarted = false;
+
+    const halftimeReadyCount = () =>
+      L.state?.players.filter((p) => p.halftimeReady || p.isAI).length ?? 0;
+
+    const allHalftimeReady = () =>
+      !!L.state?.players.length &&
+      L.state.players.every((p) => p.halftimeReady || p.isAI);
+
+    function preserveLocalHalftimeChanges() {
+      if (!L.state) return;
+      L.state.players = L.state.players.map((p) => {
+        if (p.id === you.id) return { ...you, halftimeReady: p.halftimeReady };
+        if (opp.isAI && p.id === opp.id) {
+          return { ...opp, halftimeReady: p.halftimeReady };
+        }
+        return p;
+      });
+    }
+
+    function continueFromHalftime() {
+      if (halftimeResumeStarted) return;
+      halftimeResumeStarted = true;
+      syncLiveUi = null;
+      halfPanel.hidden = true;
+      // re-read the result: the server has appended the second half (re-simulated
+      // with the new lineups), so switch to the updated timeline before resuming.
+      if (L.state?.result) r = L.state.result;
+      const formationName =
+        FORMATIONS.find((f) => f.id === halfForm.value)?.name ?? halfForm.value;
+      const mentalityName =
+        MENTALITIES.find((m) => m.id === halfMent.value)?.name ??
+        halfMent.value;
+      addFeed({
+        minute: 46,
+        type: "info",
+        side: null,
+        text: `Início do segundo tempo: ${formationName}, estilo ${mentalityName} e ${L.intervalSubCount}/5 substituições.`,
+      });
+      schedule(800);
+    }
+
+    function syncHalftimeReadyUi() {
+      if (halfPanel.hidden) return;
+      preserveLocalHalftimeChanges();
+      const current = me();
+      const ready = !!current?.halftimeReady;
+      const readyCount = halftimeReadyCount();
+      subCount.textContent = ready
+        ? `Prontos ${readyCount}/${L.state?.players.length ?? 2}`
+        : `Substituições ${L.intervalSubCount}/5 · Prontos ${readyCount}/${L.state?.players.length ?? 2}`;
+      halfContinue.disabled = ready;
+      halfContinue.classList.toggle("done", ready);
+      halfForm.disabled = ready;
+      halfMent.disabled = ready;
+      reserveList
+        .querySelectorAll<HTMLButtonElement>(".reserve-option")
+        .forEach((btn) => {
+          btn.disabled = ready || L.intervalSubCount >= 5;
+        });
+      halfPitch.classList.toggle("locked", ready);
+      const secondHalfReady = !!L.state?.result?.secondHalfReady;
+      halfContinue.textContent = allHalftimeReady()
+        ? secondHalfReady
+          ? "Voltando..."
+          : "Preparando 2º tempo..."
+        : ready
+          ? "Aguardando adversário..."
+          : "Voltar para o jogo";
+      // only resume once the server has simulated and appended the second half
+      if (allHalftimeReady() && secondHalfReady) continueFromHalftime();
+    }
+
+    syncLiveUi = syncHalftimeReadyUi;
     halfForm.onchange = () => {
       const ratingSwing = reassignPicksToFormation(you, halfForm.value);
       L.formationId = halfForm.value;
@@ -961,35 +1151,42 @@ function renderLiveMatch() {
               ? `Formação atualizada. Encaixe caiu ${ratingSwing.toFixed(1)} por jogadores fora de posição.`
               : "Formação atualizada. Encaixe manteve o mesmo over efetivo.";
       refreshHalftimeSquad(impact);
+      syncHalftimeReadyUi();
     };
-    let aiText = "";
-    if (opp.isAI && !L.aiHalftimeSubsDone) {
-      L.aiHalftimeSubsDone = true;
-      aiText = ` Máquina também mexeu 5 vezes: ${runAISubstitutions(opp)}.`;
-    }
     halfContinue.onclick = () => {
-      const formationName =
-        FORMATIONS.find((f) => f.id === halfForm.value)?.name ?? halfForm.value;
-      const mentalityName =
-        MENTALITIES.find((m) => m.id === halfMent.value)?.name ??
-        halfMent.value;
+      if (you.halftimeReady) return;
       L.formationId = halfForm.value;
       L.mentality = halfMent.value as Mentality;
+      you.formationId = L.formationId;
       you.mentality = L.mentality;
-      halfPanel.hidden = true;
-      addFeed({
-        minute: 46,
-        type: "info",
-        side: null,
-        text: `Ajuste no intervalo: ${formationName}, estilo ${mentalityName} e ${L.intervalSubCount}/5 substituições.${aiText}`,
+      you.halftimeReady = true;
+      const current = me();
+      if (current) {
+        current.halftimeReady = true;
+        current.formationId = L.formationId;
+        current.mentality = L.mentality;
+      }
+      // send the updated lineup so the server re-simulates the 2nd half with it
+      sendHalftimeReady({
+        formationId: L.formationId,
+        mentality: L.mentality,
+        picks: you.picks.map((pk) => ({
+          slotId: pk.slotId,
+          name: pk.player.name,
+          pos: pk.player.pos,
+          rating: pk.player.rating,
+          fromTeamId: pk.fromTeamId,
+        })),
       });
-      schedule(800);
+      syncHalftimeReadyUi();
     };
+    syncHalftimeReadyUi();
   }
 
   function finish() {
     clearTimeout(timer);
     clearTimeout(hideTimer);
+    syncLiveUi = null;
     L.playing = false;
     L.matchPlayed = true;
     render();

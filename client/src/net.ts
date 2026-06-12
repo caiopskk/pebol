@@ -1,5 +1,5 @@
 import { io, Socket } from "socket.io-client";
-import type { RoomState, AckResult, GameMode, Mentality } from "../../shared/types.js";
+import type { RoomState, AckResult, GameMode, Mentality, HalftimeLineup } from "../../shared/types.js";
 
 // In dev, connect straight to the server (port 3001) on the same host, so it works
 // on localhost and on a LAN. In production the client is served by the server (same origin).
@@ -7,7 +7,7 @@ const SERVER_URL =
   import.meta.env.VITE_SERVER_URL ||
   (import.meta.env.DEV
     ? `${location.protocol}//${location.hostname}:3001`
-    : undefined); // em produção, sem env, usa a mesma origem
+    : undefined); // in production without env, use the same origin
 export const socket: Socket = io(SERVER_URL, { autoConnect: true });
 
 export function onRoomUpdate(fn: (s: RoomState) => void) {
@@ -34,6 +34,9 @@ export function sendPick(slotId: string, playerName: string) {
 }
 export function sendRerollTeam() {
   socket.emit("rerollTeam");
+}
+export function sendHalftimeReady(lineup: HalftimeLineup) {
+  socket.emit("halftimeReady", lineup);
 }
 export function sendRematch() {
   socket.emit("rematch");

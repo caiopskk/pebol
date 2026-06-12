@@ -32,7 +32,7 @@ export const MENTALITIES: MentalityDef[] = [
   },
   {
     id: "pressao",
-    name: "Marçação pressão",
+    name: "Marcação pressão",
     desc: "Rouba bola no campo rival: +7% ataque, -5% defesa.",
     attackMod: 1.07,
     defenseMod: 0.95,

@@ -62,6 +62,7 @@ export interface PlayerPublic {
   isAI?: boolean;
   rerollsRemaining?: number;
   ready: boolean;
+  halftimeReady?: boolean;
   formationId: string | null;
   mentality: Mentality | null;
   picks: SquadPick[];
@@ -95,9 +96,9 @@ export type MatchEventType =
   | "offside"
   | "foul"
   | "card"
-  | "sub"
   | "injury"
   | "var"
+  | "possession"
   | "halftime"
   | "fulltime"
   | "penalty"
@@ -108,7 +109,8 @@ export interface MatchEvent {
   type: MatchEventType;
   side: "home" | "away" | null;
   text: string;
-  ballZone?: "center" | "midfield" | "final_third" | "box" | "goal" | "defense" | "corner" | "penalty";
+  bx?: number;           // ball position on a 105x68 grid: 1..105 long ("home" attacks toward 105)
+  by?: number;           // ball position: 1..68 wide
   player?: string;       // player involved (goal scorer, carded player, etc.)
   assist?: string;       // assist provider, for goals
   card?: "yellow" | "red";
@@ -130,13 +132,25 @@ export interface TeamStrength {
 export interface MatchResult {
   homeId: string; // player 1 ("home" side, only to map events)
   awayId: string; // player 2
-  timeline: MatchEvent[];            // single match, minute 0..90 (+ stoppage)
-  goals: Record<string, number>;     // regular-time goals by playerId
+  // The first half (0..45 + halftime marker) is generated at draft end; the second
+  // half (46..90 + fulltime) is appended once both players confirm at halftime, so
+  // it reflects the post-halftime lineups. The client re-reads this and resumes.
+  timeline: MatchEvent[];
+  secondHalfReady: boolean;          // true once the 2nd half has been simulated
+  firstHalfGoals: Record<string, number>;
+  goals: Record<string, number>;     // total goals (= first half until 2nd is ready)
   shootout: ShootoutKick[] | null;   // penalty kicks, if it went there
   penaltyScore: Record<string, number> | null;
   strengths: Record<string, TeamStrength>;
-  winnerId: string;                  // always decided (penalties break a tie)
-  summary: string;
+  winnerId: string;                  // "" until the match is decided
+  summary: string;                   // "" until the match is decided
+}
+
+/** A player's lineup submitted at halftime (used to re-simulate the 2nd half). */
+export interface HalftimeLineup {
+  formationId: string;
+  mentality: Mentality;
+  picks: { slotId: string; name: string; pos: Position; rating: number; fromTeamId: string }[];
 }
 
 // ---- Socket event signatures ----
@@ -153,6 +167,7 @@ export interface ClientToServer {
   ready: () => void;
   pick: (data: { slotId: string; playerName: string }) => void;
   rerollTeam: () => void;
+  halftimeReady: (data: HalftimeLineup) => void;
   rematch: () => void;
 }
 
