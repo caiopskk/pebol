@@ -7,6 +7,9 @@ import type {
   MatchResult,
   MatchEvent,
   Player,
+  SquadPick,
+  Team,
+  GauntletResult,
 } from "../../shared/types.js";
 import {
   FORMATIONS,
@@ -15,8 +18,17 @@ import {
   posLabel,
 } from "../../shared/formations.js";
 import { MENTALITIES } from "../../shared/mentalities.js";
-import { effectiveRating } from "../../shared/engine.js";
+import {
+  effectiveRating,
+  simInputFromTeam,
+  simulateGauntletMatch,
+} from "../../shared/engine.js";
 import { getTeam } from "../../shared/data/teams.js";
+import {
+  WC_DRAFT_TEAMS,
+  wcOpponentTeam,
+  WC_LADDER,
+} from "../../shared/data/worldcup.js";
 import {
   onRoomUpdate,
   onError,
@@ -32,6 +44,17 @@ import {
 
 const app = document.getElementById("app")!;
 let syncLiveUi: (() => void) | null = null;
+const MATCH_SPEED_KEY = "pebol:match-speed";
+
+function readSavedMatchSpeed(): number {
+  const saved = Number(localStorage.getItem(MATCH_SPEED_KEY));
+  return [1, 1.5, 2].includes(saved) ? saved : 1;
+}
+
+function setMatchSpeed(speed: number) {
+  L.matchSpeed = [1, 1.5, 2].includes(speed) ? speed : 1;
+  localStorage.setItem(MATCH_SPEED_KEY, String(L.matchSpeed));
+}
 
 interface Local {
   youId: string | null;
@@ -51,6 +74,45 @@ interface Local {
   selectedSubOut: string | null;
   selectedSubIn: string | null;
   intervalSubCount: number;
+  // World Cup campaign (single-player, client-side, independent of the socket room)
+  campaign: CampaignState | null;
+}
+
+type CampaignPhase =
+  | "setup"
+  | "draft"
+  | "preMatch"
+  | "match"
+  | "gameover"
+  | "victory";
+interface CupGroupRow {
+  id: string;
+  name: string;
+  played: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  gf: number;
+  ga: number;
+  points: number;
+}
+interface CampaignState {
+  phase: CampaignPhase;
+  formationId: string;
+  mentality: Mentality;
+  round: number; // 0..7 — 3 group matches + 5 knockout rounds
+  picks: SquadPick[]; // your drafted XI
+  currentTeam: Team | null; // team drawn this draft round
+  usedTeamIds: string[];
+  selectedPlayer: string | null;
+  currentOpp: Team | null; // opponent for the current round
+  lastResult: GauntletResult | null;
+  rerollsRemaining: number;
+  groupTeams: Team[];
+  groupTable: CupGroupRow[];
+  groupQualified: boolean | null;
+  groupQualifiedLabel: string | null;
+  knockoutPath: Team[];
 }
 
 const L: Local = {
@@ -61,13 +123,14 @@ const L: Local = {
   mentality: "equilibrada",
   toast: null,
   matchPlayed: false,
-  matchSpeed: 1,
+  matchSpeed: readSavedMatchSpeed(),
   playing: false,
   halftimeAdjusted: false,
   intervalBench: null,
   selectedSubOut: null,
   selectedSubIn: null,
   intervalSubCount: 0,
+  campaign: null,
 };
 
 onRoomUpdate((s) => {
@@ -99,6 +162,17 @@ function opponent(): PlayerPublic | undefined {
 // ---------------- Main render ----------------
 
 function render() {
+  // World Cup campaign is a self-contained, client-side flow that owns the screen
+  if (L.campaign) {
+    if (L.playing) {
+      renderToast();
+      return;
+    }
+    renderCampaign();
+    renderToast();
+    return;
+  }
+
   // outside the result phase, reset the playback state
   if (L.state?.phase !== "result") {
     L.matchPlayed = false;
@@ -153,38 +227,62 @@ function renderToast() {
 function renderHome() {
   app.innerHTML = `
     <div class="screen home">
-      <header class="brand">
-        <img class="logo" src="/pebol_logo.png" alt="Pebol" />
-        <p>Monte seu time no draft e desafie um amigo 1v1.</p>
-      </header>
-
-      <div class="cards">
-        <div class="panel">
-          <h2>Criar sala</h2>
-          <label>Seu nome</label>
-          <input id="c-name" maxlength="20" placeholder="Insira seu nome" />
-          <label>Modo de jogo</label>
-          <div class="mode-pick">
-            <button class="mode-btn active" data-mode="classico">
-              <strong>Clássico</strong><span>Ratings visíveis</span>
-            </button>
-            <button class="mode-btn" data-mode="pica">
-              <strong>Pica</strong><span>Ratings ocultos</span>
-            </button>
+      <div class="cards home-board">
+        <div class="panel home-panel create-card">
+          <div class="home-card-inner">
+            <h2>Criar sala</h2>
+            <label>Seu nome</label>
+            <input id="c-name" maxlength="20" placeholder="Insira seu nome" />
+            <label>Modo de jogo</label>
+            <div class="mode-pick">
+              <button class="mode-btn active" data-mode="classico">
+                <strong>Clássico</strong><span>Ratings visíveis</span>
+              </button>
+              <button class="mode-btn" data-mode="pica">
+                <strong>Pica</strong><span>Ratings ocultos</span>
+              </button>
+            </div>
+            <button id="c-create" class="primary">Criar sala (online)</button>
           </div>
-          <button id="c-create" class="primary">Criar sala (online)</button>
-          <div class="or-sep"><span>ou</span></div>
-          <button id="c-solo" class="primary alt">Jogar sozinho (vs Máquina)</button>
         </div>
 
-        <div class="panel">
-          <h2>Entrar numa sala</h2>
-          <label>Seu nome</label>
-          <input id="j-name" maxlength="20" placeholder="Insira seu nome" />
-          <label>Código da sala</label>
-          <input id="j-code" maxlength="4" placeholder="XXXX" style="text-transform:uppercase" />
-          <button id="j-join" class="primary">Entrar</button>
+        <div class="home-logo-tile">
+          <img class="logo" src="/pebol_logo.png" alt="Pebol" />
+          <p>Monte seu time no draft e desafie um amigo 1v1 ou jogue contra a máquina.</p>
         </div>
+
+        <div class="panel home-panel join-card">
+          <div class="home-card-inner">
+            <h2>Entrar numa sala</h2>
+            <label>Seu nome</label>
+            <input id="j-name" maxlength="20" placeholder="Insira seu nome" />
+            <label>Código da sala</label>
+            <input id="j-code" maxlength="4" placeholder="XXXX" style="text-transform:uppercase" />
+            <button id="j-join" class="primary">Entrar</button>
+          </div>
+        </div>
+
+        <div class="panel solo-panel">
+          <div class="solo-actions">
+            <button id="c-solo" class="primary alt solo-action">Jogar sozinho (vs Máquina)</button>
+            <button id="career-mode" class="primary alt solo-action">Modo carreira</button>
+            <button id="league-mode" class="primary alt solo-action">Modo liga</button>
+          </div>
+        </div>
+
+        <aside class="panel cup-panel">
+          <img class="cup-panel-trophy" src="/world_cup_trophy.png" alt="Troféu da Copa do Mundo" />
+          <span class="cup-tag">Modo solo</span>
+          <h2>Copa do Mundo</h2>
+          <p>Monte uma seleção no draft, dispute a fase de grupos e avance pelo chaveamento de 32 times até a final.</p>
+          <ul class="cup-feature-list">
+            <li>48 seleções</li>
+            <li>Grupo + mata-mata</li>
+            <li>Campanha offline</li>
+          </ul>
+          <button id="c-worldcup" class="primary cup-panel-action">Jogar campanha</button>
+        </aside>
+
       </div>
     </div>
   `;
@@ -201,9 +299,10 @@ function renderHome() {
   });
 
   const doCreate = async (solo: boolean) => {
-    const name = (
+    const typedName = (
       app.querySelector<HTMLInputElement>("#c-name")!.value || ""
     ).trim();
+    const name = solo ? typedName || "Você" : typedName;
     if (!name) return showToast("Digite seu nome.");
     const res = await createRoom(name, mode, solo);
     if (res.ok && res.youId) {
@@ -216,6 +315,12 @@ function renderHome() {
     doCreate(false);
   app.querySelector<HTMLButtonElement>("#c-solo")!.onclick = () =>
     doCreate(true);
+  app.querySelector<HTMLButtonElement>("#career-mode")!.onclick = () =>
+    showToast("Modo carreira estará disponível em breve.");
+  app.querySelector<HTMLButtonElement>("#league-mode")!.onclick = () =>
+    showToast("Modo liga estará disponível em breve.");
+  app.querySelector<HTMLButtonElement>("#c-worldcup")!.onclick = () =>
+    startCampaign();
 
   app.querySelector<HTMLButtonElement>("#j-join")!.onclick = async () => {
     const name = (
@@ -233,6 +338,777 @@ function renderHome() {
       showToast(res.error || "Erro ao entrar.");
     }
   };
+}
+
+// ---------------- World Cup campaign (single-player gauntlet) ----------------
+
+function startCampaign() {
+  L.state = null;
+  L.youId = null;
+  L.playing = false;
+  L.campaign = {
+    phase: "setup",
+    formationId: "4-3-3",
+    mentality: "equilibrada",
+    round: 0,
+    picks: [],
+    currentTeam: null,
+    usedTeamIds: [],
+    selectedPlayer: null,
+    currentOpp: null,
+    lastResult: null,
+    rerollsRemaining: 3,
+    groupTeams: [],
+    groupTable: [],
+    groupQualified: null,
+    groupQualifiedLabel: null,
+    knockoutPath: [],
+  };
+  render();
+}
+
+function campaignExit() {
+  L.campaign = null;
+  L.playing = false;
+  render();
+}
+
+function mentalityLabel(m: Mentality): string {
+  return MENTALITIES.find((x) => x.id === m)?.name ?? m;
+}
+
+function campaignProgress(won: number): string {
+  const labels = ["G1", "G2", "G3", "32", "16", "QF", "SF", "F"];
+  return `<div class="cup-progress">${labels
+    .map(
+      (label, i) =>
+        `<span class="cup-cell ${i < won ? "done" : ""} ${i === won ? "next" : ""}">${i < won ? "✓" : label}</span>`,
+    )
+    .join("")}</div>`;
+}
+
+function renderCampaign() {
+  switch (L.campaign!.phase) {
+    case "setup":
+      return renderCampaignSetup();
+    case "draft":
+      return renderCampaignDraft();
+    case "preMatch":
+      return renderCampaignPreMatch();
+    case "match":
+      return renderCampaignMatch();
+    case "gameover":
+      return renderCampaignGameOver();
+    case "victory":
+      return renderCampaignVictory();
+  }
+}
+
+function renderCampaignSetup() {
+  const c = L.campaign!;
+  app.innerHTML = `
+    <div class="screen cup-screen">
+      <div class="cup-head">
+        <img class="cup-head-trophy" src="/world_cup_trophy.png" alt="" />
+        <div>
+          <span class="cup-tag">Modo Copa do Mundo</span>
+          <h1>Copa do Mundo 48 Seleções</h1>
+          <p>Monte sua seleção, dispute 3 jogos de grupo e tente passar para o mata-mata de 32 times até a final.</p>
+        </div>
+        <button id="cup-exit" class="ghost">Sair</button>
+      </div>
+      <div class="panel">
+        <h2>Escolha sua formação</h2>
+        <div class="formation-grid">
+          ${FORMATIONS.map((f) => `<button class="form-btn ${f.id === c.formationId ? "active" : ""}" data-form="${f.id}">${f.name}</button>`).join("")}
+        </div>
+        <div class="setup-cols">
+          <div class="mini-pitch-wrap">${renderPitch(getFormation(c.formationId)!, [], false)}</div>
+          <div class="mentality-col">
+            <h2>Mentalidade <span class="cup-warn">peso DOBRADO nesta copa</span></h2>
+            ${MENTALITIES.map((m) => `<button class="ment-btn ${m.id === c.mentality ? "active" : ""}" data-ment="${m.id}"><strong>${m.name}</strong><span>${m.desc}</span></button>`).join("")}
+          </div>
+        </div>
+        <div class="lobby-actions"><button id="cup-start" class="primary big">Começar a campanha</button></div>
+      </div>
+    </div>`;
+  document.getElementById("cup-exit")!.onclick = campaignExit;
+  app.querySelectorAll<HTMLButtonElement>(".form-btn").forEach(
+    (b) =>
+      (b.onclick = () => {
+        c.formationId = b.dataset.form!;
+        render();
+      }),
+  );
+  app.querySelectorAll<HTMLButtonElement>(".ment-btn").forEach(
+    (b) =>
+      (b.onclick = () => {
+        c.mentality = b.dataset.ment as Mentality;
+        render();
+      }),
+  );
+  document.getElementById("cup-start")!.onclick = () => {
+    c.phase = "draft";
+    campaignDrawTeam();
+    render();
+  };
+}
+
+function campaignOpenSlots() {
+  const c = L.campaign!;
+  const f = getFormation(c.formationId)!;
+  const filled = new Set(c.picks.map((p) => p.slotId));
+  return f.slots.filter((s) => !filled.has(s.id));
+}
+
+function campaignSelectable(): Set<string> {
+  const c = L.campaign!;
+  if (!c.currentTeam) return new Set();
+  const openGroups = new Set(campaignOpenSlots().map((s) => groupOf(s.pos)));
+  return new Set(
+    c.currentTeam.players
+      .filter((p) => openGroups.has(groupOf(p.pos)))
+      .map((p) => p.name),
+  );
+}
+
+function campaignDrawTeam() {
+  const c = L.campaign!;
+  for (let tries = 0; tries < 10; tries++) {
+    const pool = WC_DRAFT_TEAMS.filter((t) => !c.usedTeamIds.includes(t.id));
+    const src = pool.length ? pool : WC_DRAFT_TEAMS;
+    if (!pool.length) c.usedTeamIds = [];
+    c.currentTeam = src[Math.floor(Math.random() * src.length)];
+    c.selectedPlayer = null;
+    if (campaignSelectable().size) return; // at least one player fits an open slot
+    c.usedTeamIds.push(c.currentTeam.id);
+  }
+}
+
+function campaignRerollTeam() {
+  const c = L.campaign!;
+  if (c.phase !== "draft") return;
+  if (c.rerollsRemaining <= 0)
+    return showToast("Você já usou suas 3 atualizações.");
+  if (c.currentTeam) c.usedTeamIds.push(c.currentTeam.id);
+  c.rerollsRemaining--;
+  c.selectedPlayer = null;
+  campaignDrawTeam();
+  render();
+}
+
+function campaignPlace(slotId: string, player: Player) {
+  const c = L.campaign!;
+  c.picks.push({
+    slotId,
+    player,
+    fromTeamId: c.currentTeam!.id,
+    effectiveRating: player.rating,
+  });
+  c.usedTeamIds.push(c.currentTeam!.id);
+  c.selectedPlayer = null;
+  if (c.picks.length >= 11) {
+    c.round = 0;
+    campaignBeginRound();
+  } else {
+    campaignDrawTeam();
+  }
+  render();
+}
+
+function campaignAvg(): string {
+  const c = L.campaign!;
+  if (!c.picks.length) return "";
+  const a = c.picks.reduce((s, p) => s + p.effectiveRating, 0) / c.picks.length;
+  return `OVR ${Math.round(a)}`;
+}
+
+function campaignAvgNumber(): number {
+  const c = L.campaign!;
+  if (!c.picks.length) return 0;
+  return Math.round(
+    c.picks.reduce((s, p) => s + p.effectiveRating, 0) / c.picks.length,
+  );
+}
+
+function groupRow(team: Pick<Team, "id" | "name" | "season">): CupGroupRow {
+  return {
+    id: team.id,
+    name: team.season ? `${team.name} ${team.season}` : team.name,
+    played: 0,
+    wins: 0,
+    draws: 0,
+    losses: 0,
+    gf: 0,
+    ga: 0,
+    points: 0,
+  };
+}
+
+function groupGoalDiff(row: CupGroupRow): number {
+  return row.gf - row.ga;
+}
+
+function groupTableSorted(rows = L.campaign!.groupTable): CupGroupRow[] {
+  return [...rows].sort(
+    (a, b) =>
+      b.points - a.points ||
+      groupGoalDiff(b) - groupGoalDiff(a) ||
+      b.gf - a.gf ||
+      a.name.localeCompare(b.name),
+  );
+}
+
+function updateGroupRow(id: string, gf: number, ga: number) {
+  const row = L.campaign!.groupTable.find((r) => r.id === id);
+  if (!row) return;
+  row.played++;
+  row.gf += gf;
+  row.ga += ga;
+  if (gf > ga) {
+    row.wins++;
+    row.points += 3;
+  } else if (gf === ga) {
+    row.draws++;
+    row.points += 1;
+  } else {
+    row.losses++;
+  }
+}
+
+function recordGroupMatch(
+  aId: string,
+  bId: string,
+  aGoals: number,
+  bGoals: number,
+) {
+  updateGroupRow(aId, aGoals, bGoals);
+  updateGroupRow(bId, bGoals, aGoals);
+}
+
+function teamAvg(team: Team): number {
+  return Math.round(
+    team.players.reduce((sum, p) => sum + p.rating, 0) /
+      Math.max(1, team.players.length),
+  );
+}
+
+function randomGroupScore(a: Team, b: Team): [number, number] {
+  const baseA =
+    0.85 + Math.max(-0.55, Math.min(0.75, (teamAvg(a) - teamAvg(b)) / 18));
+  const baseB =
+    0.85 + Math.max(-0.55, Math.min(0.75, (teamAvg(b) - teamAvg(a)) / 18));
+  const goals = (base: number) => {
+    const roll = Math.random() + Math.random() + Math.random();
+    return Math.max(0, Math.min(5, Math.floor(roll * base)));
+  };
+  return [goals(baseA), goals(baseB)];
+}
+
+function setupCampaignGroup() {
+  const c = L.campaign!;
+  if (c.groupTeams.length) return;
+  c.groupTeams = [0, 1, 2].map((i) => wcOpponentTeam(i, Math.random));
+  c.groupTable = [
+    groupRow({ id: "you", name: "Seu time", season: "" }),
+    ...c.groupTeams.map(groupRow),
+  ];
+}
+
+function simulateOtherGroupFixture(matchday: number) {
+  const c = L.campaign!;
+  const [a, b, d] = c.groupTeams;
+  const fixtures: Array<[Team, Team]> = [
+    [b, d],
+    [a, d],
+    [a, b],
+  ];
+  const fixture = fixtures[matchday];
+  if (!fixture) return;
+  const [ga, gb] = randomGroupScore(fixture[0], fixture[1]);
+  recordGroupMatch(fixture[0].id, fixture[1].id, ga, gb);
+}
+
+function campaignRank(): number {
+  return groupTableSorted().findIndex((row) => row.id === "you") + 1;
+}
+
+function bestThirdQualifies(row: CupGroupRow): boolean {
+  return row.points >= 4 || (row.points === 3 && groupGoalDiff(row) >= 0);
+}
+
+function campaignQualificationLabel(): string {
+  const sorted = groupTableSorted();
+  const youRow = sorted.find((row) => row.id === "you")!;
+  const rank = sorted.findIndex((row) => row.id === "you") + 1;
+  if (rank <= 2) return `${rank}º colocado do grupo`;
+  if (rank === 3 && bestThirdQualifies(youRow))
+    return "3º colocado entre os 8 melhores terceiros";
+  return `${rank}º colocado do grupo`;
+}
+
+function setupKnockoutPath() {
+  const c = L.campaign!;
+  if (c.knockoutPath.length) return;
+  c.knockoutPath = [3, 4, 5, 6, 7].map((round) =>
+    wcOpponentTeam(round, Math.random),
+  );
+}
+
+function campaignStageLabel(round = L.campaign!.round): string {
+  return WC_LADDER[round]?.label ?? "Copa do Mundo";
+}
+
+function renderGroupTable(): string {
+  const c = L.campaign!;
+  if (!c.groupTable.length) return "";
+  const rank = campaignRank();
+  const status =
+    c.groupQualified === null
+      ? `${rank}º no grupo neste momento`
+      : c.groupQualified
+        ? `Classificado: ${c.groupQualifiedLabel}`
+        : `Eliminado: ${c.groupQualifiedLabel}`;
+  return `
+    <section class="cup-status">
+      <div class="section-head compact">
+        <h3>Grupo A</h3>
+        <span>${escapeHtml(status)}</span>
+      </div>
+      <table class="cup-table">
+        <thead><tr><th>#</th><th>Time</th><th>J</th><th>Pts</th><th>SG</th><th>GP</th></tr></thead>
+        <tbody>
+          ${groupTableSorted()
+            .map(
+              (row, idx) => `
+            <tr class="${row.id === "you" ? "you" : ""}">
+              <td>${idx + 1}</td>
+              <td>${escapeHtml(row.name)}</td>
+              <td>${row.played}</td>
+              <td>${row.points}</td>
+              <td>${groupGoalDiff(row) >= 0 ? "+" : ""}${groupGoalDiff(row)}</td>
+              <td>${row.gf}</td>
+            </tr>
+          `,
+            )
+            .join("")}
+        </tbody>
+      </table>
+    </section>`;
+}
+
+function renderKnockoutBracket(): string {
+  const c = L.campaign!;
+  if (!c.knockoutPath.length) return "";
+  const rounds = ["16-avos", "Oitavas", "Quartas", "Semi", "Final"];
+  const currentIdx =
+    c.phase === "victory" ? rounds.length : Math.max(0, c.round - 3);
+  return `
+    <section class="cup-status">
+      <div class="section-head compact">
+        <h3>Chaveamento</h3>
+        <span>${escapeHtml(c.groupQualifiedLabel ?? "Mata-mata")}</span>
+      </div>
+      <div class="cup-bracket">
+        ${rounds
+          .map((label, idx) => {
+            const opp = c.knockoutPath[idx];
+            const state =
+              idx < currentIdx ? "done" : idx === currentIdx ? "next" : "";
+            return `
+            <div class="bracket-round ${state}">
+              <span>${label}</span>
+              <strong>${idx < currentIdx ? "Seu time" : "Seu time"}</strong>
+              <em>vs ${escapeHtml(opp ? `${opp.name}${opp.season ? ` ${opp.season}` : ""}` : "A definir")}</em>
+            </div>`;
+          })
+          .join("")}
+      </div>
+    </section>`;
+}
+
+function renderCampaignStatus(): string {
+  const c = L.campaign!;
+  if (!c.groupTable.length) return "";
+  return c.round < 3 || c.groupQualified === false
+    ? renderGroupTable()
+    : renderKnockoutBracket();
+}
+
+function renderCampaignDraft() {
+  const c = L.campaign!;
+  const team = c.currentTeam!;
+  const f = getFormation(c.formationId)!;
+  const selectable = campaignSelectable();
+  const player = c.selectedPlayer
+    ? team.players.find((p) => p.name === c.selectedPlayer)
+    : null;
+  app.innerHTML = `
+    <div class="screen cup-screen draft">
+      <div class="topbar">
+        <div class="room-code">Copa do Mundo — Draft</div>
+        <div class="round-info">Jogador <strong>${c.picks.length + 1}</strong> / 11</div>
+        <button id="cup-exit" class="ghost" style="margin-left:auto">Sair</button>
+      </div>
+      <div class="draft-layout">
+        <section class="board you-board">
+          <h3>Seu time <span class="ovr">${campaignAvg()}</span></h3>
+          ${renderPitch(f, c.picks, !!c.selectedPlayer, true)}
+        </section>
+        <section class="draw-panel">
+          <div class="draw-head">
+            <span class="draw-label">Seleção sorteada</span>
+            <h2>${escapeHtml(team.name)} ${team.season}</h2>
+            <span class="draw-league">${escapeHtml(team.league)}</span>
+            <button id="cup-reroll-team" class="ghost reroll" ${c.rerollsRemaining <= 0 ? "disabled" : ""}>
+              Atualizar seleção (${c.rerollsRemaining})
+            </button>
+          </div>
+          <ul class="player-list">
+            ${team.players
+              .map((pl) => {
+                const can = selectable.has(pl.name);
+                const sel = c.selectedPlayer === pl.name;
+                return `<li class="pl-item ${can ? "clickable" : "taken"} ${sel ? "selected" : ""}" data-player="${escapeHtml(pl.name)}">
+                <span class="pl-pos pos-${groupOf(pl.pos).toLowerCase()}">${posLabel(pl.pos)}</span>
+                <span class="pl-name">${escapeHtml(pl.name)}</span>
+                <span class="pl-rt">${pl.rating}</span></li>`;
+              })
+              .join("")}
+          </ul>
+          <p class="draft-hint">${
+            c.selectedPlayer
+              ? `Clique numa <strong>vaga compatível</strong> (mesmo setor) para escalar <strong>${escapeHtml(c.selectedPlayer)}</strong>.`
+              : "Sem penalidade: só escala na posição certa. Quem não encaixa em nenhuma vaga aberta fica apagado."
+          }</p>
+        </section>
+        <section class="board cup-side">
+          <h3>A jornada</h3>
+          ${campaignProgress(0)}
+          <p class="cup-note">Monte os 11 e entre na fase de grupos. Depois dela, o chaveamento começa nos 16-avos.</p>
+        </section>
+      </div>
+    </div>`;
+  document.getElementById("cup-exit")!.onclick = campaignExit;
+  document.getElementById("cup-reroll-team")!.onclick = () =>
+    campaignRerollTeam();
+  app.querySelectorAll<HTMLLIElement>(".pl-item.clickable").forEach(
+    (li) =>
+      (li.onclick = () => {
+        c.selectedPlayer = li.dataset.player!;
+        render();
+      }),
+  );
+  if (player) {
+    app
+      .querySelectorAll<HTMLElement>(".you-board .slot.empty")
+      .forEach((slotEl) => {
+        const slot = f.slots.find((s) => s.id === slotEl.dataset.slot)!;
+        if (groupOf(slot.pos) === groupOf(player.pos)) {
+          slotEl.classList.add("open");
+          slotEl.onclick = () => campaignPlace(slot.id, player);
+        } else {
+          slotEl.classList.remove("open");
+        }
+      });
+  }
+}
+
+function campaignBeginRound() {
+  const c = L.campaign!;
+  if (c.round < 3) {
+    setupCampaignGroup();
+    c.currentOpp = c.groupTeams[c.round];
+  } else {
+    setupKnockoutPath();
+    c.currentOpp = c.knockoutPath[c.round - 3];
+  }
+  c.phase = "preMatch";
+}
+
+function renderCampaignPreMatch() {
+  const c = L.campaign!;
+  const ladder = WC_LADDER[c.round];
+  const opp = c.currentOpp!;
+  const isGroup = c.round < 3;
+  const isFinal = c.round === 7;
+  app.innerHTML = `
+    <div class="screen cup-screen">
+      <div class="cup-head">
+        <div><span class="cup-tag">Copa do Mundo</span><h1>${escapeHtml(ladder.label)}</h1></div>
+        <button id="cup-exit" class="ghost">Sair</button>
+      </div>
+      ${campaignProgress(c.round)}
+      ${renderCampaignStatus()}
+      <div class="panel cup-prematch">
+        <div class="cup-vs">
+          <div class="cup-vs-side">
+            <div class="hero-crest you">${initials("Seu Time")}</div>
+            <div class="hero-name">Seu time</div>
+            <div class="hero-tag">${c.formationId} · OVR ${campaignAvgNumber()} · ${escapeHtml(mentalityLabel(c.mentality))}</div>
+          </div>
+          <span class="cup-vs-x">VS</span>
+          <div class="cup-vs-side">
+            <div class="hero-crest opp">${initials(opp.name)}</div>
+            <div class="hero-name">${escapeHtml(opp.name)}</div>
+            <div class="hero-tag">Over ${ladder.overRange[0]}-${ladder.overRange[1]}${isFinal ? "+" : ""}</div>
+          </div>
+        </div>
+        <p class="cup-note">${
+          isGroup
+            ? "Fase de grupos: pontos, saldo e gols marcados definem sua colocação. Os 2 primeiros passam; alguns terceiros também."
+            : isFinal
+              ? "A GRANDE FINAL — vença para levantar a taça."
+              : "Mata-mata em jogo único: empate ou derrota elimina."
+        }</p>
+        <div class="lobby-actions"><button id="cup-play" class="primary big">Entrar em campo</button></div>
+      </div>
+    </div>`;
+  document.getElementById("cup-exit")!.onclick = campaignExit;
+  document.getElementById("cup-play")!.onclick = () => {
+    c.phase = "match";
+    render();
+  };
+}
+
+function campaignAdvance() {
+  const c = L.campaign!;
+  L.playing = false;
+  const r = c.lastResult!;
+  if (c.round < 3) {
+    recordGroupMatch("you", c.currentOpp!.id, r.youGoals, r.oppGoals);
+    simulateOtherGroupFixture(c.round);
+    if (c.round < 2) {
+      c.round++;
+      campaignBeginRound();
+    } else {
+      const sorted = groupTableSorted();
+      const rank = sorted.findIndex((row) => row.id === "you") + 1;
+      const youRow = sorted.find((row) => row.id === "you")!;
+      c.groupQualified =
+        rank <= 2 || (rank === 3 && bestThirdQualifies(youRow));
+      c.groupQualifiedLabel = campaignQualificationLabel();
+      if (c.groupQualified) {
+        c.round = 3;
+        setupKnockoutPath();
+        campaignBeginRound();
+      } else {
+        c.phase = "gameover";
+      }
+    }
+  } else if (r.outcome === "win") {
+    if (c.round === 7) c.phase = "victory";
+    else {
+      c.round++;
+      campaignBeginRound();
+    }
+  } else {
+    c.phase = "gameover";
+  }
+  render();
+}
+
+function renderCampaignMatch() {
+  const c = L.campaign!;
+  const oppTeam = c.currentOpp!;
+  const youSim = {
+    id: "you",
+    name: "Seu time",
+    picks: c.picks,
+    formationId: c.formationId,
+    mentality: c.mentality,
+  };
+  const oppSim = simInputFromTeam(oppTeam, "4-3-3", "equilibrada");
+  const r = simulateGauntletMatch(youSim, oppSim);
+  c.lastResult = r;
+  L.playing = true;
+
+  app.innerHTML = `
+    <div class="screen live cup-match">
+      <div class="live-stage">
+        <div class="scoreboard">
+          <div class="sb-team"><span class="sb-badge you">VC</span><span class="sb-name">Seu time</span></div>
+          <div class="sb-center"><div class="sb-score"><span id="sc-l">0</span><span class="sb-sep">:</span><span id="sc-r">0</span></div><div class="sb-clock"><span id="clk">0</span>'</div></div>
+          <div class="sb-team right"><span class="sb-name">${escapeHtml(oppTeam.name)}</span><span class="sb-badge opp">ADV</span></div>
+        </div>
+        <div class="live-sub"><span class="sb-leg" id="half-label">1º Tempo</span><span class="agg-mini">${escapeHtml(WC_LADDER[c.round].label)}</span></div>
+        <div class="ballfield">${ballFieldSvg()}<div class="bf-ball" id="bf-ball">${soccerBallSvg()}</div></div>
+        <div class="speed-row">
+          <span class="spd-label">Velocidade</span>
+          ${[1, 1.5, 2].map((v) => `<button class="spd ${v === L.matchSpeed ? "active" : ""}" data-spd="${v}">${v}x</button>`).join("")}
+          <button id="skip" class="ghost skip">Pular</button>
+        </div>
+        <div class="goal-overlay" id="goal-ov"><div class="goal-word">GOL!</div><div class="goal-scorer" id="goal-scorer"></div></div>
+        <ul class="event-feed" id="feed"></ul>
+      </div>
+    </div>`;
+
+  const $ = (id: string) => document.getElementById(id)!;
+  const scL = $("sc-l"),
+    scR = $("sc-r"),
+    clk = $("clk"),
+    halfLabel = $("half-label"),
+    feed = $("feed");
+  const goalOv = $("goal-ov"),
+    goalScorer = $("goal-scorer"),
+    ball = $("bf-ball") as HTMLDivElement;
+  const goals = { you: 0, opp: 0 };
+  let minute = 0,
+    evIdx = 0,
+    timer: number | undefined,
+    hideTimer: number | undefined;
+
+  const pidOf = (side: MatchEvent["side"]) =>
+    side === "home" ? "you" : side === "away" ? "opp" : null;
+  function updateScore() {
+    scL.textContent = String(goals.you);
+    scR.textContent = String(goals.opp);
+  }
+  function moveBall(ev: MatchEvent, dur: number) {
+    if (ev.bx === undefined) return;
+    ball.style.transitionDuration = `${Math.max(180, Math.min(1300, dur * 0.85))}ms`;
+    ball.style.left = `${((ev.bx - 0.5) / 105) * 100}%`;
+    ball.style.top = `${((ev.by! - 0.5) / 68) * 100}%`;
+    ball.classList.toggle("goal", ev.type === "goal");
+  }
+  function addFeed(ev: MatchEvent) {
+    const li = document.createElement("li");
+    const cardCls =
+      ev.type === "card" ? (ev.card === "red" ? " red" : " yellow") : "";
+    li.className = `ev ${ev.type}${cardCls}`;
+    const pos =
+      ev.bx !== undefined
+        ? `<span class="ev-pos">${ev.bx}-${ev.by}</span>`
+        : "";
+    li.innerHTML = `<span class="ev-min">${Math.min(ev.minute, 90)}'</span><span class="ev-tx">${escapeHtml(ev.text)}</span>${pos}`;
+    feed.prepend(li);
+  }
+  function goalAnim(scorer?: string) {
+    goalScorer.textContent = scorer ?? "";
+    goalOv.classList.add("show");
+    clearTimeout(hideTimer);
+    hideTimer = window.setTimeout(() => goalOv.classList.remove("show"), 950);
+  }
+  function delayFor(ev: MatchEvent): number {
+    switch (ev.type) {
+      case "goal":
+        return 1950;
+      case "chance":
+      case "save":
+      case "corner":
+      case "var":
+        return 1100;
+      case "card":
+        return 880;
+      case "possession":
+        return 340;
+      case "halftime":
+      case "fulltime":
+        return 650;
+      case "info":
+        return 780;
+      default:
+        return 760;
+    }
+  }
+  function schedule(d: number, fn: () => void = tick) {
+    clearTimeout(timer);
+    timer = window.setTimeout(fn, d);
+  }
+  function tick() {
+    if (!L.playing) return;
+    if (evIdx < r.timeline.length && r.timeline[evIdx].minute <= minute) {
+      const ev = r.timeline[evIdx++];
+      const d = delayFor(ev);
+      moveBall(ev, d);
+      addFeed(ev);
+      if (ev.type === "goal") {
+        const p = pidOf(ev.side);
+        if (p) goals[p as "you" | "opp"]++;
+        updateScore();
+        goalAnim(ev.player);
+      }
+      schedule(d / L.matchSpeed);
+      return;
+    }
+    if (minute >= 90) {
+      schedule(1100, finish);
+      return;
+    }
+    minute++;
+    clk.textContent = String(Math.min(minute, 90));
+    halfLabel.textContent = minute <= 45 ? "1º Tempo" : "2º Tempo";
+    schedule(130 / L.matchSpeed);
+  }
+  function finish() {
+    clearTimeout(timer);
+    clearTimeout(hideTimer);
+    campaignAdvance();
+  }
+
+  app.querySelectorAll<HTMLButtonElement>(".spd").forEach(
+    (b) =>
+      (b.onclick = () => {
+        setMatchSpeed(Number(b.dataset.spd));
+        app
+          .querySelectorAll(".spd")
+          .forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+      }),
+  );
+  $("skip").onclick = () => finish();
+  schedule(700);
+}
+
+function renderCampaignGameOver() {
+  const c = L.campaign!;
+  const r = c.lastResult!;
+  const fellInGroup = c.groupQualified === false;
+  const completed = fellInGroup ? 3 : c.round;
+  const title = fellInGroup
+    ? "Eliminado na fase de grupos"
+    : `Eliminado em ${campaignStageLabel(c.round)}`;
+  const detail = fellInGroup
+    ? `Você terminou como ${c.groupQualifiedLabel}.`
+    : `Resultado contra ${r.oppName}: ${r.youGoals} x ${r.oppGoals} (${r.outcome === "draw" ? "empate" : "derrota"}).`;
+  app.innerHTML = `
+    <div class="screen cup-screen cup-end">
+      <div class="cup-end-card lose">
+        <span class="cup-tag">Game Over</span>
+        <h1>${escapeHtml(title)}</h1>
+        <p class="cup-end-msg">${escapeHtml(detail)}</p>
+        <div class="cup-end-score">${r.youGoals} <span class="x">x</span> ${r.oppGoals}<div class="cup-end-opp">contra ${escapeHtml(r.oppName)}</div></div>
+        ${fellInGroup ? renderGroupTable() : renderKnockoutBracket()}
+        ${campaignProgress(completed)}
+        <div class="lobby-actions">
+          <button id="cup-retry" class="primary big">Tentar de novo</button>
+          <button id="cup-exit" class="ghost">Sair</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById("cup-retry")!.onclick = () => startCampaign();
+  document.getElementById("cup-exit")!.onclick = campaignExit;
+}
+
+function renderCampaignVictory() {
+  const c = L.campaign!;
+  app.innerHTML = `
+    <div class="screen cup-screen cup-end">
+      <div class="cup-end-card win">
+        <img class="cup-victory-trophy" src="/world_cup_trophy.png" alt="Troféu da Copa do Mundo" />
+        <span class="cup-tag">Campeão do Mundo</span>
+        <h1>CAMPEÃO DO MUNDO!</h1>
+        <p class="cup-end-msg">Você passou pelo grupo como ${escapeHtml(c.groupQualifiedLabel ?? "classificado")} e venceu todo o mata-mata.</p>
+        ${renderKnockoutBracket()}
+        ${campaignProgress(8)}
+        <div class="lobby-actions">
+          <button id="cup-retry" class="primary big">Jogar de novo</button>
+          <button id="cup-exit" class="ghost">Voltar ao início</button>
+        </div>
+      </div>
+    </div>`;
+  document.getElementById("cup-retry")!.onclick = () => startCampaign();
+  document.getElementById("cup-exit")!.onclick = campaignExit;
 }
 
 // ---------------- Lobby / Setup ----------------
@@ -583,7 +1459,9 @@ function applyIntervalSubstitution(
 
 function swapLineupSlots(player: PlayerPublic, slotA: string, slotB: string) {
   if (slotA === slotB) return null;
-  const formation = player.formationId ? getFormation(player.formationId) : null;
+  const formation = player.formationId
+    ? getFormation(player.formationId)
+    : null;
   const pickA = player.picks.find((pick) => pick.slotId === slotA);
   const pickB = player.picks.find((pick) => pick.slotId === slotB);
   const formationSlotA = formation?.slots.find((slot) => slot.id === slotA);
@@ -637,8 +1515,10 @@ const TICK_BASE_MS = 130; // ms per match "minute" at 1x
 // Mini pitch (viewBox in meters: 105 x 68) with a light grid and standard markings.
 function ballFieldSvg(): string {
   const grid: string[] = [];
-  for (let x = 5; x < 105; x += 5) grid.push(`<line x1="${x}" y1="0" x2="${x}" y2="68" class="bf-grid"/>`);
-  for (let y = 5; y < 68; y += 5) grid.push(`<line x1="0" y1="${y}" x2="105" y2="${y}" class="bf-grid"/>`);
+  for (let x = 5; x < 105; x += 5)
+    grid.push(`<line x1="${x}" y1="0" x2="${x}" y2="68" class="bf-grid"/>`);
+  for (let y = 5; y < 68; y += 5)
+    grid.push(`<line x1="0" y1="${y}" x2="105" y2="${y}" class="bf-grid"/>`);
   return `
     <svg class="bf-svg" viewBox="0 0 105 68" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
       <rect x="0" y="0" width="105" height="68" class="bf-pitch"/>
@@ -697,7 +1577,7 @@ function renderLiveMatch() {
   const you = me()!;
   const opp = opponent()!;
   const vsAI = s.players.some((p) => p.isAI);
-  if (!vsAI) L.matchSpeed = 1;
+  const speedFactor = () => (vsAI ? L.matchSpeed : 1);
   L.intervalBench ??= buildIntervalBench(you);
   L.playing = true;
 
@@ -729,7 +1609,7 @@ function renderLiveMatch() {
           ${(vsAI ? [1, 1.5, 2] : [1])
             .map(
               (v) =>
-                `<button class="spd ${v === L.matchSpeed ? "active" : ""}" data-spd="${v}">${v}x</button>`,
+                `<button class="spd ${v === speedFactor() ? "active" : ""}" data-spd="${v}">${v}x</button>`,
             )
             .join("")}
           ${vsAI ? "" : `<span class="speed-note">Velocidade extra só contra a máquina</span>`}
@@ -756,7 +1636,7 @@ function renderLiveMatch() {
           <div class="halftime-squad">
             <div>
               <div id="half-pitch" class="half-pitch">
-                ${renderPitch(getFormation(you.formationId ?? L.formationId)!, you.picks, false, false, true)}
+                ${renderPitch(getFormation(you.formationId ?? L.formationId)!, you.picks, false, false, true, true)}
               </div>
               <p id="sub-status" class="sub-status">Clique em um jogador no campo e depois escolha um reserva.</p>
             </div>
@@ -791,8 +1671,12 @@ function renderLiveMatch() {
     "half-continue",
   ) as HTMLButtonElement;
   const halfPitch = document.getElementById("half-pitch") as HTMLDivElement;
-  const reserveList = document.getElementById("reserve-list") as HTMLUListElement;
-  const subStatus = document.getElementById("sub-status") as HTMLParagraphElement;
+  const reserveList = document.getElementById(
+    "reserve-list",
+  ) as HTMLUListElement;
+  const subStatus = document.getElementById(
+    "sub-status",
+  ) as HTMLParagraphElement;
   const subCount = document.getElementById("sub-count") as HTMLSpanElement;
   const cardOv = document.getElementById("card-ov")!;
   const cardFlash = document.getElementById("card-flash")!;
@@ -805,7 +1689,10 @@ function renderLiveMatch() {
   const displayCoord = (ev: MatchEvent) => {
     let bx = ev.bx ?? 53;
     let by = ev.by ?? 34;
-    if (youAreAway) { bx = 106 - bx; by = 69 - by; }
+    if (youAreAway) {
+      bx = 106 - bx;
+      by = 69 - by;
+    }
     return { bx, by };
   };
   function moveBall(ev: MatchEvent, durationMs: number) {
@@ -859,30 +1746,44 @@ function renderLiveMatch() {
           </li>`;
       })
       .join("");
-    reserveList.querySelectorAll<HTMLButtonElement>(".reserve-option").forEach((btn) => {
-      btn.onclick = () => {
-        if (you.halftimeReady) return;
-        if (L.intervalSubCount >= 5) return;
-        L.selectedSubIn = btn.dataset.reserve ?? null;
-        if (!L.selectedSubOut || !L.selectedSubIn) {
-          subStatus.textContent = "Agora clique em um jogador no campo para definir quem sai.";
-          renderReserveList();
-          return;
-        }
-        const result = applyIntervalSubstitution(you, L.selectedSubOut, L.selectedSubIn);
-        if (!result) return;
-        L.intervalSubCount++;
-        L.selectedSubOut = null;
-        L.selectedSubIn = null;
-        refreshHalftimeSquad(
-          `Sai ${result.out}, entra ${result.in} (${result.delta >= 0 ? "+" : ""}${result.delta} no encaixe).`,
-        );
-      };
-    });
+    reserveList
+      .querySelectorAll<HTMLButtonElement>(".reserve-option")
+      .forEach((btn) => {
+        btn.onclick = () => {
+          if (you.halftimeReady) return;
+          if (L.intervalSubCount >= 5) return;
+          L.selectedSubIn = btn.dataset.reserve ?? null;
+          if (!L.selectedSubOut || !L.selectedSubIn) {
+            subStatus.textContent =
+              "Agora clique em um jogador no campo para definir quem sai.";
+            renderReserveList();
+            return;
+          }
+          const result = applyIntervalSubstitution(
+            you,
+            L.selectedSubOut,
+            L.selectedSubIn,
+          );
+          if (!result) return;
+          L.intervalSubCount++;
+          L.selectedSubOut = null;
+          L.selectedSubIn = null;
+          refreshHalftimeSquad(
+            `Sai ${result.out}, entra ${result.in} (${result.delta >= 0 ? "+" : ""}${result.delta} no encaixe).`,
+          );
+        };
+      });
   }
 
   function refreshHalftimeSquad(status?: string) {
-    halfPitch.innerHTML = renderPitch(getFormation(you.formationId ?? L.formationId)!, you.picks, false, false, true);
+    halfPitch.innerHTML = renderPitch(
+      getFormation(you.formationId ?? L.formationId)!,
+      you.picks,
+      false,
+      false,
+      true,
+      true,
+    );
     halfPitch.querySelectorAll<HTMLElement>(".slot.filled").forEach((slot) => {
       slot.onclick = () => {
         if (you.halftimeReady) return;
@@ -900,7 +1801,11 @@ function renderLiveMatch() {
         if (L.intervalSubCount >= 5) return;
         L.selectedSubOut = clickedSlot;
         if (L.selectedSubOut && L.selectedSubIn) {
-          const result = applyIntervalSubstitution(you, L.selectedSubOut, L.selectedSubIn);
+          const result = applyIntervalSubstitution(
+            you,
+            L.selectedSubOut,
+            L.selectedSubIn,
+          );
           if (!result) return;
           L.intervalSubCount++;
           L.selectedSubOut = null;
@@ -910,17 +1815,32 @@ function renderLiveMatch() {
           );
           return;
         }
-        halfPitch.querySelectorAll(".slot").forEach((el) => el.classList.remove("selected-sub"));
+        halfPitch
+          .querySelectorAll(".slot")
+          .forEach((el) => el.classList.remove("selected-sub"));
         slot.classList.add("selected-sub");
         const pick = you.picks.find((p) => p.slotId === L.selectedSubOut);
-        subStatus.textContent = pick
-          ? `${pick.player.name} selecionado. Escolha um reserva para entrar.`
-          : "Escolha um reserva.";
+        if (pick) {
+          const f = getFormation(you.formationId ?? L.formationId);
+          const slotPos = f?.slots.find((s) => s.id === L.selectedSubOut)?.pos;
+          const posInfo =
+            slotPos && slotPos !== pick.player.pos
+              ? `${posLabel(slotPos)}, natural ${posLabel(pick.player.pos)}`
+              : slotPos
+                ? posLabel(slotPos)
+                : posLabel(pick.player.pos);
+          subStatus.textContent = `${pick.player.name} (${posInfo}) selecionado. Clique em outro jogador para trocar de posição, ou escolha um reserva.`;
+        } else {
+          subStatus.textContent = "Escolha um reserva.";
+        }
       };
     });
     subCount.textContent = `Substituições ${L.intervalSubCount}/5`;
     subStatus.textContent =
-      status ?? (L.intervalSubCount >= 5 ? "Limite de 5 substituições usado." : "Clique em um jogador no campo e depois escolha um reserva.");
+      status ??
+      (L.intervalSubCount >= 5
+        ? "Limite de 5 substituições usado."
+        : "Clique em um jogador no campo e depois escolha um reserva.");
     renderReserveList();
   }
 
@@ -1008,7 +1928,7 @@ function renderLiveMatch() {
       const ev = r.timeline[evIdx++];
       const delay = processEvent(ev);
       if (delay === null) return;
-      schedule(delay / L.matchSpeed);
+      schedule(delay / speedFactor());
       return;
     }
 
@@ -1024,7 +1944,7 @@ function renderLiveMatch() {
     minute++;
     clk.textContent = String(Math.min(minute, 90));
     halfLabel.textContent = minute <= 45 ? "1º Tempo" : "2º Tempo";
-    schedule(TICK_BASE_MS / L.matchSpeed);
+    schedule(TICK_BASE_MS / speedFactor());
   }
 
   // penalty shootout revealed kick by kick
@@ -1050,7 +1970,7 @@ function renderLiveMatch() {
         text: `Pênalti de ${k.taker} (${who}): ${k.scored ? "no gol!" : "defendido!"}`,
       });
       penLabel.textContent = `Pênaltis ${pen[you.id]} - ${pen[opp.id]}`;
-      schedule(750 / L.matchSpeed, next);
+      schedule(750 / speedFactor(), next);
     };
     next();
   }
@@ -1194,12 +2114,24 @@ function renderLiveMatch() {
 
   app.querySelectorAll<HTMLButtonElement>(".spd").forEach((btn) => {
     btn.onclick = () => {
-      L.matchSpeed = Number(btn.dataset.spd);
+      setMatchSpeed(Number(btn.dataset.spd));
       app.querySelectorAll(".spd").forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
     };
   });
   document.getElementById("skip")!.onclick = () => finish();
+
+  // clicking anywhere that isn't a player on the pitch or a reserve clears the selection
+  document.querySelector(".live-stage")?.addEventListener("click", (e) => {
+    if (!L.selectedSubOut && !L.selectedSubIn) return;
+    const t = e.target as HTMLElement;
+    if (t.closest(".slot.filled") || t.closest(".reserve-option")) return;
+    L.selectedSubOut = null;
+    L.selectedSubIn = null;
+    refreshHalftimeSquad(
+      "Seleção cancelada. Clique em um jogador para trocar de posição ou escolher um reserva.",
+    );
+  });
 
   schedule(700);
 }

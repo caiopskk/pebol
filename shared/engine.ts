@@ -7,6 +7,8 @@ import type {
   MatchEvent,
   ShootoutKick,
   MatchResult,
+  GauntletResult,
+  Team,
   PlayerPublic,
 } from "./types.js";
 import { groupOf, getFormation } from "./formations.js";
@@ -81,13 +83,12 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-function applyMentality(s: TeamStrength, mentality: Mentality): TeamStrength {
+function applyMentality(s: TeamStrength, mentality: Mentality, weight = 1): TeamStrength {
   const m = getMentality(mentality);
-  return {
-    ...s,
-    attack: s.attack * m.attackMod,
-    defense: s.defense * m.defenseMod,
-  };
+  // weight > 1 amplifies the deviation from neutral (1.0). Used in World Cup mode.
+  const atk = 1 + (m.attackMod - 1) * weight;
+  const def = 1 + (m.defenseMod - 1) * weight;
+  return { ...s, attack: s.attack * atk, defense: s.defense * def };
 }
 
 // ---- Simulation ----
@@ -269,14 +270,20 @@ function ballSpot(type: MatchEvent["type"], side: Side | null, rng: () => number
  * Build one half of the match (minutes within its range, plus the closing marker).
  * Fills every otherwise-empty minute with a possession line for a minute-by-minute feel.
  */
+interface HalfExpelled {
+  home: string[];
+  away: string[];
+}
+
 function buildHalfTimeline(
   home: SimSide,
   away: SimSide,
   homeGoals: number,
   awayGoals: number,
   rng: () => number,
-  half: 1 | 2
-): MatchEvent[] {
+  half: 1 | 2,
+  preExpelled: HalfExpelled = { home: [], away: [] }
+): { events: MatchEvent[]; expelled: HalfExpelled } {
   const evs: MatchEvent[] = [];
   const sideOf = (k: Side) => (k === "home" ? home : away);
   const start = half === 1 ? 1 : 46;
@@ -289,39 +296,66 @@ function buildHalfTimeline(
     evs.push({ minute, type, side: key, text, bx: spot.bx, by: spot.by, ...extra });
   };
 
+  // players sent off, with the minute they left (pre-expelled left before this half)
+  const gone: { key: Side; name: string; from: number }[] = [
+    ...preExpelled.home.map((name) => ({ key: "home" as Side, name, from: start - 1 })),
+    ...preExpelled.away.map((name) => ({ key: "away" as Side, name, from: start - 1 })),
+  ];
+  // side with already-expelled players removed for events at the given minute
+  const availSide = (key: Side, minute: number): SimSide => {
+    const side = sideOf(key);
+    const banned = new Set(gone.filter((g) => g.key === key && g.from <= minute).map((g) => g.name));
+    if (!banned.size) return side;
+    const picks = side.picks.filter((p) => !banned.has(p.player.name));
+    return picks.length ? { ...side, picks } : side;
+  };
+
   if (half === 1) add(0, "kickoff", null, `Bola rolando! ${teamLabel(home)} x ${teamLabel(away)}.`);
 
+  // decide the red card first so later events can leave the sent-off player out
+  if (rng() < 0.1) {
+    const key: Side = rng() > 0.5 ? "home" : "away";
+    const minute = randMin();
+    const player = weightedPlayer(availSide(key, minute), rng, W_DEFENSE);
+    add(minute, "card", key, pick(TXT.red, rng).replace(/\{team\}/g, teamLabel(sideOf(key))).replace(/\{p\}/g, player), {
+      player,
+      card: "red",
+    });
+    gone.push({ key, name: player, from: minute });
+  }
+
   // goals, each preceded by a build-up and a final pass
-  const addGoals = (side: SimSide, n: number, key: Side) => {
+  const addGoals = (key: Side, n: number) => {
     for (let i = 0; i < n; i++) {
       const minute = Math.min(end, start + 2 + Math.floor(rng() * Math.max(1, span - 2)));
-      const scorer = pickScorer(side, rng);
+      const aSide = availSide(key, minute);
+      const scorer = pickScorer(aSide, rng);
       let assist: string | undefined;
       if (rng() < 0.7) {
         for (let t = 0; t < 4; t++) {
-          const a = weightedPlayer(side, rng, W_PLAYMAKER);
+          const a = weightedPlayer(aSide, rng, W_PLAYMAKER);
           if (a !== scorer) { assist = a; break; }
         }
       }
       const varTag = rng() < 0.18 ? " (confirmado pelo VAR)" : "";
       const assistTxt = assist ? ` Assistência de ${assist}.` : "";
-      add(Math.max(start, minute - 2), "info", key, fill(pick(TXT.buildup, rng), side, rng, W_PLAYMAKER));
-      add(Math.max(start, minute - 1), "chance", key, fill(pick(TXT.assistMove, rng), side, rng, W_PLAYMAKER));
-      add(minute, "goal", key, `GOL do ${teamLabel(side)}! ${scorer} balança a rede!${varTag}${assistTxt}`, {
+      add(Math.max(start, minute - 2), "info", key, fill(pick(TXT.buildup, rng), availSide(key, minute - 2), rng, W_PLAYMAKER));
+      add(Math.max(start, minute - 1), "chance", key, fill(pick(TXT.assistMove, rng), availSide(key, minute - 1), rng, W_PLAYMAKER));
+      add(minute, "goal", key, `GOL do ${teamLabel(sideOf(key))}! ${scorer} balança a rede!${varTag}${assistTxt}`, {
         player: scorer,
         assist,
       });
     }
   };
-  addGoals(home, homeGoals, "home");
-  addGoals(away, awayGoals, "away");
+  addGoals("home", homeGoals);
+  addGoals("away", awayGoals);
 
   // assorted incidents within this half
-  const sprinkle = (n: number, type: MatchEvent["type"], bank: string[], w = W_FIELD, extra?: (s: SimSide) => Partial<MatchEvent>) => {
+  const sprinkle = (n: number, type: MatchEvent["type"], bank: string[], w = W_FIELD) => {
     for (let i = 0; i < n; i++) {
       const key: Side = rng() > 0.5 ? "home" : "away";
-      const side = sideOf(key);
-      add(randMin(), type, key, fill(pick(bank, rng), side, rng, w), extra ? extra(side) : {});
+      const minute = randMin();
+      add(minute, type, key, fill(pick(bank, rng), availSide(key, minute), rng, w));
     }
   };
 
@@ -335,21 +369,11 @@ function buildHalfTimeline(
   const nY = 1 + Math.floor(rng() * 2);
   for (let i = 0; i < nY; i++) {
     const key: Side = rng() > 0.5 ? "home" : "away";
-    const side = sideOf(key);
-    const player = weightedPlayer(side, rng, W_DEFENSE);
-    add(randMin(), "card", key, pick(TXT.yellow, rng).replace(/\{team\}/g, teamLabel(side)).replace(/\{p\}/g, player), {
+    const minute = randMin();
+    const player = weightedPlayer(availSide(key, minute), rng, W_DEFENSE);
+    add(minute, "card", key, pick(TXT.yellow, rng).replace(/\{team\}/g, teamLabel(sideOf(key))).replace(/\{p\}/g, player), {
       player,
       card: "yellow",
-    });
-  }
-  // red card (rare)
-  if (rng() < 0.1) {
-    const key: Side = rng() > 0.5 ? "home" : "away";
-    const side = sideOf(key);
-    const player = weightedPlayer(side, rng, W_DEFENSE);
-    add(randMin(), "card", key, pick(TXT.red, rng).replace(/\{team\}/g, teamLabel(side)).replace(/\{p\}/g, player), {
-      player,
-      card: "red",
     });
   }
 
@@ -361,8 +385,7 @@ function buildHalfTimeline(
   for (let m = start; m <= end; m++) {
     if (busy.has(m)) continue;
     const key: Side = rng() > 0.5 ? "home" : "away";
-    const side = sideOf(key);
-    add(m, "possession", key, fill(pick(TXT.possession, rng), side, rng, W_FIELD));
+    add(m, "possession", key, fill(pick(TXT.possession, rng), availSide(key, m), rng, W_FIELD));
   }
 
   if (half === 1) add(45, "halftime", null, "Fim do primeiro tempo.");
@@ -376,7 +399,14 @@ function buildHalfTimeline(
       : e.type === "possession" ? 3
       : 1;
   evs.sort((a, b) => a.minute - b.minute || rank(a) - rank(b));
-  return evs;
+
+  return {
+    events: evs,
+    expelled: {
+      home: gone.filter((g) => g.key === "home").map((g) => g.name),
+      away: gone.filter((g) => g.key === "away").map((g) => g.name),
+    },
+  };
 }
 
 /** Simple Poisson draw for goal count from an expectation (xG). */
@@ -454,10 +484,10 @@ function runShootout(home: SimSide, away: SimSide, rng: () => number) {
   return { kicks, h, a };
 }
 
-function makeSide(inp: SimInput): { side: SimSide; raw: TeamStrength } {
+function makeSide(inp: SimInput, weight = 1): { side: SimSide; raw: TeamStrength } {
   const raw = computeStrength(inp.picks, inp.formationId);
   return {
-    side: { id: inp.id, name: inp.name, strength: applyMentality(raw, inp.mentality), picks: inp.picks },
+    side: { id: inp.id, name: inp.name, strength: applyMentality(raw, inp.mentality, weight), picks: inp.picks },
     raw,
   };
 }
@@ -466,6 +496,7 @@ export interface HalfSimResult {
   timeline: MatchEvent[];
   goals: Record<string, number>;
   strengths: Record<string, TeamStrength>;
+  expelled: Record<string, string[]>; // players sent off, by playerId
 }
 
 /** Simulate the first half (kickoff..halftime) with the starting lineups. */
@@ -475,10 +506,12 @@ export function simulateFirstHalf(p1: SimInput, p2: SimInput): HalfSimResult {
   const rng = makeRng(Math.floor(Math.random() * 2 ** 31));
   const g1 = poisson(expectedGoals(a.side, b.side) * 0.5, rng);
   const g2 = poisson(expectedGoals(b.side, a.side) * 0.5, rng);
+  const built = buildHalfTimeline(a.side, b.side, g1, g2, rng, 1);
   return {
-    timeline: buildHalfTimeline(a.side, b.side, g1, g2, rng, 1),
+    timeline: built.events,
     goals: { [p1.id]: g1, [p2.id]: g2 },
     strengths: { [p1.id]: a.raw, [p2.id]: b.raw },
+    expelled: { [p1.id]: built.expelled.home, [p2.id]: built.expelled.away },
   };
 }
 
@@ -496,14 +529,19 @@ export interface SecondHalfResult {
 export function simulateSecondHalf(
   p1: SimInput,
   p2: SimInput,
-  firstGoals: Record<string, number>
+  firstGoals: Record<string, number>,
+  preExpelled: Record<string, string[]> = {}
 ): SecondHalfResult {
   const a = makeSide(p1);
   const b = makeSide(p2);
   const rng = makeRng(Math.floor(Math.random() * 2 ** 31));
   const g1b = poisson(expectedGoals(a.side, b.side) * 0.5, rng);
   const g2b = poisson(expectedGoals(b.side, a.side) * 0.5, rng);
-  const timeline = buildHalfTimeline(a.side, b.side, g1b, g2b, rng, 2);
+  const built = buildHalfTimeline(a.side, b.side, g1b, g2b, rng, 2, {
+    home: preExpelled[p1.id] ?? [],
+    away: preExpelled[p2.id] ?? [],
+  });
+  const timeline = built.events;
 
   const t1 = (firstGoals[p1.id] ?? 0) + g1b;
   const t2 = (firstGoals[p2.id] ?? 0) + g2b;
@@ -530,6 +568,49 @@ export function simulateSecondHalf(
   }
 
   return { timeline, goals, shootout, penaltyScore, strengths: { [p1.id]: a.raw, [p2.id]: b.raw }, winnerId, summary };
+}
+
+// ---- World Cup campaign ----
+
+/** Turn a full team (players in formation-slot order) into a SimInput. */
+export function simInputFromTeam(team: Team, formationId: string, mentality: Mentality): SimInput {
+  const formation = getFormation(formationId)!;
+  const picks: SquadPick[] = formation.slots.map((s, i) => {
+    const player = team.players[i] ?? team.players[team.players.length - 1];
+    return { slotId: s.id, player, fromTeamId: team.id, effectiveRating: player.rating };
+  });
+  return { id: team.id, name: team.name, picks, formationId, mentality };
+}
+
+/**
+ * Simulate one campaign match: a single full match (no interactive halftime, no
+ * shootout). The player's mentality counts double. A draw is NOT a win.
+ */
+export function simulateGauntletMatch(you: SimInput, opp: SimInput): GauntletResult {
+  const a = makeSide(you, 2); // player's mentality has double weight
+  const b = makeSide(opp, 1);
+  const rng = makeRng(Math.floor(Math.random() * 2 ** 31));
+
+  const ga1 = poisson(expectedGoals(a.side, b.side) * 0.5, rng);
+  const gb1 = poisson(expectedGoals(b.side, a.side) * 0.5, rng);
+  const fh = buildHalfTimeline(a.side, b.side, ga1, gb1, rng, 1);
+
+  const ga2 = poisson(expectedGoals(a.side, b.side) * 0.5, rng);
+  const gb2 = poisson(expectedGoals(b.side, a.side) * 0.5, rng);
+  const sh = buildHalfTimeline(a.side, b.side, ga2, gb2, rng, 2, fh.expelled);
+
+  const youGoals = ga1 + ga2;
+  const oppGoals = gb1 + gb2;
+  const outcome = youGoals > oppGoals ? "win" : youGoals === oppGoals ? "draw" : "loss";
+  return {
+    youId: you.id,
+    oppId: opp.id,
+    oppName: opp.name,
+    timeline: [...fh.events, ...sh.events],
+    youGoals,
+    oppGoals,
+    outcome,
+  };
 }
 
 // ---- Draft utilities ----

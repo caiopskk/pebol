@@ -34,6 +34,7 @@ interface Room {
   takenThisRound: string[];
   usedTeamIds: string[];
   result: RoomState["result"];
+  expelled?: Record<string, string[]>; // 1st-half sent-off players, by playerId
 }
 
 const rooms = new Map<string, Room>();
@@ -213,10 +214,10 @@ export function pick(room: Room, playerId: string, slotId: string, playerName: s
 
 export function rerollTeam(room: Room, playerId: string): string | null {
   if (room.phase !== "draft") return "Não é fase de draft.";
-  if (!isPvP(room)) return "Atualizar time só está disponível no PvP.";
   if (room.activePlayerId !== playerId) return "Não é a sua vez.";
   const player = room.players.find((p) => p.id === playerId);
   if (!player) return "Jogador não encontrado.";
+  if (player.isAI) return "A máquina não pode atualizar o time.";
   if ((player.rerollsRemaining ?? 0) <= 0) return "Você já usou suas 3 atualizações.";
   if (room.currentTeam) room.usedTeamIds.push(room.currentTeam.id);
   player.rerollsRemaining = (player.rerollsRemaining ?? 0) - 1;
@@ -253,6 +254,7 @@ function finishDraft(room: Room) {
   });
   // only the first half is simulated now; the second half waits for halftime lineups
   const fh = simulateFirstHalf(simInput(p1), simInput(p2));
+  room.expelled = fh.expelled;
   room.result = {
     homeId: p1.id,
     awayId: p2.id,
@@ -304,7 +306,7 @@ export function readyHalftime(room: Room, playerId: string, lineup?: HalftimeLin
   // once both confirmed, simulate the second half with the updated lineups
   if (!room.result.secondHalfReady && room.players.every((pl) => pl.halftimeReady)) {
     const [p1, p2] = room.players;
-    const sh = simulateSecondHalf(simInput(p1), simInput(p2), room.result.firstHalfGoals);
+    const sh = simulateSecondHalf(simInput(p1), simInput(p2), room.result.firstHalfGoals, room.expelled);
     room.result.timeline = [...room.result.timeline, ...sh.timeline];
     room.result.secondHalfReady = true;
     room.result.goals = sh.goals;
@@ -351,6 +353,7 @@ export function rematch(room: Room) {
   room.takenThisRound = [];
   room.usedTeamIds = [];
   room.result = null;
+  room.expelled = undefined;
   for (const p of room.players) {
     p.picks = [];
     p.rerollsRemaining = 3;
@@ -403,7 +406,7 @@ export function toPublic(room: Room): RoomState {
     activePlayerId: room.activePlayerId,
     takenThisRound: room.takenThisRound,
     usedTeamIds: room.usedTeamIds,
-    pvpRerollsEnabled: isPvP(room),
+    pvpRerollsEnabled: room.players.some((p) => !p.isAI),
     hideRatings: hide,
     result: room.result,
   };

@@ -146,6 +146,17 @@ export interface MatchResult {
   summary: string;                   // "" until the match is decided
 }
 
+/** Result of one World Cup campaign match (single full match, no halftime, no shootout). */
+export interface GauntletResult {
+  youId: string;
+  oppId: string;
+  oppName: string;
+  timeline: MatchEvent[];
+  youGoals: number;
+  oppGoals: number;
+  outcome: "win" | "draw" | "loss";
+}
+
 /** A player's lineup submitted at halftime (used to re-simulate the 2nd half). */
 export interface HalftimeLineup {
   formationId: string;
