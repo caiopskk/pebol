@@ -313,7 +313,7 @@ function renderDraft() {
         <section class="draw-panel">
           <div class="draw-head">
             <span class="draw-label">Time sorteado</span>
-            <h2>${team ? escapeHtml(team.name) : "—"}</h2>
+            <h2>${team ? escapeHtml(`${team.name} ${team.season}`) : "—"}</h2>
             <span class="draw-league">${team?.league ?? ""}</span>
           </div>
           <ul class="player-list">

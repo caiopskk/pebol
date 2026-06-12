@@ -1,8 +1,14 @@
 import type { Team } from "../types.js";
 
-// Plausible 2024/25 squads with estimated 60-99 ratings.
-// Brasileirão + UEFA Champions League clubs. Tweak freely.
-export const TEAMS: Team[] = [
+type TeamSeed = Omit<Team, "season">;
+
+function seasonFor(team: TeamSeed): string {
+  return team.league === "Brasileirão" ? "2025" : "2024/25";
+}
+
+// Plausible squads by season with estimated 60-99 ratings.
+// Brasileirão: 2025. European clubs: 2024/25 UEFA season. Tweak freely.
+const TEAM_SEEDS: TeamSeed[] = [
   {
     id: "real-madrid",
     name: "Real Madrid",
@@ -209,7 +215,7 @@ export const TEAMS: Team[] = [
       { name: "Kobel", pos: "GK", rating: 84 },
       { name: "Ryerson", pos: "RB", rating: 78 },
       { name: "Schlotterbeck", pos: "CB", rating: 84 },
-      { name: "Hummels", pos: "CB", rating: 83 },
+      { name: "Anton", pos: "CB", rating: 82 },
       { name: "Bensebaini", pos: "LB", rating: 79 },
       { name: "Emre Can", pos: "CDM", rating: 80 },
       { name: "Brandt", pos: "CAM", rating: 83 },
@@ -682,7 +688,7 @@ export const TEAMS: Team[] = [
       { name: "Konoplia", pos: "RB", rating: 77 },
       { name: "Bondar", pos: "CB", rating: 76 },
       { name: "Matviyenko", pos: "CB", rating: 78 },
-      { name: "Azarovi", pos: "LB", rating: 74 },
+      { name: "Pedrinho", pos: "LB", rating: 75 },
       { name: "Stepanenko", pos: "CDM", rating: 76 },
       { name: "Bondarenko", pos: "CM", rating: 76 },
       { name: "Sudakov", pos: "CAM", rating: 82 },
@@ -715,7 +721,7 @@ export const TEAMS: Team[] = [
     league: "Holanda",
     players: [
       { name: "Wellenreuther", pos: "GK", rating: 78 },
-      { name: "Geertruida", pos: "RB", rating: 79 },
+      { name: "Nieuwkoop", pos: "RB", rating: 76 },
       { name: "Beelen", pos: "CB", rating: 77 },
       { name: "Hancko", pos: "CB", rating: 81 },
       { name: "Hartman", pos: "LB", rating: 78 },
@@ -788,7 +794,7 @@ export const TEAMS: Team[] = [
     players: [
       { name: "Bizot", pos: "GK", rating: 79 },
       { name: "Lala", pos: "RB", rating: 74 },
-      { name: "Brassier", pos: "CB", rating: 76 },
+      { name: "Coulibaly", pos: "CB", rating: 74 },
       { name: "Chardonnet", pos: "CB", rating: 75 },
       { name: "Locko", pos: "LB", rating: 74 },
       { name: "Magnetti", pos: "CDM", rating: 74 },
@@ -806,7 +812,7 @@ export const TEAMS: Team[] = [
     players: [
       { name: "Nübel", pos: "GK", rating: 82 },
       { name: "Vagnoman", pos: "RB", rating: 77 },
-      { name: "Anton", pos: "CB", rating: 80 },
+      { name: "Chabot", pos: "CB", rating: 78 },
       { name: "Stenzel", pos: "CB", rating: 76 },
       { name: "Mittelstädt", pos: "LB", rating: 80 },
       { name: "Karazor", pos: "CDM", rating: 77 },
@@ -842,7 +848,7 @@ export const TEAMS: Team[] = [
     players: [
       { name: "Benítez", pos: "GK", rating: 80 },
       { name: "Dest", pos: "RB", rating: 79 },
-      { name: "Ramalho", pos: "CB", rating: 78 },
+      { name: "Flamingo", pos: "CB", rating: 77 },
       { name: "Boscagli", pos: "CB", rating: 78 },
       { name: "Mauro Júnior", pos: "LB", rating: 76 },
       { name: "Schouten", pos: "CDM", rating: 81 },
@@ -859,7 +865,7 @@ export const TEAMS: Team[] = [
     league: "Espanha",
     players: [
       { name: "Gazzaniga", pos: "GK", rating: 79 },
-      { name: "Yan Couto", pos: "RB", rating: 78 },
+      { name: "Arnau Martínez", pos: "RB", rating: 77 },
       { name: "David López", pos: "CB", rating: 77 },
       { name: "Juanpe", pos: "CB", rating: 76 },
       { name: "Blind", pos: "LB", rating: 76 },
@@ -932,7 +938,7 @@ export const TEAMS: Team[] = [
     players: [
       { name: "Schlager", pos: "GK", rating: 77 },
       { name: "Dedić", pos: "RB", rating: 76 },
-      { name: "Pavlović", pos: "CB", rating: 76 },
+      { name: "Piatkowski", pos: "CB", rating: 75 },
       { name: "Baidoo", pos: "CB", rating: 74 },
       { name: "Terzić", pos: "LB", rating: 74 },
       { name: "Gourna-Douath", pos: "CM", rating: 76 },
@@ -1004,8 +1010,8 @@ export const TEAMS: Team[] = [
     players: [
       { name: "Glazer", pos: "GK", rating: 74 },
       { name: "Seol", pos: "RB", rating: 72 },
-      { name: "Erakovic", pos: "CB", rating: 74 },
-      { name: "Dragović", pos: "CB", rating: 74 },
+      { name: "Djiga", pos: "CB", rating: 74 },
+      { name: "Spajić", pos: "CB", rating: 73 },
       { name: "Tiknizyan", pos: "LB", rating: 72 },
       { name: "Kanga", pos: "CM", rating: 74 },
       { name: "Elšnik", pos: "CM", rating: 74 },
@@ -1052,6 +1058,11 @@ export const TEAMS: Team[] = [
     ],
   },
 ];
+
+export const TEAMS: Team[] = TEAM_SEEDS.map((team) => ({
+  ...team,
+  season: seasonFor(team),
+}));
 
 export function getTeam(id: string): Team | undefined {
   return TEAMS.find((t) => t.id === id);

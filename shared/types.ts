@@ -19,6 +19,7 @@ export interface Player {
 export interface Team {
   id: string;
   name: string;
+  season: string; // e.g. "2025" or "2024/25"
   league: string;
   players: Player[]; // 11 starters
 }
