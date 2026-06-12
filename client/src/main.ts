@@ -244,10 +244,18 @@ function bumpStat(
   stats.set(name, current);
 }
 
-function renderLiveStats(target: HTMLElement, stats: Map<string, LiveStatLine>) {
+function renderLiveStats(
+  target: HTMLElement,
+  stats: Map<string, LiveStatLine>,
+) {
   const leaders = [...stats.entries()]
     .filter(([, s]) => s.goals || s.assists)
-    .sort((a, b) => b[1].goals - a[1].goals || b[1].assists - a[1].assists || a[0].localeCompare(b[0]))
+    .sort(
+      (a, b) =>
+        b[1].goals - a[1].goals ||
+        b[1].assists - a[1].assists ||
+        a[0].localeCompare(b[0]),
+    )
     .slice(0, 5);
   target.innerHTML = `
     <div class="live-stat-head">
@@ -257,11 +265,13 @@ function renderLiveStats(target: HTMLElement, stats: Map<string, LiveStatLine>) 
     ${
       leaders.length
         ? `<div class="live-stat-list">${leaders
-            .map(([name, s]) => `
+            .map(
+              ([name, s]) => `
               <div class="live-stat-row ${s.side}">
                 <strong>${escapeHtml(name)}</strong>
                 <span>${s.goals}G ${s.assists}A</span>
-              </div>`)
+              </div>`,
+            )
             .join("")}</div>`
         : `<div class="live-stat-empty">Aguardando o primeiro gol.</div>`
     }`;
@@ -904,7 +914,7 @@ function renderCampaignDraft() {
 
         <section class="board cup-draft-summary">
           <div class="cup-summary-head">
-            <span>Box score</span>
+            <span>Overall time</span>
             ${campaignStrengthSummary()}
           </div>
           ${renderCampaignSquadRows()}
