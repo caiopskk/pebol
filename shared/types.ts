@@ -21,10 +21,11 @@ export interface Team {
   name: string;
   season: string; // e.g. "2025" or "2024/25"
   league: string;
-  players: Player[]; // 11 starters
+  players: Player[]; // starters / main draft options
+  bench?: Player[];  // reserves, also available in the draft
 }
 
-export type Mentality = "aura" | "equilibrada" | "retranca";
+export type Mentality = "aura" | "equilibrada" | "retranca" | "pressao" | "posse" | "contra_ataque";
 export type GameMode = "classico" | "pica";
 
 /** A slot in the formation on the pitch. */
@@ -58,6 +59,8 @@ export interface PlayerPublic {
   id: string;
   name: string;
   connected: boolean;
+  isAI?: boolean;
+  rerollsRemaining?: number;
   ready: boolean;
   formationId: string | null;
   mentality: Mentality | null;
@@ -76,6 +79,7 @@ export interface RoomState {
   activePlayerId: string | null;  // whose turn it is to pick
   takenThisRound: string[];       // players already taken from the current team
   usedTeamIds: string[];
+  pvpRerollsEnabled: boolean;
   hideRatings: boolean;           // Pica mode: hide ratings during the draft
   result: MatchResult | null;
 }
@@ -104,6 +108,7 @@ export interface MatchEvent {
   type: MatchEventType;
   side: "home" | "away" | null;
   text: string;
+  ballZone?: "center" | "midfield" | "final_third" | "box" | "goal" | "defense" | "corner" | "penalty";
   player?: string;       // player involved (goal scorer, carded player, etc.)
   assist?: string;       // assist provider, for goals
   card?: "yellow" | "red";
@@ -147,6 +152,7 @@ export interface ClientToServer {
   setup: (data: { formationId: string; mentality: Mentality }) => void;
   ready: () => void;
   pick: (data: { slotId: string; playerName: string }) => void;
+  rerollTeam: () => void;
   rematch: () => void;
 }
 

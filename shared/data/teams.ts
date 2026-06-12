@@ -1,9 +1,119 @@
-import type { Team } from "../types.js";
+import type { Player, Team } from "../types.js";
 
-type TeamSeed = Omit<Team, "season">;
+type TeamSeed = Omit<Team, "season"> & { season?: string };
 
 function seasonFor(team: TeamSeed): string {
   return team.league === "Brasileirão" ? "2025" : "2024/25";
+}
+
+const BENCH_POSITIONS: Player["pos"][] = ["GK", "RB", "LB", "CB", "CB", "CDM", "CM", "CAM", "RW", "LW", "ST", "CF"];
+
+const RESERVE_NAMES_BY_ID: Record<string, string[]> = {
+  "real-madrid": ["Lunin", "Lucas Vázquez", "Fran García", "Alaba", "Asencio", "Camavinga", "Ceballos", "Brahim Díaz", "Arda Güler", "Endrick", "Joselu", "Modrić"],
+  barcelona: ["Iñaki Peña", "Fort", "Gerard Martín", "Christensen", "Eric García", "Casadó", "Fermín López", "Dani Olmo", "Ferran Torres", "Ansu Fati", "Pau Víctor", "Pablo Torre"],
+  "man-city": ["Ortega", "Rico Lewis", "Aké", "Akanji", "Khusanov", "Kovačić", "Gündoğan", "Grealish", "Savinho", "Marmoush", "Álvarez", "McAtee"],
+  liverpool: ["Kelleher", "Bradley", "Tsimikas", "Quansah", "Joe Gomez", "Endo", "Curtis Jones", "Elliott", "Chiesa", "Gakpo", "Jota", "Federico Chiesa"],
+  arsenal: ["Neto", "Timber", "Zinchenko", "Kiwior", "Tomiyasu", "Jorginho", "Merino", "Trossard", "Sterling", "Jesus", "Nwaneri", "Smith Rowe"],
+  bayern: ["Ulreich", "Boey", "Guerreiro", "Dier", "Ito", "Palhinha", "Laimer", "Müller", "Gnabry", "Tel", "Choupo-Moting", "Pavlović"],
+  psg: ["Safonov", "Zaïre-Emery", "Hernández", "Kimpembe", "Beraldo", "Ugarte", "Lee Kang-in", "Asensio", "Doué", "Gonçalo Ramos", "Mayulu", "Soler"],
+  inter: ["Audero", "Darmian", "Carlos Augusto", "De Vrij", "Bisseck", "Asllani", "Frattesi", "Zieliński", "Taremi", "Arnautović", "Correa", "Buchanan"],
+  "man-united": ["Bayındır", "Mazraoui", "Malacia", "Maguire", "Yoro", "Ugarte", "Mount", "Eriksen", "Antony", "Amad Diallo", "Zirkzee", "Sancho"],
+  chelsea: ["Jørgensen", "James", "Chilwell", "Disasi", "Badiashile", "Lavia", "Dewsbury-Hall", "João Félix", "Sancho", "Mudryk", "Guiu", "Pedro Neto"],
+  "atletico-madrid": ["Musso", "Molina", "Reinildo", "Witsel", "Le Normand", "Lemar", "Gallagher", "Correa", "Riquelme", "Lino", "Depay", "Níguez"],
+  dortmund: ["Meyer", "Yan Couto", "Kabar", "Süle", "Anton", "Nmecha", "Reyna", "Groß", "Malen", "Duranville", "Haller", "Beier"],
+  flamengo: ["Matheus Cunha", "Varela", "Viña", "Danilo", "David Luiz", "Allan", "Evertton Araújo", "Nicolás de la Cruz", "Michael", "Cebolinha", "Juninho", "Plata"],
+  palmeiras: ["Marcelo Lomba", "Mayke", "Vanderlan", "Bruno Fuchs", "Micael", "Emiliano Martínez", "Fabinho", "Felipe Anderson", "Dudu", "Rony", "Luighi", "Bruno Rodrigues"],
+  botafogo: ["Raul", "Ponte", "Marçal", "Lucas Halter", "Jair", "Danilo Barbosa", "Tchê Tchê", "Eduardo", "Jeffinho", "Matheus Martins", "Tiquinho Soares", "Artur"],
+  fluminense: ["Vitor Eudes", "Guga", "Diogo Barbosa", "Manoel", "Thiago Santos", "Bernal", "Lima", "Renato Augusto", "Serna", "Marquinhos", "Kauã Elias", "John Kennedy"],
+  corinthians: ["Matheus Donelli", "Fagner", "Matheus Bidu", "Cacá", "Gustavo Henrique", "José Martínez", "Breno Bidon", "Maycon", "Talles Magno", "Kayke", "Héctor Hernández", "Giovane"],
+  "sao-paulo": ["Jandrei", "Rafinha", "Patryck", "Sabino", "Ruan", "Luiz Gustavo", "Marcos Antônio", "Rodriguinho", "Erick", "Wellington Rato", "André Silva", "Ferreira"],
+  internacional: ["Anthoni", "Aguirre", "Renê", "Rogel", "Clayton Sampaio", "Bruno Henrique", "Rômulo", "Tabata", "Gustavo Prado", "Enner Valencia", "Ricardo Mathias", "Vitinho"],
+  "atletico-mg": ["Matheus Mendes", "Mariano", "Rubens", "Bruno Fuchs", "Igor Rabello", "Fausto Vera", "Alan Franco", "Igor Gomes", "Alisson", "Cadu", "Vargas", "Edenílson"],
+  cruzeiro: ["Anderson", "Fagner", "Kaiki", "Jonathan Jesus", "Zé Ivaldo", "Matheus Jussa", "Eduardo", "Dudu", "Marquinhos", "Lautaro Díaz", "Kenji", "Japa"],
+  gremio: ["Caíque", "Fábio", "Mayk", "Rodrigo Ely", "Jemerson", "Pepê", "Edenílson", "Nathan", "Soteldo", "Aravena", "Diego Costa", "Arezo"],
+  bahia: ["Danilo Fernandes", "Gilberto", "Iago Borduchi", "David Duarte", "Victor Cuesta", "Acevedo", "Jean Lucas", "Thaciano", "Biel", "Rafael Ratão", "Willian José", "Lucho Rodríguez"],
+  vasco: ["Keiller", "Puma Rodríguez", "Victor Luís", "João Victor", "Rojas", "Jair", "Paulinho", "Alex Teixeira", "Adson", "Rayan", "GB", "Jean David"],
+  fortaleza: ["Santos", "Dudu", "Felipe Jonatan", "Kuscevic", "Cardona", "Zé Welison", "Matheus Rossetto", "Calebe", "Breno Lopes", "Yago Pikachu", "Renato Kayzer", "Kervin Andrade"],
+  juventude: ["Mateus Claus", "Ewerthon", "João Lucas", "Abner", "Danilo Boza", "Mandaca", "Luis Oyama", "Jean Carlos", "Marcelinho", "David", "Ênio", "Ronaldo"],
+  bragantino: ["Lucão", "Andrés Hurtado", "Guilherme Lopes", "Pedro Henrique", "Gustavinho", "Eric Ramires", "Raul", "Lincoln", "Mosquera", "Laquintana", "Henry Mosquera", "Thiago Borbas"],
+  mirassol: ["Alex Muralha", "Zeca", "Warley", "Luiz Otávio", "Reniê", "Neto Moura", "Yuri Lima", "Camilo", "Iury Castilho", "Clayson", "Dellatorre", "Léo Gamalho"],
+  ceara: ["Richard", "Rafael Ramos", "Dieguinho", "David Ricardo", "Lourenço", "De Lucca", "Jean Irmer", "Lucas Mugni", "Aylon", "Pedro Raul", "Fernandinho", "Janderson"],
+  sport: ["Denis", "Hereda", "Felipe", "João Silva", "Luciano Castán", "Zé Lucas", "Felipe", "Matheusinho", "Chrystian Barletta", "Pablo", "Carlos Alberto", "Lenny Lobato"],
+  santos: ["Diógenes", "Aderlan", "Souza", "João Basso", "Alex", "Sandry", "Tomás Rincón", "Serginho", "Pedrinho", "Weslley Patati", "Willian Bigode", "Morelos"],
+  vitoria: ["Muriel", "Willean Lepo", "PK", "Edu", "Neris", "Dudu", "Luan Santos", "Jean Mota", "Gustavo Mosquito", "Carlos Eduardo", "Luiz Adriano", "Zé Hugo"],
+  leverkusen: ["Kovář", "Arthur", "Mukiele", "Belocian", "Hermoso", "Palacios", "Aleix García", "Hofmann", "Adli", "Terrier", "Tella", "Iglesias"],
+  atalanta: ["Rui Patrício", "Tolói", "Scalvini", "Ruggeri", "Godfrey", "Pasalić", "Brescianini", "Samardžić", "Cuadrado", "Zaniolo", "Scamacca", "Sulemana"],
+  juventus: ["Perin", "Danilo", "Rouhi", "Cabal", "Savona", "McKennie", "Fagioli", "Douglas Luiz", "Conceição", "Weah", "Milik", "Mbangula"],
+  benfica: ["Samuel Soares", "Aursnes", "Beste", "Tomás Araújo", "Morato", "Barreiro", "Renato Sanches", "Schjelderup", "Rollheiser", "Tiago Gouveia", "Arthur Cabral", "Gianluca Prestianni"],
+  "club-brugge": ["Jackers", "Seys", "Meijer", "Spileers", "Nielsen", "Vetlesen", "Skóraś", "Talbi", "Sandra", "Vermant", "Nusa", "Reis"],
+  shakhtar: ["Fesyun", "Tobias", "Pedrinho", "Chygrynskyi", "Ghram", "Kryskiv", "Marlon Gomes", "Zubkov", "Pedrinho", "Lassina Traoré", "Sikan", "Nazaryna"],
+  milan: ["Sportiello", "Emerson Royal", "Terracciano", "Thiaw", "Gabbia", "Bennacer", "Musah", "Adli", "Chukwueze", "Okafor", "Abraham", "Jović"],
+  feyenoord: ["Bijlow", "Lotomba", "Směkal", "Trauner", "Mitchell", "Milambo", "Nadje", "Osman", "Ueda", "Carranza", "Zechiel", "Read"],
+  sporting: ["Kovačević", "Esgaio", "Reis", "Inácio", "Matheus Reis", "Bragança", "Daniel Bragança", "Quenda", "Edwards", "Harder", "Maxi Araújo", "Debast"],
+  leipzig: ["Vandevoordt", "Henrichs", "Bitshiabu", "Klostermann", "Elmas", "Haidara", "Kampl", "Nusa", "Poulsen", "Werner", "Vermeeren", "Aydin"],
+  celtic: ["Sinisalo", "Ralston", "Valle", "Nawrocki", "Welsh", "Bernardo", "McCowan", "Yang", "Forrest", "Palma", "Kühn", "Oh"],
+  brest: ["Coudert", "Zogbé", "Amavi", "Le Cardinal", "Coulibaly", "Martin", "Faivre", "Doumbia", "Baldé", "Pereira Lage", "Satriano", "Camblan"],
+  stuttgart: ["Bredlow", "Stergiou", "Ameen Al-Dakhil", "Hendriks", "Rouault", "Keitel", "Rieder", "Leweling", "Jeong", "Woltemade", "Touré", "Diehl"],
+  "sturm-graz": ["Khudyakov", "Johnston", "Lavalée", "Aiwu", "Serrano", "Yalcouyé", "Hierländer", "Hödl", "Grgić", "Camara", "Grgic", "Wlodarczyk"],
+  psv: ["Drommel", "Ledezma", "Oppegård", "Flamingo", "Obispo", "Til", "Saibari", "Lozano", "Perišić", "Pepi", "Driouech", "Babadi"],
+  girona: ["Juan Carlos", "Francés", "Miguel Gutiérrez", "Krejčí", "Espinosa", "Romeu", "Portu", "Van de Beek", "Bryan Gil", "Danjuma", "Abel Ruiz", "Miovski"],
+  bologna: ["Ravaglia", "De Silvestri", "Miranda", "Casale", "Erlić", "Moro", "Pobega", "Urbanski", "Iling-Junior", "Odgaard", "Dallinga", "Fabbian"],
+  "aston-villa": ["Olsen", "Nedeljković", "Maatsen", "Mings", "Diego Carlos", "Kamara", "Barkley", "Ramsey", "Buendía", "Philogene", "Durán", "Carlos"],
+  monaco: ["Majecki", "Teze", "Ouattara", "Mawissa", "Kehrer", "Matazo", "Golovin", "Magassa", "Balogun", "Ilenikhena", "Diatta", "Volland"],
+  salzburg: ["Blaswich", "Dedic", "Ulmer", "Solet", "Okoh", "Capaldo", "Diambou", "Gloukh", "Konaté", "Fernando", "Daghim", "Yeo"],
+  slovan: ["Trnovský", "Medveděv", "Voet", "Wimmer", "Lovat", "Kucka", "Mak", "Zmrhal", "Tigran Barseghyan", "Sharani", "Gajdoš", "Mustafić"],
+  "dinamo-zagreb": ["Zagorac", "Moharrami", "Ogiwara", "Mmaee", "Bernauer", "Ademi", "Rog", "Hoxha", "Stojković", "Kulena", "Cordoba", "Kulenović"],
+  "young-boys": ["Von Ballmoos", "Blum", "Persson", "Benito", "Zoukrou", "Ugrinic", "Males", "Meschack Elia", "Virginius", "Colley", "Mambimbi", "Chaiwa"],
+  "crvena-zvezda": ["Popović", "Mimović", "Rodić", "Degenek", "Leković", "Mijailović", "Krunić", "Milson", "Olayinka", "Bruno Duarte", "Endiaye", "Radonjić"],
+  lille: ["Mannone", "Meunier", "Ismaily", "Umtiti", "Mandi", "Mukau", "Angel Gomes", "Sahraoui", "Tiago Santos", "Bayo", "Igamane", "Fernandes"],
+  "sparta-praha": ["Surovčík", "Suchomel", "Zelený", "Ross", "Cobbaut", "Solbakken", "Pavelka", "Pešek", "Rrahmani", "Tuci", "Mokrovics", "Daněk"],
+  "real-madrid-2013": ["Diego López", "Varane", "Coentrão", "Khedira", "Isco", "Illarramendi", "Jesé"],
+  "flamengo-2019": ["César", "Rodinei", "Renê", "Rhodolfo", "Rhodolfo", "Cuéllar", "Diego Ribas", "Piris da Motta", "Vitinho", "Berrío", "Lincoln", "Reinier"],
+  "barcelona-2011": ["Pinto", "Adriano", "Maxwell", "Mascherano", "Milito", "Keita", "Thiago", "Afellay", "Jeffren", "Bojan", "Nolito", "Jonathan dos Santos"],
+  "corinthians-2012": ["Júlio César", "Guilherme Andrade", "Ramon", "Wallace", "Felipe", "Edenílson", "Douglas", "Alex", "Romarinho", "Liedson", "Guerrero", "Martínez"],
+  "real-madrid-2016": ["Kiko Casilla", "Danilo", "Nacho", "Pepe", "Coentrão", "Kovačić", "James Rodríguez", "Asensio", "Lucas Vázquez", "Bale", "Morata", "Mariano"],
+  "milan-2007": ["Kalac", "Cafu", "Favalli", "Kaladze", "Bonera", "Ambrosini", "Brocchi", "Gourcuff", "Serginho", "Ricardo Oliveira", "Ronaldo", "Borriello"],
+  "inter-2010": ["Toldo", "Cordoba", "Santon", "Materazzi", "Burdisso", "Thiago Motta", "Stanković", "Muntari", "Balotelli", "Quaresma", "Suazo", "Arnautović"],
+  "bayern-2013": ["Starke", "Rafinha", "Contento", "Van Buyten", "Kirchhoff", "Luiz Gustavo", "Kroos", "Shaqiri", "Weiser", "Pizarro", "Gómez", "Tymoshchuk"],
+  "liverpool-2019": ["Mignolet", "Gomez", "Moreno", "Lovren", "Clyne", "Milner", "Keïta", "Lallana", "Shaqiri", "Sturridge", "Origi", "Oxlade-Chamberlain"],
+  "sao-paulo-2005": ["Bosco", "Alex", "Júnior", "Edcarlos", "André Dias", "Richarlyson", "Fábio Simplício", "Diego Tardelli", "Thiago Ribeiro", "Grafite", "Christian", "Denílson"],
+};
+
+function explicitBench(team: TeamSeed): Player[] | undefined {
+  const names = RESERVE_NAMES_BY_ID[team.id];
+  if (!names) return undefined;
+  const avg = Math.round(team.players.reduce((sum, p) => sum + p.rating, 0) / team.players.length);
+  const base = Math.max(64, Math.min(84, avg - 4));
+  return names.map((name, i) => ({
+    name,
+    pos: BENCH_POSITIONS[i % BENCH_POSITIONS.length],
+    rating: Math.max(60, Math.min(88, base + (i % 4 === 0 ? 1 : i % 5 === 0 ? -1 : 0))),
+  }));
+}
+
+function generatedBench(team: TeamSeed): Player[] {
+  const avg = Math.round(team.players.reduce((sum, p) => sum + p.rating, 0) / team.players.length);
+  const base = Math.max(63, Math.min(84, avg - 4));
+  const tag = team.name
+    .replace(/^(RB|AC|AS)\s+/i, "")
+    .replace(/\s+(de|da|do)\s+/gi, " ")
+    .split(/\s+/)
+    .filter(Boolean)[0] ?? "Clube";
+
+  return [
+    { name: `${tag} Goleiro Reserva`, pos: "GK", rating: base },
+    { name: `${tag} Lateral D`, pos: "RB", rating: base - 1 },
+    { name: `${tag} Lateral E`, pos: "LB", rating: base - 1 },
+    { name: `${tag} Zagueiro I`, pos: "CB", rating: base },
+    { name: `${tag} Zagueiro II`, pos: "CB", rating: base - 2 },
+    { name: `${tag} Volante`, pos: "CDM", rating: base },
+    { name: `${tag} Meia I`, pos: "CM", rating: base },
+    { name: `${tag} Meia II`, pos: "CAM", rating: base + 1 },
+    { name: `${tag} Ponta D`, pos: "RW", rating: base },
+    { name: `${tag} Ponta E`, pos: "LW", rating: base },
+    { name: `${tag} Atacante I`, pos: "ST", rating: base + 1 },
+    { name: `${tag} Atacante II`, pos: "CF", rating: base - 1 },
+  ];
 }
 
 // Plausible squads by season with estimated 60-99 ratings.
@@ -1057,11 +1167,202 @@ const TEAM_SEEDS: TeamSeed[] = [
       { name: "Olatunji", pos: "ST", rating: 73 },
     ],
   },
+  {
+    id: "real-madrid-2013",
+    name: "Real Madrid",
+    season: "2013/14",
+    league: "Espanha",
+    players: [
+      { name: "Casillas", pos: "GK", rating: 88 },
+      { name: "Carvajal", pos: "RB", rating: 81 },
+      { name: "Pepe", pos: "CB", rating: 86 },
+      { name: "Sergio Ramos", pos: "CB", rating: 87 },
+      { name: "Marcelo", pos: "LB", rating: 84 },
+      { name: "Xabi Alonso", pos: "CDM", rating: 86 },
+      { name: "Modrić", pos: "CM", rating: 87 },
+      { name: "Di María", pos: "CM", rating: 86 },
+      { name: "Bale", pos: "RW", rating: 88 },
+      { name: "Benzema", pos: "ST", rating: 85 },
+      { name: "Cristiano Ronaldo", pos: "LW", rating: 94 },
+    ],
+  },
+  {
+    id: "flamengo-2019",
+    name: "Flamengo",
+    season: "2019",
+    league: "Brasileirão",
+    players: [
+      { name: "Diego Alves", pos: "GK", rating: 82 },
+      { name: "Rafinha", pos: "RB", rating: 82 },
+      { name: "Rodrigo Caio", pos: "CB", rating: 81 },
+      { name: "Pablo Marí", pos: "CB", rating: 80 },
+      { name: "Filipe Luís", pos: "LB", rating: 83 },
+      { name: "Willian Arão", pos: "CDM", rating: 80 },
+      { name: "Gerson", pos: "CM", rating: 83 },
+      { name: "Arrascaeta", pos: "CAM", rating: 86 },
+      { name: "Éverton Ribeiro", pos: "RW", rating: 84 },
+      { name: "Gabigol", pos: "ST", rating: 85 },
+      { name: "Bruno Henrique", pos: "LW", rating: 84 },
+    ],
+  },
+  {
+    id: "barcelona-2011",
+    name: "Barcelona",
+    season: "2010/11",
+    league: "Espanha",
+    players: [
+      { name: "Valdés", pos: "GK", rating: 85 },
+      { name: "Dani Alves", pos: "RB", rating: 88 },
+      { name: "Piqué", pos: "CB", rating: 86 },
+      { name: "Puyol", pos: "CB", rating: 87 },
+      { name: "Abidal", pos: "LB", rating: 83 },
+      { name: "Busquets", pos: "CDM", rating: 87 },
+      { name: "Xavi", pos: "CM", rating: 92 },
+      { name: "Iniesta", pos: "CM", rating: 91 },
+      { name: "Pedro", pos: "RW", rating: 85 },
+      { name: "Messi", pos: "CF", rating: 94 },
+      { name: "David Villa", pos: "LW", rating: 88 },
+    ],
+  },
+  {
+    id: "corinthians-2012",
+    name: "Corinthians",
+    season: "2012",
+    league: "Brasileirão",
+    players: [
+      { name: "Cássio", pos: "GK", rating: 83 },
+      { name: "Alessandro", pos: "RB", rating: 78 },
+      { name: "Chicão", pos: "CB", rating: 80 },
+      { name: "Paulo André", pos: "CB", rating: 79 },
+      { name: "Fábio Santos", pos: "LB", rating: 80 },
+      { name: "Ralf", pos: "CDM", rating: 82 },
+      { name: "Paulinho", pos: "CM", rating: 84 },
+      { name: "Danilo", pos: "CAM", rating: 81 },
+      { name: "Jorge Henrique", pos: "RW", rating: 79 },
+      { name: "Emerson Sheik", pos: "ST", rating: 82 },
+      { name: "Romarinho", pos: "LW", rating: 78 },
+    ],
+  },
+  {
+    id: "real-madrid-2016",
+    name: "Real Madrid",
+    season: "2016/17",
+    league: "Espanha",
+    players: [
+      { name: "Keylor Navas", pos: "GK", rating: 85 },
+      { name: "Carvajal", pos: "RB", rating: 85 },
+      { name: "Varane", pos: "CB", rating: 84 },
+      { name: "Sergio Ramos", pos: "CB", rating: 89 },
+      { name: "Marcelo", pos: "LB", rating: 88 },
+      { name: "Casemiro", pos: "CDM", rating: 86 },
+      { name: "Kroos", pos: "CM", rating: 90 },
+      { name: "Modrić", pos: "CM", rating: 90 },
+      { name: "Isco", pos: "CAM", rating: 86 },
+      { name: "Benzema", pos: "ST", rating: 86 },
+      { name: "Cristiano Ronaldo", pos: "LW", rating: 94 },
+    ],
+  },
+  {
+    id: "milan-2007",
+    name: "AC Milan",
+    season: "2006/07",
+    league: "Itália",
+    players: [
+      { name: "Dida", pos: "GK", rating: 86 },
+      { name: "Oddo", pos: "RB", rating: 82 },
+      { name: "Nesta", pos: "CB", rating: 90 },
+      { name: "Maldini", pos: "CB", rating: 89 },
+      { name: "Jankulovski", pos: "LB", rating: 82 },
+      { name: "Pirlo", pos: "CDM", rating: 90 },
+      { name: "Gattuso", pos: "CM", rating: 86 },
+      { name: "Seedorf", pos: "CM", rating: 88 },
+      { name: "Kaká", pos: "CAM", rating: 92 },
+      { name: "Inzaghi", pos: "ST", rating: 86 },
+      { name: "Gilardino", pos: "ST", rating: 84 },
+    ],
+  },
+  {
+    id: "inter-2010",
+    name: "Inter de Milão",
+    season: "2009/10",
+    league: "Itália",
+    players: [
+      { name: "Júlio César", pos: "GK", rating: 89 },
+      { name: "Maicon", pos: "RB", rating: 88 },
+      { name: "Lúcio", pos: "CB", rating: 87 },
+      { name: "Samuel", pos: "CB", rating: 86 },
+      { name: "Chivu", pos: "LB", rating: 82 },
+      { name: "Cambiasso", pos: "CDM", rating: 87 },
+      { name: "Zanetti", pos: "CM", rating: 86 },
+      { name: "Sneijder", pos: "CAM", rating: 89 },
+      { name: "Pandev", pos: "RW", rating: 82 },
+      { name: "Eto'o", pos: "LW", rating: 88 },
+      { name: "Milito", pos: "ST", rating: 88 },
+    ],
+  },
+  {
+    id: "bayern-2013",
+    name: "Bayern de Munique",
+    season: "2012/13",
+    league: "Alemanha",
+    players: [
+      { name: "Neuer", pos: "GK", rating: 89 },
+      { name: "Lahm", pos: "RB", rating: 89 },
+      { name: "Boateng", pos: "CB", rating: 85 },
+      { name: "Dante", pos: "CB", rating: 84 },
+      { name: "Alaba", pos: "LB", rating: 85 },
+      { name: "Schweinsteiger", pos: "CM", rating: 89 },
+      { name: "Javi Martínez", pos: "CDM", rating: 86 },
+      { name: "Müller", pos: "CAM", rating: 87 },
+      { name: "Robben", pos: "RW", rating: 89 },
+      { name: "Mandžukić", pos: "ST", rating: 84 },
+      { name: "Ribéry", pos: "LW", rating: 90 },
+    ],
+  },
+  {
+    id: "liverpool-2019",
+    name: "Liverpool",
+    season: "2018/19",
+    league: "Inglaterra",
+    players: [
+      { name: "Alisson", pos: "GK", rating: 89 },
+      { name: "Alexander-Arnold", pos: "RB", rating: 84 },
+      { name: "Matip", pos: "CB", rating: 83 },
+      { name: "Van Dijk", pos: "CB", rating: 90 },
+      { name: "Robertson", pos: "LB", rating: 86 },
+      { name: "Fabinho", pos: "CDM", rating: 86 },
+      { name: "Henderson", pos: "CM", rating: 84 },
+      { name: "Wijnaldum", pos: "CM", rating: 84 },
+      { name: "Salah", pos: "RW", rating: 90 },
+      { name: "Firmino", pos: "CF", rating: 87 },
+      { name: "Mané", pos: "LW", rating: 89 },
+    ],
+  },
+  {
+    id: "sao-paulo-2005",
+    name: "São Paulo",
+    season: "2005",
+    league: "Brasileirão",
+    players: [
+      { name: "Rogério Ceni", pos: "GK", rating: 87 },
+      { name: "Cicinho", pos: "RB", rating: 84 },
+      { name: "Fabão", pos: "CB", rating: 80 },
+      { name: "Lugano", pos: "CB", rating: 84 },
+      { name: "Júnior", pos: "LB", rating: 82 },
+      { name: "Josué", pos: "CDM", rating: 82 },
+      { name: "Mineiro", pos: "CM", rating: 83 },
+      { name: "Danilo", pos: "CAM", rating: 83 },
+      { name: "Souza", pos: "RM", rating: 80 },
+      { name: "Amoroso", pos: "ST", rating: 84 },
+      { name: "Aloísio", pos: "ST", rating: 81 },
+    ],
+  },
 ];
 
 export const TEAMS: Team[] = TEAM_SEEDS.map((team) => ({
   ...team,
-  season: seasonFor(team),
+  season: team.season ?? seasonFor(team),
+  bench: team.bench ?? explicitBench(team) ?? generatedBench(team),
 }));
 
 export function getTeam(id: string): Team | undefined {

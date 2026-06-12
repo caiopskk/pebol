@@ -32,6 +32,9 @@ export function sendReady() {
 export function sendPick(slotId: string, playerName: string) {
   socket.emit("pick", { slotId, playerName });
 }
+export function sendRerollTeam() {
+  socket.emit("rerollTeam");
+}
 export function sendRematch() {
   socket.emit("rematch");
 }

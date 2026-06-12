@@ -100,6 +100,7 @@ interface SimSide {
 }
 
 type Side = "home" | "away";
+type BallZone = NonNullable<MatchEvent["ballZone"]>;
 
 /** Attacking weight of a player (chance to score). */
 function scoreWeight(pick: SquadPick): number {
@@ -121,6 +122,7 @@ function weightedPlayer(side: SimSide, rng: () => number, w: Partial<Record<stri
 }
 
 const W_ATTACK = { ATT: 7, MID: 3, DEF: 0.7, GK: 0.02 }; // goal scorers
+const W_CHANCE = { ATT: 8, MID: 3, DEF: 0.08, GK: 0.01 }; // open-play chances
 const W_PLAYMAKER = { ATT: 3, MID: 6, DEF: 1.5, GK: 0.02 }; // assist providers
 const W_DEFENSE = { ATT: 0.4, MID: 2, DEF: 5, GK: 0.2 }; // fouls / cards
 const W_FIELD = { ATT: 1, MID: 1, DEF: 1, GK: 0 };
@@ -135,12 +137,28 @@ function gkName(side: SimSide): string {
 function pick<T>(arr: T[], rng: () => number): T {
   return arr[Math.floor(rng() * arr.length)];
 }
+function teamLabel(side: SimSide): string {
+  return `time de ${side.name}`;
+}
 
 const TXT = {
+  buildup: [
+    "{team} recupera a bola no meio e acelera com {p}.",
+    "{p} acha espaço entre as linhas e chama a jogada para o {team}.",
+    "{team} troca passes com calma até encontrar o corredor livre.",
+    "Virada rápida do {team}; {p} recebe com campo para atacar.",
+    "{p} puxa contra-ataque e deixa a defesa adversária desarrumada.",
+  ],
+  assistMove: [
+    "{p} cruza na medida para a área.",
+    "{p} enfia um passe limpo nas costas da defesa.",
+    "{p} tabela curto e devolve em ótima condição.",
+    "{p} ganha no corpo e rola para a finalização.",
+  ],
   chance: [
     "Boa chegada do {team}, mas a finalização sai à direita do gol.",
-    "{p} arrisca de longe pelo {team} e a bola passa raspando a trave!",
-    "Quase! {p} cabeceia para o {team} e a bola explode no travessão!",
+    "{p} arrisca pelo {team} e a bola passa raspando a trave!",
+    "Quase! {p} aparece na área pelo {team} e acerta o travessão!",
     "Contra-ataque rápido do {team}, mas a defesa volta a tempo.",
     "{team} trabalha bem a jogada, {p} chuta e o goleiro fica com a bola.",
   ],
@@ -187,10 +205,19 @@ const TXT = {
     "O árbitro é chamado ao monitor do VAR para revisar o lance.",
     "VAR em ação, checando uma possível irregularidade...",
   ],
+  pressure: [
+    "{team} aperta a saída e força um chutão da defesa.",
+    "{p} antecipa bem pelo {team} e mata uma jogada perigosa.",
+    "{team} fica com a bola por um longo período, procurando espaço.",
+    "A torcida sente o momento: o {team} empurra o adversário para trás.",
+  ],
 };
 
 function fill(tpl: string, side: SimSide, rng: () => number, w = W_FIELD): string {
-  return tpl.replace("{team}", side.name).replace("{gk}", gkName(side)).replace("{p}", weightedPlayer(side, rng, w));
+  return tpl
+    .replace(/\{team\}/g, teamLabel(side))
+    .replace(/\{gk\}/g, gkName(side))
+    .replace(/\{p\}/g, weightedPlayer(side, rng, w));
 }
 
 function buildMatchTimeline(
@@ -202,15 +229,44 @@ function buildMatchTimeline(
 ): MatchEvent[] {
   const evs: MatchEvent[] = [];
   const sideOf = (k: Side) => (k === "home" ? home : away);
+  const defaultZone = (type: MatchEvent["type"]): BallZone => {
+    switch (type) {
+      case "kickoff":
+      case "halftime":
+      case "fulltime":
+      case "sub":
+        return "center";
+      case "goal":
+        return "goal";
+      case "chance":
+      case "var":
+        return "box";
+      case "save":
+        return "defense";
+      case "corner":
+        return "corner";
+      case "offside":
+        return "final_third";
+      case "foul":
+      case "card":
+      case "injury":
+      case "info":
+        return "midfield";
+      case "penalty":
+        return "penalty";
+      default:
+        return "center";
+    }
+  };
   const add = (minute: number, type: MatchEvent["type"], key: Side | null, text: string, extra: Partial<MatchEvent> = {}) =>
-    evs.push({ minute, type, side: key, text, ...extra });
+    evs.push({ minute, type, side: key, text, ballZone: extra.ballZone ?? defaultZone(type), ...extra });
 
-  add(0, "kickoff", null, `Bola rolando! ${home.name} x ${away.name}.`);
+  add(0, "kickoff", null, `Bola rolando! ${teamLabel(home)} x ${teamLabel(away)}.`, { ballZone: "center" });
 
   // goals
   const addGoals = (side: SimSide, n: number, key: Side) => {
     for (let i = 0; i < n; i++) {
-      const minute = 1 + Math.floor(rng() * 92);
+      const minute = 3 + Math.floor(rng() * 88);
       const scorer = pickScorer(side, rng);
       let assist: string | undefined;
       if (rng() < 0.7) {
@@ -221,9 +277,14 @@ function buildMatchTimeline(
       }
       const varTag = rng() < 0.18 ? " (confirmado pelo VAR)" : "";
       const assistTxt = assist ? ` Assistência de ${assist}.` : "";
-      add(minute, "goal", key, `GOL do ${side.name}! ${scorer} balança a rede!${varTag}${assistTxt}`, {
+      const setupMinute = Math.max(1, minute - 2);
+      const finalPassMinute = Math.max(1, minute - 1);
+      add(setupMinute, "info", key, fill(pick(TXT.buildup, rng), side, rng, W_PLAYMAKER), { ballZone: "midfield" });
+      add(finalPassMinute, "chance", key, fill(pick(TXT.assistMove, rng), side, rng, W_PLAYMAKER), { ballZone: "final_third" });
+      add(minute, "goal", key, `GOL do ${teamLabel(side)}! ${scorer} balança a rede!${varTag}${assistTxt}`, {
         player: scorer,
         assist,
+        ballZone: "goal",
       });
     }
   };
@@ -240,11 +301,12 @@ function buildMatchTimeline(
     }
   };
 
-  sprinkle(2 + Math.floor(rng() * 3), "chance", TXT.chance, W_ATTACK);
-  sprinkle(2 + Math.floor(rng() * 2), "save", TXT.save);
-  sprinkle(2 + Math.floor(rng() * 3), "corner", TXT.corner, W_ATTACK);
-  sprinkle(1 + Math.floor(rng() * 2), "offside", TXT.offside, W_ATTACK);
-  sprinkle(3 + Math.floor(rng() * 3), "foul", TXT.foul, W_DEFENSE);
+  sprinkle(1 + Math.floor(rng() * 3), "chance", TXT.chance, W_CHANCE, () => ({ ballZone: "box" }));
+  sprinkle(2 + Math.floor(rng() * 2), "save", TXT.save, W_FIELD, () => ({ ballZone: "defense" }));
+  sprinkle(2 + Math.floor(rng() * 3), "corner", TXT.corner, W_ATTACK, () => ({ ballZone: "corner" }));
+  sprinkle(1 + Math.floor(rng() * 2), "offside", TXT.offside, W_ATTACK, () => ({ ballZone: "final_third" }));
+  sprinkle(3 + Math.floor(rng() * 3), "foul", TXT.foul, W_DEFENSE, () => ({ ballZone: "midfield" }));
+  sprinkle(2 + Math.floor(rng() * 3), "info", TXT.pressure, W_FIELD, () => ({ ballZone: "midfield" }));
 
   // yellow cards
   const nY = 2 + Math.floor(rng() * 4);
@@ -253,9 +315,10 @@ function buildMatchTimeline(
     const key: Side = rng() > 0.5 ? "home" : "away";
     const side = sideOf(key);
     const player = weightedPlayer(side, rng, W_DEFENSE);
-    add(minute, "card", key, pick(TXT.yellow, rng).replace("{team}", side.name).replace("{p}", player), {
+    add(minute, "card", key, pick(TXT.yellow, rng).replace(/\{team\}/g, teamLabel(side)).replace(/\{p\}/g, player), {
       player,
       card: "yellow",
+      ballZone: "midfield",
     });
   }
   // red card (rare)
@@ -263,9 +326,10 @@ function buildMatchTimeline(
     const key: Side = rng() > 0.5 ? "home" : "away";
     const side = sideOf(key);
     const player = weightedPlayer(side, rng, W_DEFENSE);
-    add(40 + Math.floor(rng() * 50), "card", key, pick(TXT.red, rng).replace(/\{team\}/g, side.name).replace("{p}", player), {
+    add(40 + Math.floor(rng() * 50), "card", key, pick(TXT.red, rng).replace(/\{team\}/g, teamLabel(side)).replace(/\{p\}/g, player), {
       player,
       card: "red",
+      ballZone: "midfield",
     });
   }
 
@@ -278,12 +342,12 @@ function buildMatchTimeline(
     for (let i = 0; i < n; i++) {
       const minute = 58 + Math.floor(rng() * 32);
       const side = sideOf(key);
-      add(minute, "sub", key, fill(pick(TXT.sub, rng), side, rng, W_FIELD));
+      add(minute, "sub", key, fill(pick(TXT.sub, rng), side, rng, W_FIELD), { ballZone: "center" });
     }
   }
 
-  add(45, "halftime", null, "Fim do primeiro tempo.");
-  add(90, "fulltime", null, "Fim do segundo tempo. Acabou o jogo!");
+  add(45, "halftime", null, "Fim do primeiro tempo.", { ballZone: "center" });
+  add(90, "fulltime", null, "Fim do segundo tempo. Acabou o jogo!", { ballZone: "center" });
 
   // sort by minute; within a minute: goal first, structural markers last
   const rank = (e: MatchEvent) =>
@@ -306,10 +370,10 @@ function poisson(lambda: number, rng: () => number): number {
 
 function expectedGoals(attacker: SimSide, defender: SimSide): number {
   // midfield drives possession / chance volume
-  const midEdge = (attacker.strength.midfield - defender.strength.midfield) / 40;
-  const base = (attacker.strength.attack - defender.strength.defense) / 12;
-  const xg = 1.25 + base + midEdge;
-  return Math.max(0.15, xg);
+  const midEdge = (attacker.strength.midfield - defender.strength.midfield) / 75;
+  const base = (attacker.strength.attack - defender.strength.defense) / 24;
+  const xg = 0.92 + base + midEdge;
+  return Math.max(0.2, Math.min(2.35, xg));
 }
 
 function makeRng(seed: number): () => number {

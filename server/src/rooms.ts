@@ -54,9 +54,14 @@ function newPlayer(name: string, socketId: string | null, isAI = false): Interna
     formationId: null,
     mentality: null,
     picks: [],
+    rerollsRemaining: 3,
     socketId,
     isAI,
   };
+}
+
+function isPvP(room: Room): boolean {
+  return room.players.length === 2 && room.players.every((p) => !p.isAI);
 }
 
 export function createRoom(name: string, mode: GameMode, socketId: string, solo = false) {
@@ -203,6 +208,19 @@ export function pick(room: Room, playerId: string, slotId: string, playerName: s
   return null;
 }
 
+export function rerollTeam(room: Room, playerId: string): string | null {
+  if (room.phase !== "draft") return "Não é fase de draft.";
+  if (!isPvP(room)) return "Atualizar time só está disponível no PvP.";
+  if (room.activePlayerId !== playerId) return "Não é a sua vez.";
+  const player = room.players.find((p) => p.id === playerId);
+  if (!player) return "Jogador não encontrado.";
+  if ((player.rerollsRemaining ?? 0) <= 0) return "Você já usou suas 3 atualizações.";
+  if (room.currentTeam) room.usedTeamIds.push(room.currentTeam.id);
+  player.rerollsRemaining = (player.rerollsRemaining ?? 0) - 1;
+  beginTurn(room);
+  return null;
+}
+
 function advanceTurn(room: Room) {
   // discard the team drawn this turn
   if (room.currentTeam) room.usedTeamIds.push(room.currentTeam.id);
@@ -269,6 +287,7 @@ export function rematch(room: Room) {
   room.result = null;
   for (const p of room.players) {
     p.picks = [];
+    p.rerollsRemaining = 3;
     // the AI comes back ready; the human confirms again
     p.ready = p.isAI;
     // keep chosen formation/mentality to save time
@@ -283,6 +302,8 @@ export function toPublic(room: Room): RoomState {
     id: p.id,
     name: p.name,
     connected: p.connected,
+    isAI: p.isAI,
+    rerollsRemaining: p.rerollsRemaining,
     ready: p.ready,
     formationId: p.formationId,
     mentality: p.mentality,
@@ -298,6 +319,7 @@ export function toPublic(room: Room): RoomState {
     currentTeam = {
       ...currentTeam,
       players: currentTeam.players.map((pl) => ({ ...pl, rating: 0 })),
+      bench: currentTeam.bench?.map((pl) => ({ ...pl, rating: 0 })),
     };
   }
 
@@ -313,6 +335,7 @@ export function toPublic(room: Room): RoomState {
     activePlayerId: room.activePlayerId,
     takenThisRound: room.takenThisRound,
     usedTeamIds: room.usedTeamIds,
+    pvpRerollsEnabled: isPvP(room),
     hideRatings: hide,
     result: room.result,
   };

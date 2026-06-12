@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import express from "express";
 import { Server } from "socket.io";
-import type { AckResult } from "../../shared/types.js";
+import type { AckResult, Mentality } from "../../shared/types.js";
 import {
   createRoom,
   joinRoom,
@@ -13,6 +13,7 @@ import {
   setup,
   ready,
   pick,
+  rerollTeam,
   rematch,
   toPublic,
   isAITurn,
@@ -50,7 +51,7 @@ function driveAI(code: string) {
     aiPick(r);
     broadcast(code);
     driveAI(code); // caso a IA tenha turnos consecutivos
-  }, 700 + Math.random() * 600);
+  }, 3000);
 }
 
 io.on("connection", (socket) => {
@@ -72,7 +73,7 @@ io.on("connection", (socket) => {
     broadcast(res.room.code);
   });
 
-  socket.on("setup", (data: { formationId: string; mentality: "aura" | "equilibrada" | "retranca" }) => {
+  socket.on("setup", (data: { formationId: string; mentality: Mentality }) => {
     const room = findRoomBySocket(socket.id);
     if (!room) return;
     const player = room.players.find((p) => p.socketId === socket.id);
@@ -102,6 +103,16 @@ io.on("connection", (socket) => {
     }
     broadcast(room.code);
     driveAI(room.code); // after the human, let the AI take its turn
+  });
+
+  socket.on("rerollTeam", () => {
+    const room = findRoomBySocket(socket.id);
+    if (!room) return;
+    const player = room.players.find((p) => p.socketId === socket.id);
+    if (!player) return;
+    const err = rerollTeam(room, player.id);
+    if (err) socket.emit("errorMsg", err);
+    broadcast(room.code);
   });
 
   socket.on("rematch", () => {

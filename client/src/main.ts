@@ -1,7 +1,22 @@
 import "./styles.css";
-import type { RoomState, PlayerPublic, GameMode, Mentality, MatchResult, MatchEvent } from "../../shared/types.js";
-import { FORMATIONS, getFormation, groupOf, posLabel } from "../../shared/formations.js";
+import type {
+  RoomState,
+  PlayerPublic,
+  GameMode,
+  Mentality,
+  MatchResult,
+  MatchEvent,
+  Player,
+} from "../../shared/types.js";
+import {
+  FORMATIONS,
+  getFormation,
+  groupOf,
+  posLabel,
+} from "../../shared/formations.js";
 import { MENTALITIES } from "../../shared/mentalities.js";
+import { effectiveRating } from "../../shared/engine.js";
+import { getTeam } from "../../shared/data/teams.js";
 import {
   onRoomUpdate,
   onError,
@@ -10,6 +25,7 @@ import {
   sendSetup,
   sendReady,
   sendPick,
+  sendRerollTeam,
   sendRematch,
 } from "./net.js";
 
@@ -28,6 +44,12 @@ interface Local {
   matchPlayed: boolean;
   matchSpeed: number; // 1, 1.5, 2
   playing: boolean;
+  halftimeAdjusted: boolean;
+  intervalBench: Array<Player & { fromTeamId: string }> | null;
+  selectedSubOut: string | null;
+  selectedSubIn: string | null;
+  intervalSubCount: number;
+  aiHalftimeSubsDone: boolean;
 }
 
 const L: Local = {
@@ -40,6 +62,12 @@ const L: Local = {
   matchPlayed: false,
   matchSpeed: 1,
   playing: false,
+  halftimeAdjusted: false,
+  intervalBench: null,
+  selectedSubOut: null,
+  selectedSubIn: null,
+  intervalSubCount: 0,
+  aiHalftimeSubsDone: false,
 };
 
 onRoomUpdate((s) => {
@@ -75,6 +103,12 @@ function render() {
   if (L.state?.phase !== "result") {
     L.matchPlayed = false;
     L.playing = false;
+    L.halftimeAdjusted = false;
+    L.intervalBench = null;
+    L.selectedSubOut = null;
+    L.selectedSubIn = null;
+    L.intervalSubCount = 0;
+    L.aiHalftimeSubsDone = false;
   }
   // during live playback, don't re-render (preserve the animation)
   if (L.playing) {
@@ -127,7 +161,7 @@ function renderHome() {
         <div class="panel">
           <h2>Criar sala</h2>
           <label>Seu nome</label>
-          <input id="c-name" maxlength="20" placeholder="Ex: Caio" />
+          <input id="c-name" maxlength="20" placeholder="Insira seu nome" />
           <label>Modo de jogo</label>
           <div class="mode-pick">
             <button class="mode-btn active" data-mode="classico">
@@ -145,7 +179,7 @@ function renderHome() {
         <div class="panel">
           <h2>Entrar numa sala</h2>
           <label>Seu nome</label>
-          <input id="j-name" maxlength="20" placeholder="Ex: Léo" />
+          <input id="j-name" maxlength="20" placeholder="Insira seu nome" />
           <label>Código da sala</label>
           <input id="j-code" maxlength="4" placeholder="XXXX" style="text-transform:uppercase" />
           <button id="j-join" class="primary">Entrar</button>
@@ -157,14 +191,18 @@ function renderHome() {
   let mode: GameMode = "classico";
   app.querySelectorAll<HTMLButtonElement>(".mode-btn").forEach((btn) => {
     btn.onclick = () => {
-      app.querySelectorAll(".mode-btn").forEach((b) => b.classList.remove("active"));
+      app
+        .querySelectorAll(".mode-btn")
+        .forEach((b) => b.classList.remove("active"));
       btn.classList.add("active");
       mode = btn.dataset.mode as GameMode;
     };
   });
 
   const doCreate = async (solo: boolean) => {
-    const name = (app.querySelector<HTMLInputElement>("#c-name")!.value || "").trim();
+    const name = (
+      app.querySelector<HTMLInputElement>("#c-name")!.value || ""
+    ).trim();
     if (!name) return showToast("Digite seu nome.");
     const res = await createRoom(name, mode, solo);
     if (res.ok && res.youId) {
@@ -173,12 +211,18 @@ function renderHome() {
       showToast(res.error || "Erro ao criar sala.");
     }
   };
-  app.querySelector<HTMLButtonElement>("#c-create")!.onclick = () => doCreate(false);
-  app.querySelector<HTMLButtonElement>("#c-solo")!.onclick = () => doCreate(true);
+  app.querySelector<HTMLButtonElement>("#c-create")!.onclick = () =>
+    doCreate(false);
+  app.querySelector<HTMLButtonElement>("#c-solo")!.onclick = () =>
+    doCreate(true);
 
   app.querySelector<HTMLButtonElement>("#j-join")!.onclick = async () => {
-    const name = (app.querySelector<HTMLInputElement>("#j-name")!.value || "").trim();
-    const code = (app.querySelector<HTMLInputElement>("#j-code")!.value || "").trim().toUpperCase();
+    const name = (
+      app.querySelector<HTMLInputElement>("#j-name")!.value || ""
+    ).trim();
+    const code = (app.querySelector<HTMLInputElement>("#j-code")!.value || "")
+      .trim()
+      .toUpperCase();
     if (!name) return showToast("Digite seu nome.");
     if (code.length !== 4) return showToast("Código inválido.");
     const res = await joinRoom(code, name);
@@ -215,7 +259,8 @@ function renderLobby() {
       <h2>Escolha sua formação</h2>
       <div class="formation-grid">
         ${FORMATIONS.map(
-          (f) => `<button class="form-btn ${f.id === L.formationId ? "active" : ""}" data-form="${f.id}">${f.name}</button>`
+          (f) =>
+            `<button class="form-btn ${f.id === L.formationId ? "active" : ""}" data-form="${f.id}">${f.name}</button>`,
         ).join("")}
       </div>
 
@@ -230,7 +275,7 @@ function renderLobby() {
             <button class="ment-btn ${m.id === L.mentality ? "active" : ""}" data-ment="${m.id}">
               <strong>${m.name}</strong>
               <span>${m.desc}</span>
-            </button>`
+            </button>`,
           ).join("")}
         </div>
       </div>
@@ -291,6 +336,21 @@ function renderDraft() {
   const yourTurn = s.activePlayerId === L.youId;
   const team = s.currentTeam;
   const yourForm = getFormation(you.formationId!)!;
+  const renderPlayerItem = (
+    pl: NonNullable<typeof team>["players"][number],
+  ) => {
+    const taken = s.takenThisRound.includes(pl.name);
+    const selected = L.selectedPlayer === pl.name;
+    const clickable = yourTurn && !taken;
+    return `
+      <li class="pl-item ${taken ? "taken" : ""} ${selected ? "selected" : ""} ${clickable ? "clickable" : ""}"
+          data-player="${escapeHtml(pl.name)}">
+        <span class="pl-pos pos-${groupOf(pl.pos).toLowerCase()}">${posLabel(pl.pos)}</span>
+        <span class="pl-name">${escapeHtml(pl.name)}</span>
+        ${s.hideRatings ? `<span class="pl-rt hidden">??</span>` : `<span class="pl-rt">${pl.rating}</span>`}
+        ${taken ? `<span class="pl-tick">✓</span>` : ""}
+      </li>`;
+  };
 
   app.innerHTML = `
     <div class="screen draft">
@@ -315,27 +375,16 @@ function renderDraft() {
             <span class="draw-label">Time sorteado</span>
             <h2>${team ? escapeHtml(`${team.name} ${team.season}`) : "—"}</h2>
             <span class="draw-league">${team?.league ?? ""}</span>
-          </div>
-          <ul class="player-list">
             ${
-              team
-                ? team.players
-                    .map((pl) => {
-                      const taken = s.takenThisRound.includes(pl.name);
-                      const selected = L.selectedPlayer === pl.name;
-                      const clickable = yourTurn && !taken;
-                      return `
-                <li class="pl-item ${taken ? "taken" : ""} ${selected ? "selected" : ""} ${clickable ? "clickable" : ""}"
-                    data-player="${escapeHtml(pl.name)}">
-                  <span class="pl-pos pos-${groupOf(pl.pos).toLowerCase()}">${posLabel(pl.pos)}</span>
-                  <span class="pl-name">${escapeHtml(pl.name)}</span>
-                  ${s.hideRatings ? `<span class="pl-rt hidden">??</span>` : `<span class="pl-rt">${pl.rating}</span>`}
-                  ${taken ? `<span class="pl-tick">✓</span>` : ""}
-                </li>`;
-                    })
-                    .join("")
+              s.pvpRerollsEnabled
+                ? `<button id="reroll-team" class="ghost reroll" ${!yourTurn || (you.rerollsRemaining ?? 0) <= 0 ? "disabled" : ""}>
+                    Atualizar time (${you.rerollsRemaining ?? 0})
+                  </button>`
                 : ""
             }
+          </div>
+          <ul class="player-list">
+            ${team ? team.players.map(renderPlayerItem).join("") : ""}
           </ul>
           <p class="draft-hint">
             ${
@@ -358,6 +407,14 @@ function renderDraft() {
   `;
 
   // select a player
+  app
+    .querySelector<HTMLButtonElement>("#reroll-team")
+    ?.addEventListener("click", () => {
+      L.selectedPlayer = null;
+      sendRerollTeam();
+    });
+
+  // select a player
   app.querySelectorAll<HTMLLIElement>(".pl-item.clickable").forEach((li) => {
     li.onclick = () => {
       L.selectedPlayer = li.dataset.player!;
@@ -367,19 +424,22 @@ function renderDraft() {
 
   // click an open slot to field the player
   if (yourTurn && L.selectedPlayer) {
-    app.querySelectorAll<HTMLElement>(".you-board .slot.empty").forEach((slot) => {
-      slot.onclick = () => {
-        sendPick(slot.dataset.slot!, L.selectedPlayer!);
-        L.selectedPlayer = null;
-      };
-    });
+    app
+      .querySelectorAll<HTMLElement>(".you-board .slot.empty")
+      .forEach((slot) => {
+        slot.onclick = () => {
+          sendPick(slot.dataset.slot!, L.selectedPlayer!);
+          L.selectedPlayer = null;
+        };
+      });
   }
 }
 
 function avgLabel(p: PlayerPublic): string {
   if (L.state?.hideRatings) return "OVR ??";
   if (!p.picks.length) return "";
-  const avg = p.picks.reduce((a, b) => a + b.effectiveRating, 0) / p.picks.length;
+  const avg =
+    p.picks.reduce((a, b) => a + b.effectiveRating, 0) / p.picks.length;
   return `OVR ${Math.round(avg)}`;
 }
 
@@ -390,7 +450,7 @@ function renderPitch(
   picks: PlayerPublic["picks"],
   highlightEmpty = false,
   interactive = false,
-  small = false
+  small = false,
 ): string {
   const bySlot = new Map(picks.map((p) => [p.slotId, p]));
   const nodes = formation.slots
@@ -399,9 +459,13 @@ function renderPitch(
       const filled = !!pick;
       const cls = filled ? "filled" : highlightEmpty ? "empty open" : "empty";
       const rating =
-        pick && !L.state?.hideRatings ? `<span class="slot-rt">${pick.effectiveRating}</span>` : "";
+        pick && !L.state?.hideRatings
+          ? `<span class="slot-rt">${pick.effectiveRating}</span>`
+          : "";
       const penal =
-        pick && !L.state?.hideRatings && pick.effectiveRating < pick.player.rating
+        pick &&
+        !L.state?.hideRatings &&
+        pick.effectiveRating < pick.player.rating
           ? `<span class="slot-pen" title="Fora de posição">▼</span>`
           : "";
       const label = filled ? lastName(pick!.player.name) : posLabel(slot.pos);
@@ -420,6 +484,116 @@ function renderPitch(
     <div class="pitch-lines"></div>
     ${nodes}
   </div>`;
+}
+
+function reassignPicksToFormation(player: PlayerPublic, formationId: string) {
+  const formation = getFormation(formationId);
+  if (!formation || player.picks.length !== formation.slots.length) return null;
+
+  const before =
+    player.picks.reduce((sum, pick) => sum + pick.effectiveRating, 0) /
+    Math.max(1, player.picks.length);
+  const remaining = [...player.picks];
+  const next = formation.slots.map((slot) => {
+    let bestIdx = 0;
+    let bestRating = -Infinity;
+    for (let i = 0; i < remaining.length; i++) {
+      const rating = effectiveRating(remaining[i].player, slot.pos);
+      if (rating > bestRating) {
+        bestRating = rating;
+        bestIdx = i;
+      }
+    }
+    const [pick] = remaining.splice(bestIdx, 1);
+    return {
+      ...pick,
+      slotId: slot.id,
+      effectiveRating: effectiveRating(pick.player, slot.pos),
+    };
+  });
+  player.formationId = formationId;
+  player.picks = next;
+  const after =
+    next.reduce((sum, pick) => sum + pick.effectiveRating, 0) /
+    Math.max(1, next.length);
+  return Math.round((after - before) * 10) / 10;
+}
+
+function shuffled<T>(items: T[]): T[] {
+  return [...items].sort(() => Math.random() - 0.5);
+}
+
+function buildIntervalBench(
+  player: PlayerPublic,
+): Array<Player & { fromTeamId: string }> {
+  const pickedNames = new Set(player.picks.map((pick) => pick.player.name));
+  const byName = new Map<string, Player & { fromTeamId: string }>();
+  for (const pick of player.picks) {
+    const team = getTeam(pick.fromTeamId);
+    for (const reserve of team?.bench ?? []) {
+      if (pickedNames.has(reserve.name)) continue;
+      byName.set(`${pick.fromTeamId}:${reserve.name}`, {
+        ...reserve,
+        fromTeamId: pick.fromTeamId,
+      });
+    }
+  }
+  return shuffled([...byName.values()]).slice(0, 12);
+}
+
+function applyIntervalSubstitution(
+  player: PlayerPublic,
+  outSlotId: string,
+  reserveName: string,
+  bench = L.intervalBench ?? [],
+) {
+  const reserve = bench.find((p) => p.name === reserveName);
+  const pickIdx = player.picks.findIndex((pick) => pick.slotId === outSlotId);
+  const formation = player.formationId
+    ? getFormation(player.formationId)
+    : null;
+  const slot = formation?.slots.find((s) => s.id === outSlotId);
+  if (!reserve || pickIdx < 0 || !slot) return null;
+
+  const outgoing = player.picks[pickIdx];
+  const nextRating = effectiveRating(reserve, slot.pos);
+  player.picks[pickIdx] = {
+    ...outgoing,
+    player: reserve,
+    fromTeamId: reserve.fromTeamId,
+    effectiveRating: nextRating,
+  };
+  if (bench === L.intervalBench) {
+    L.intervalBench =
+      L.intervalBench?.filter((p) => p.name !== reserve.name) ?? null;
+  }
+  return {
+    out: outgoing.player.name,
+    in: reserve.name,
+    delta: nextRating - outgoing.effectiveRating,
+  };
+}
+
+function runAISubstitutions(player: PlayerPublic): string {
+  let bench = buildIntervalBench(player);
+  const changes: string[] = [];
+  for (let i = 0; i < 5 && bench.length; i++) {
+    let best: { slotId: string; reserve: Player & { fromTeamId: string }; delta: number } | null = null;
+    for (const pick of player.picks) {
+      const formation = player.formationId ? getFormation(player.formationId) : null;
+      const slot = formation?.slots.find((s) => s.id === pick.slotId);
+      if (!slot) continue;
+      for (const reserve of bench) {
+        const delta = effectiveRating(reserve, slot.pos) - pick.effectiveRating;
+        if (!best || delta > best.delta) best = { slotId: pick.slotId, reserve, delta };
+      }
+    }
+    if (!best) break;
+    const result = applyIntervalSubstitution(player, best.slotId, best.reserve.name, bench);
+    bench = bench.filter((p) => p.name !== best!.reserve.name);
+    if (result) changes.push(`${result.in} por ${result.out}`);
+  }
+  return changes.length ? changes.join("; ") : "sem mudanças";
 }
 
 function lastName(full: string): string {
@@ -442,13 +616,16 @@ function renderResult() {
 
 // ---------------- Live match (animated simulation) ----------------
 
-const TICK_BASE_MS = 125; // ms per match "minute" at 1x
+const TICK_BASE_MS = 260; // ms per match "minute" at 1x
 
 function renderLiveMatch() {
   const s = L.state!;
   const r = s.result!;
   const you = me()!;
   const opp = opponent()!;
+  const vsAI = s.players.some((p) => p.isAI);
+  if (!vsAI) L.matchSpeed = 1;
+  L.intervalBench ??= buildIntervalBench(you);
   L.playing = true;
 
   // map home/away side -> you/opponent
@@ -472,18 +649,53 @@ function renderLiveMatch() {
         </div>
         <div class="speed-row">
           <span class="spd-label">Velocidade</span>
-          ${[1, 1.5, 2]
-            .map((v) => `<button class="spd ${v === L.matchSpeed ? "active" : ""}" data-spd="${v}">${v}x</button>`)
+          ${(vsAI ? [1, 1.5, 2] : [1])
+            .map(
+              (v) =>
+                `<button class="spd ${v === L.matchSpeed ? "active" : ""}" data-spd="${v}">${v}x</button>`,
+            )
             .join("")}
+          ${vsAI ? "" : `<span class="speed-note">Velocidade extra só contra a máquina</span>`}
           <button id="skip" class="ghost skip">Pular</button>
+        </div>
+        <div class="halftime-panel" id="half-panel" hidden>
+          <div class="section-head">
+            <h3>Intervalo</h3>
+            <span id="sub-count">Substituições 0/5</span>
+          </div>
+          <div class="half-controls">
+            <label>Formação
+              <select id="half-form">
+                ${FORMATIONS.map((f) => `<option value="${f.id}" ${f.id === (you.formationId ?? L.formationId) ? "selected" : ""}>${f.name}</option>`).join("")}
+              </select>
+            </label>
+            <label>Estilo
+              <select id="half-ment">
+                ${MENTALITIES.map((m) => `<option value="${m.id}" ${m.id === (you.mentality ?? L.mentality) ? "selected" : ""}>${m.name}</option>`).join("")}
+              </select>
+            </label>
+            <button id="half-continue" class="primary">Voltar para o jogo</button>
+          </div>
+          <div class="halftime-squad">
+            <div>
+              <div id="half-pitch" class="half-pitch">
+                ${renderPitch(getFormation(you.formationId ?? L.formationId)!, you.picks, false, false, true)}
+              </div>
+              <p id="sub-status" class="sub-status">Clique em um jogador no campo e depois escolha um reserva.</p>
+            </div>
+            <ul id="reserve-list" class="reserve-list"></ul>
+          </div>
+        </div>
+        <div class="goal-overlay" id="goal-ov">
+          <div class="goal-word">GOL!</div>
+          <div class="goal-scorer" id="goal-scorer"></div>
+        </div>
+        <div class="card-overlay" id="card-ov">
+          <div class="card-flash" id="card-flash"></div>
+          <div class="card-name" id="card-name"></div>
         </div>
         <ul class="event-feed" id="feed"></ul>
       </div>
-      <div class="goal-overlay" id="goal-ov">
-        <div class="goal-word">G<span>O</span>O<span>O</span>L!</div>
-        <div class="goal-scorer" id="goal-scorer"></div>
-      </div>
-      <div class="card-overlay" id="card-ov"><div class="card-flash" id="card-flash"></div><div class="card-name" id="card-name"></div></div>
     </div>
   `;
 
@@ -495,6 +707,16 @@ function renderLiveMatch() {
   const feed = document.getElementById("feed")!;
   const goalOv = document.getElementById("goal-ov")!;
   const goalScorer = document.getElementById("goal-scorer")!;
+  const halfPanel = document.getElementById("half-panel") as HTMLDivElement;
+  const halfForm = document.getElementById("half-form") as HTMLSelectElement;
+  const halfMent = document.getElementById("half-ment") as HTMLSelectElement;
+  const halfContinue = document.getElementById(
+    "half-continue",
+  ) as HTMLButtonElement;
+  const halfPitch = document.getElementById("half-pitch") as HTMLDivElement;
+  const reserveList = document.getElementById("reserve-list") as HTMLUListElement;
+  const subStatus = document.getElementById("sub-status") as HTMLParagraphElement;
+  const subCount = document.getElementById("sub-count") as HTMLSpanElement;
   const cardOv = document.getElementById("card-ov")!;
   const cardFlash = document.getElementById("card-flash")!;
   const cardName = document.getElementById("card-name")!;
@@ -512,60 +734,181 @@ function renderLiveMatch() {
 
   function addFeed(ev: MatchEvent) {
     const li = document.createElement("li");
-    const cardCls = ev.type === "card" ? (ev.card === "red" ? " red" : " yellow") : "";
+    const cardCls =
+      ev.type === "card" ? (ev.card === "red" ? " red" : " yellow") : "";
     li.className = `ev ${ev.type}${cardCls}`;
     const min = Math.min(ev.minute, 90);
     li.innerHTML = `<span class="ev-min">${min}'</span><span class="ev-tx">${escapeHtml(ev.text)}</span>`;
     feed.prepend(li);
   }
 
+  function renderReserveList() {
+    reserveList.innerHTML = (L.intervalBench ?? [])
+      .map((p) => {
+        const team = getTeam(p.fromTeamId);
+        const selected = L.selectedSubIn === p.name ? " selected" : "";
+        return `
+          <li>
+            <button class="reserve-option${selected}" data-reserve="${escapeHtml(p.name)}" ${L.intervalSubCount >= 5 ? "disabled" : ""}>
+              <span class="pl-pos pos-${groupOf(p.pos).toLowerCase()}">${posLabel(p.pos)}</span>
+              <span class="pl-name">${escapeHtml(p.name)}</span>
+              <span class="pl-team">${escapeHtml(team ? `${team.name} ${team.season}` : "Reserva")}</span>
+              ${s.hideRatings ? `<span class="pl-rt hidden">??</span>` : `<span class="pl-rt">${p.rating}</span>`}
+            </button>
+          </li>`;
+      })
+      .join("");
+    reserveList.querySelectorAll<HTMLButtonElement>(".reserve-option").forEach((btn) => {
+      btn.onclick = () => {
+        if (L.intervalSubCount >= 5) return;
+        L.selectedSubIn = btn.dataset.reserve ?? null;
+        if (!L.selectedSubOut || !L.selectedSubIn) {
+          subStatus.textContent = "Agora clique em um jogador no campo para definir quem sai.";
+          renderReserveList();
+          return;
+        }
+        const result = applyIntervalSubstitution(you, L.selectedSubOut, L.selectedSubIn);
+        if (!result) return;
+        L.intervalSubCount++;
+        L.selectedSubOut = null;
+        L.selectedSubIn = null;
+        refreshHalftimeSquad(
+          `Sai ${result.out}, entra ${result.in} (${result.delta >= 0 ? "+" : ""}${result.delta} no encaixe).`,
+        );
+      };
+    });
+  }
+
+  function refreshHalftimeSquad(status?: string) {
+    halfPitch.innerHTML = renderPitch(getFormation(you.formationId ?? L.formationId)!, you.picks, false, false, true);
+    halfPitch.querySelectorAll<HTMLElement>(".slot.filled").forEach((slot) => {
+      slot.onclick = () => {
+        if (L.intervalSubCount >= 5) return;
+        L.selectedSubOut = slot.dataset.slot ?? null;
+        if (L.selectedSubOut && L.selectedSubIn) {
+          const result = applyIntervalSubstitution(you, L.selectedSubOut, L.selectedSubIn);
+          if (!result) return;
+          L.intervalSubCount++;
+          L.selectedSubOut = null;
+          L.selectedSubIn = null;
+          refreshHalftimeSquad(
+            `Sai ${result.out}, entra ${result.in} (${result.delta >= 0 ? "+" : ""}${result.delta} no encaixe).`,
+          );
+          return;
+        }
+        halfPitch.querySelectorAll(".slot").forEach((el) => el.classList.remove("selected-sub"));
+        slot.classList.add("selected-sub");
+        const pick = you.picks.find((p) => p.slotId === L.selectedSubOut);
+        subStatus.textContent = pick
+          ? `${pick.player.name} selecionado. Escolha um reserva para entrar.`
+          : "Escolha um reserva.";
+      };
+    });
+    subCount.textContent = `Substituições ${L.intervalSubCount}/5`;
+    subStatus.textContent =
+      status ?? (L.intervalSubCount >= 5 ? "Limite de 5 substituições usado." : "Clique em um jogador no campo e depois escolha um reserva.");
+    renderReserveList();
+  }
+
   function goalAnim(scorer: string | undefined) {
     goalScorer.textContent = scorer ?? "";
     goalOv.classList.add("show");
     clearTimeout(hideTimer);
-    hideTimer = window.setTimeout(() => goalOv.classList.remove("show"), 1500);
+    hideTimer = window.setTimeout(() => goalOv.classList.remove("show"), 950);
   }
 
   function cardAnim(ev: MatchEvent) {
-    cardFlash.className = "card-flash " + (ev.card === "red" ? "red" : "yellow");
-    cardName.textContent = ev.player ?? "";
+    cardFlash.className =
+      "card-flash " + (ev.card === "red" ? "red" : "yellow");
+    cardName.textContent = `${ev.card === "red" ? "Vermelho" : "Amarelo"}${ev.player ? `: ${ev.player}` : ""}`;
     cardOv.classList.add("show");
     clearTimeout(hideTimer);
-    hideTimer = window.setTimeout(() => cardOv.classList.remove("show"), 900);
+    hideTimer = window.setTimeout(() => cardOv.classList.remove("show"), 950);
+  }
+
+  function isGoalSetupEvent(ev: MatchEvent, nextEv: MatchEvent | undefined) {
+    return (
+      (ev.type === "info" || ev.type === "chance") &&
+      nextEv?.type === "goal" &&
+      nextEv.minute <= ev.minute + 1
+    );
+  }
+
+  function eventDelay(ev: MatchEvent, isGoalSetup: boolean): number {
+    if (isGoalSetup) return 4200;
+    switch (ev.type) {
+      case "goal":
+        return 3900;
+      case "chance":
+      case "save":
+      case "corner":
+      case "var":
+        return 2200;
+      case "card":
+        return 1700;
+      case "foul":
+      case "offside":
+      case "injury":
+        return 1600;
+      case "sub":
+      case "info":
+        return 1500;
+      case "halftime":
+      case "fulltime":
+        return 1200;
+      default:
+        return 1300;
+    }
+  }
+
+  function processEvent(ev: MatchEvent): number | null {
+    const nextEv = r.timeline[evIdx];
+    const isGoalSetup = isGoalSetupEvent(ev, nextEv);
+
+    if (ev.type === "goal") {
+      const pid = sideToPid(ev.side);
+      addFeed(ev);
+      if (pid) goals[pid]++;
+      updateScore();
+      goalAnim(ev.player);
+    } else if (ev.type === "card") {
+      addFeed(ev);
+      cardAnim(ev);
+    } else if (ev.type === "halftime" && !L.halftimeAdjusted) {
+      addFeed(ev);
+      showHalftimePanel();
+      return null;
+    } else {
+      addFeed(ev);
+    }
+
+    return eventDelay(ev, isGoalSetup);
   }
 
   function tick() {
     if (!L.playing) return;
-    minute++;
-    clk.textContent = String(Math.min(minute, 90));
-    halfLabel.textContent = minute <= 45 ? "1º Tempo" : "2º Tempo";
-    let pause = 0;
-    while (evIdx < r.timeline.length && r.timeline[evIdx].minute <= minute) {
+
+    if (evIdx < r.timeline.length && r.timeline[evIdx].minute <= minute) {
       const ev = r.timeline[evIdx++];
-      addFeed(ev);
-      if (ev.type === "goal") {
-        const pid = sideToPid(ev.side);
-        if (pid) goals[pid]++;
-        updateScore();
-        goalAnim(ev.player);
-        pause = Math.max(pause, 1500);
-      } else if (ev.type === "card") {
-        cardAnim(ev);
-        pause = Math.max(pause, 850);
-      } else if (ev.type === "halftime") {
-        pause = Math.max(pause, 900);
-      }
+      const delay = processEvent(ev);
+      if (delay === null) return;
+      schedule(delay / L.matchSpeed);
+      return;
     }
 
     if (minute >= 90) {
       if (r.shootout && r.shootout.length) {
-        schedule(1000, playShootout);
+        schedule(1200, playShootout);
       } else {
-        schedule(900, finish);
+        schedule(1200, finish);
       }
       return;
     }
-    schedule((pause || TICK_BASE_MS) / L.matchSpeed);
+
+    minute++;
+    clk.textContent = String(Math.min(minute, 90));
+    halfLabel.textContent = minute <= 45 ? "1º Tempo" : "2º Tempo";
+    schedule(TICK_BASE_MS / L.matchSpeed);
   }
 
   // penalty shootout revealed kick by kick
@@ -601,6 +944,49 @@ function renderLiveMatch() {
     timer = window.setTimeout(fn, delay);
   }
 
+  function showHalftimePanel() {
+    L.halftimeAdjusted = true;
+    halfPanel.hidden = false;
+    refreshHalftimeSquad();
+    halfForm.onchange = () => {
+      const ratingSwing = reassignPicksToFormation(you, halfForm.value);
+      L.formationId = halfForm.value;
+      L.selectedSubOut = null;
+      const impact =
+        ratingSwing === null
+          ? "Formação atualizada."
+          : ratingSwing > 0
+            ? `Formação atualizada. Encaixe melhorou +${ratingSwing.toFixed(1)}.`
+            : ratingSwing < 0
+              ? `Formação atualizada. Encaixe caiu ${ratingSwing.toFixed(1)} por jogadores fora de posição.`
+              : "Formação atualizada. Encaixe manteve o mesmo over efetivo.";
+      refreshHalftimeSquad(impact);
+    };
+    let aiText = "";
+    if (opp.isAI && !L.aiHalftimeSubsDone) {
+      L.aiHalftimeSubsDone = true;
+      aiText = ` Máquina também mexeu 5 vezes: ${runAISubstitutions(opp)}.`;
+    }
+    halfContinue.onclick = () => {
+      const formationName =
+        FORMATIONS.find((f) => f.id === halfForm.value)?.name ?? halfForm.value;
+      const mentalityName =
+        MENTALITIES.find((m) => m.id === halfMent.value)?.name ??
+        halfMent.value;
+      L.formationId = halfForm.value;
+      L.mentality = halfMent.value as Mentality;
+      you.mentality = L.mentality;
+      halfPanel.hidden = true;
+      addFeed({
+        minute: 46,
+        type: "info",
+        side: null,
+        text: `Ajuste no intervalo: ${formationName}, estilo ${mentalityName} e ${L.intervalSubCount}/5 substituições.${aiText}`,
+      });
+      schedule(800);
+    };
+  }
+
   function finish() {
     clearTimeout(timer);
     clearTimeout(hideTimer);
@@ -629,7 +1015,8 @@ interface Leader {
 
 function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+  if (parts.length >= 2)
+    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
   return name.slice(0, 2).toUpperCase();
 }
 
@@ -656,7 +1043,13 @@ function computeLeaders(r: MatchResult, youId: string) {
   const top = (m: Map<string, number>, unit: string): Leader | null => {
     let best: [string, number] | null = null;
     for (const e of m) if (!best || e[1] > best[1]) best = e;
-    return best ? { name: best[0], val: `${best[1]} ${unit}${best[1] > 1 ? "s" : ""}`, side: sideOf.get(best[0])! } : null;
+    return best
+      ? {
+          name: best[0],
+          val: `${best[1]} ${unit}${best[1] > 1 ? "s" : ""}`,
+          side: sideOf.get(best[0])!,
+        }
+      : null;
   };
 
   const scorer = top(goals, "gol");
@@ -674,16 +1067,27 @@ function computeLeaders(r: MatchResult, youId: string) {
     }
   }
   if (!motm) {
-    const winner = L.state!.players.find((p) => (winnerSide === "you" ? p.id === youId : p.id !== youId));
-    const best = [...(winner?.picks ?? [])].sort((a, b) => b.effectiveRating - a.effectiveRating)[0];
-    if (best) motm = { name: best.player.name, val: `${best.effectiveRating} de over`, side: winnerSide };
+    const winner = L.state!.players.find((p) =>
+      winnerSide === "you" ? p.id === youId : p.id !== youId,
+    );
+    const best = [...(winner?.picks ?? [])].sort(
+      (a, b) => b.effectiveRating - a.effectiveRating,
+    )[0];
+    if (best)
+      motm = {
+        name: best.player.name,
+        val: `${best.effectiveRating} de over`,
+        side: winnerSide,
+      };
   }
 
   return { scorer, assist, motm };
 }
 
 function leaderCard(label: string, data: Leader | null): string {
-  const ic = data ? `<div class="leader-ic ${data.side}">${initials(data.name)}</div>` : `<div class="leader-ic">–</div>`;
+  const ic = data
+    ? `<div class="leader-ic ${data.side}">${initials(data.name)}</div>`
+    : `<div class="leader-ic">–</div>`;
   return `
     <div class="leader-card">
       ${ic}
@@ -695,25 +1099,39 @@ function leaderCard(label: string, data: Leader | null): string {
     </div>`;
 }
 
-function eventLog(r: MatchResult, you: PlayerPublic, opp: PlayerPublic): string {
+function eventLog(
+  r: MatchResult,
+  you: PlayerPublic,
+  opp: PlayerPublic,
+): string {
   const sideName = (side: "home" | "away" | null) => {
     if (side === "home") return r.homeId === you.id ? you.name : opp.name;
     if (side === "away") return r.awayId === you.id ? you.name : opp.name;
     return "";
   };
 
-  const timeline = r.timeline
-    .map((ev) => {
-      const cardCls = ev.type === "card" ? (ev.card === "red" ? " red" : " yellow") : "";
-      const team = sideName(ev.side);
-      return `
+  const importantTypes = new Set<MatchEvent["type"]>([
+    "goal",
+    "card",
+    "injury",
+    "halftime",
+    "fulltime",
+  ]);
+  const important = r.timeline.filter((ev) => importantTypes.has(ev.type));
+  const renderEvents = (events: MatchEvent[]) =>
+    events
+      .map((ev) => {
+        const cardCls =
+          ev.type === "card" ? (ev.card === "red" ? " red" : " yellow") : "";
+        const team = sideName(ev.side);
+        return `
         <li class="ev ${ev.type}${cardCls}">
           <span class="ev-min">${Math.min(ev.minute, 90)}'</span>
           <span class="ev-tx">${escapeHtml(ev.text)}</span>
           ${team ? `<span class="ev-side">${escapeHtml(team)}</span>` : ""}
         </li>`;
-    })
-    .join("");
+      })
+      .join("");
 
   const penalties = r.shootout
     ? r.shootout
@@ -734,13 +1152,24 @@ function eventLog(r: MatchResult, you: PlayerPublic, opp: PlayerPublic): string 
   return `
     <section class="match-log">
       <div class="section-head">
-        <h3>Lances da partida</h3>
-        <span>${r.timeline.length + (r.shootout?.length ?? 0)} eventos</span>
+        <h3>Principais lances</h3>
+        <span>${important.length + (r.shootout?.length ?? 0)} destaques</span>
       </div>
       <ul class="event-feed result-feed">
-        ${timeline}
+        ${renderEvents(important)}
         ${penalties}
       </ul>
+      <button id="toggle-log" class="ghost log-toggle">Ver todos os lances</button>
+      <div id="full-log" class="full-log" hidden>
+        <div class="section-head compact">
+          <h3>Todos os lances</h3>
+          <span>${r.timeline.length + (r.shootout?.length ?? 0)} eventos</span>
+        </div>
+        <ul class="event-feed result-feed">
+          ${renderEvents(r.timeline)}
+          ${penalties}
+        </ul>
+      </div>
     </section>`;
 }
 
@@ -806,10 +1235,24 @@ function renderSummary() {
     </div>
   `;
 
-  app.querySelector<HTMLButtonElement>("#rematch")!.onclick = () => sendRematch();
+  app.querySelector<HTMLButtonElement>("#rematch")!.onclick = () =>
+    sendRematch();
+  app.querySelector<HTMLButtonElement>("#toggle-log")!.onclick = (ev) => {
+    const full = document.getElementById("full-log")!;
+    const btn = ev.currentTarget as HTMLButtonElement;
+    full.hidden = !full.hidden;
+    btn.textContent = full.hidden
+      ? "Ver todos os lances"
+      : "Ocultar lances completos";
+  };
 }
 
-function strengthRow(label: string, a: number, b: number, bold = false): string {
+function strengthRow(
+  label: string,
+  a: number,
+  b: number,
+  bold = false,
+): string {
   const max = Math.max(a, b, 1);
   return `
     <div class="srow ${bold ? "bold" : ""}">
@@ -822,8 +1265,12 @@ function strengthRow(label: string, a: number, b: number, bold = false): string 
 // ---------------- util ----------------
 
 function escapeHtml(s: string): string {
-  return s.replace(/[&<>"']/g, (c) =>
-    ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]!)
+  return s.replace(
+    /[&<>"']/g,
+    (c) =>
+      ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" })[
+        c
+      ]!,
   );
 }
 
