@@ -21,7 +21,10 @@ import { getMentality } from "./mentalities.js";
  * - adjacent groups (DEF<->MID, MID<->ATT): -10
  * - distant groups (DEF<->ATT) or involving GK: -22
  */
-export function positionPenalty(playerPos: Position, slotPos: Position): number {
+export function positionPenalty(
+  playerPos: Position,
+  slotPos: Position,
+): number {
   if (playerPos === slotPos) return 0;
 
   const pg = groupOf(playerPos);
@@ -43,9 +46,16 @@ export function effectiveRating(player: Player, slotPos: Position): number {
 }
 
 /** Compute team strength per line from the assigned picks. */
-export function computeStrength(picks: SquadPick[], formationId: string): TeamStrength {
+export function computeStrength(
+  picks: SquadPick[],
+  formationId: string,
+): TeamStrength {
   const formation = getFormation(formationId);
-  const lines: Record<"DEF" | "MID" | "ATT", number[]> = { DEF: [], MID: [], ATT: [] };
+  const lines: Record<"DEF" | "MID" | "ATT", number[]> = {
+    DEF: [],
+    MID: [],
+    ATT: [],
+  };
   let gk = 0;
 
   for (const pick of picks) {
@@ -83,7 +93,11 @@ function round1(n: number): number {
   return Math.round(n * 10) / 10;
 }
 
-function applyMentality(s: TeamStrength, mentality: Mentality, weight = 1): TeamStrength {
+function applyMentality(
+  s: TeamStrength,
+  mentality: Mentality,
+  weight = 1,
+): TeamStrength {
   const m = getMentality(mentality);
   // weight > 1 amplifies the deviation from neutral (1.0). Used in World Cup mode.
   const atk = 1 + (m.attackMod - 1) * weight;
@@ -110,8 +124,15 @@ function scoreWeight(pick: SquadPick): number {
 }
 
 /** Pick a random player from the team, weighted by position group. */
-function weightedPlayer(side: SimSide, rng: () => number, w: Partial<Record<string, number>>): string {
-  const pool = side.picks.map((p) => ({ name: p.player.name, w: (w[groupOf(p.player.pos)] ?? 0) + 0.01 }));
+function weightedPlayer(
+  side: SimSide,
+  rng: () => number,
+  w: Partial<Record<string, number>>,
+): string {
+  const pool = side.picks.map((p) => ({
+    name: p.player.name,
+    w: (w[groupOf(p.player.pos)] ?? 0) + 0.01,
+  }));
   const total = pool.reduce((a, b) => a + b.w, 0) || 1;
   let r = rng() * total;
   for (const p of pool) {
@@ -138,7 +159,7 @@ function pick<T>(arr: T[], rng: () => number): T {
   return arr[Math.floor(rng() * arr.length)];
 }
 function teamLabel(side: SimSide): string {
-  return `time de ${side.name}`;
+  return `${side.name}`;
 }
 
 const TXT = {
@@ -218,7 +239,12 @@ const TXT = {
   ],
 };
 
-function fill(tpl: string, side: SimSide, rng: () => number, w = W_FIELD): string {
+function fill(
+  tpl: string,
+  side: SimSide,
+  rng: () => number,
+  w = W_FIELD,
+): string {
   return tpl
     .replace(/\{team\}/g, teamLabel(side))
     .replace(/\{gk\}/g, gkName(side))
@@ -227,10 +253,16 @@ function fill(tpl: string, side: SimSide, rng: () => number, w = W_FIELD): strin
 
 // Field coordinates on a 105x68 grid (1..105 long, 1..68 wide).
 // "home" attacks toward x=105, "away" toward x=0; corner 1-1 is a corner flag.
-const between = (lo: number, hi: number, rng: () => number) => lo + Math.floor(rng() * (hi - lo + 1));
-const clampN = (v: number, lo: number, hi: number) => Math.max(lo, Math.min(hi, Math.round(v)));
+const between = (lo: number, hi: number, rng: () => number) =>
+  lo + Math.floor(rng() * (hi - lo + 1));
+const clampN = (v: number, lo: number, hi: number) =>
+  Math.max(lo, Math.min(hi, Math.round(v)));
 
-function ballSpot(type: MatchEvent["type"], side: Side | null, rng: () => number): { bx: number; by: number } {
+function ballSpot(
+  type: MatchEvent["type"],
+  side: Side | null,
+  rng: () => number,
+): { bx: number; by: number } {
   // depth = attacking progress toward the opponent goal (0..105)
   const orient = (depth: number, y: number) => ({
     bx: clampN(side === "away" ? 106 - depth : depth, 1, 105),
@@ -248,7 +280,10 @@ function ballSpot(type: MatchEvent["type"], side: Side | null, rng: () => number
     case "chance":
       return orient(between(85, 100, rng), between(22, 46, rng));
     case "corner":
-      return orient(between(103, 105, rng), rng() < 0.5 ? between(1, 3, rng) : between(65, 67, rng));
+      return orient(
+        between(103, 105, rng),
+        rng() < 0.5 ? between(1, 3, rng) : between(65, 67, rng),
+      );
     case "offside":
       return orient(between(80, 96, rng), between(12, 56, rng));
     case "save": // the saving team is near its OWN goal
@@ -282,7 +317,7 @@ function buildHalfTimeline(
   awayGoals: number,
   rng: () => number,
   half: 1 | 2,
-  preExpelled: HalfExpelled = { home: [], away: [] }
+  preExpelled: HalfExpelled = { home: [], away: [] },
 ): { events: MatchEvent[]; expelled: HalfExpelled } {
   const evs: MatchEvent[] = [];
   const sideOf = (k: Side) => (k === "home" ? home : away);
@@ -291,71 +326,151 @@ function buildHalfTimeline(
   const span = end - start + 1;
   const randMin = () => start + Math.floor(rng() * span);
 
-  const add = (minute: number, type: MatchEvent["type"], key: Side | null, text: string, extra: Partial<MatchEvent> = {}) => {
+  const add = (
+    minute: number,
+    type: MatchEvent["type"],
+    key: Side | null,
+    text: string,
+    extra: Partial<MatchEvent> = {},
+  ) => {
     const spot = ballSpot(type, key, rng);
-    evs.push({ minute, type, side: key, text, bx: spot.bx, by: spot.by, ...extra });
+    evs.push({
+      minute,
+      type,
+      side: key,
+      text,
+      bx: spot.bx,
+      by: spot.by,
+      ...extra,
+    });
   };
 
   // players sent off, with the minute they left (pre-expelled left before this half)
   const gone: { key: Side; name: string; from: number }[] = [
-    ...preExpelled.home.map((name) => ({ key: "home" as Side, name, from: start - 1 })),
-    ...preExpelled.away.map((name) => ({ key: "away" as Side, name, from: start - 1 })),
+    ...preExpelled.home.map((name) => ({
+      key: "home" as Side,
+      name,
+      from: start - 1,
+    })),
+    ...preExpelled.away.map((name) => ({
+      key: "away" as Side,
+      name,
+      from: start - 1,
+    })),
   ];
   // side with already-expelled players removed for events at the given minute
   const availSide = (key: Side, minute: number): SimSide => {
     const side = sideOf(key);
-    const banned = new Set(gone.filter((g) => g.key === key && g.from <= minute).map((g) => g.name));
+    const banned = new Set(
+      gone.filter((g) => g.key === key && g.from <= minute).map((g) => g.name),
+    );
     if (!banned.size) return side;
     const picks = side.picks.filter((p) => !banned.has(p.player.name));
     return picks.length ? { ...side, picks } : side;
   };
 
-  if (half === 1) add(0, "kickoff", null, `Bola rolando! ${teamLabel(home)} x ${teamLabel(away)}.`);
+  if (half === 1)
+    add(
+      0,
+      "kickoff",
+      null,
+      `Bola rolando! ${teamLabel(home)} x ${teamLabel(away)}.`,
+    );
 
   // decide the red card first so later events can leave the sent-off player out
   if (rng() < 0.1) {
     const key: Side = rng() > 0.5 ? "home" : "away";
     const minute = randMin();
     const player = weightedPlayer(availSide(key, minute), rng, W_DEFENSE);
-    add(minute, "card", key, pick(TXT.red, rng).replace(/\{team\}/g, teamLabel(sideOf(key))).replace(/\{p\}/g, player), {
-      player,
-      card: "red",
-    });
+    add(
+      minute,
+      "card",
+      key,
+      pick(TXT.red, rng)
+        .replace(/\{team\}/g, teamLabel(sideOf(key)))
+        .replace(/\{p\}/g, player),
+      {
+        player,
+        card: "red",
+      },
+    );
     gone.push({ key, name: player, from: minute });
   }
 
   // goals, each preceded by a build-up and a final pass
   const addGoals = (key: Side, n: number) => {
     for (let i = 0; i < n; i++) {
-      const minute = Math.min(end, start + 2 + Math.floor(rng() * Math.max(1, span - 2)));
+      const minute = Math.min(
+        end,
+        start + 2 + Math.floor(rng() * Math.max(1, span - 2)),
+      );
       const aSide = availSide(key, minute);
       const scorer = pickScorer(aSide, rng);
       let assist: string | undefined;
       if (rng() < 0.7) {
         for (let t = 0; t < 4; t++) {
           const a = weightedPlayer(aSide, rng, W_PLAYMAKER);
-          if (a !== scorer) { assist = a; break; }
+          if (a !== scorer) {
+            assist = a;
+            break;
+          }
         }
       }
       const varTag = rng() < 0.18 ? " (confirmado pelo VAR)" : "";
       const assistTxt = assist ? ` Assistência de ${assist}.` : "";
-      add(Math.max(start, minute - 2), "info", key, fill(pick(TXT.buildup, rng), availSide(key, minute - 2), rng, W_PLAYMAKER));
-      add(Math.max(start, minute - 1), "chance", key, fill(pick(TXT.assistMove, rng), availSide(key, minute - 1), rng, W_PLAYMAKER));
-      add(minute, "goal", key, `GOL do ${teamLabel(sideOf(key))}! ${scorer} balança a rede!${varTag}${assistTxt}`, {
-        player: scorer,
-        assist,
-      });
+      add(
+        Math.max(start, minute - 2),
+        "info",
+        key,
+        fill(
+          pick(TXT.buildup, rng),
+          availSide(key, minute - 2),
+          rng,
+          W_PLAYMAKER,
+        ),
+      );
+      add(
+        Math.max(start, minute - 1),
+        "chance",
+        key,
+        fill(
+          pick(TXT.assistMove, rng),
+          availSide(key, minute - 1),
+          rng,
+          W_PLAYMAKER,
+        ),
+      );
+      add(
+        minute,
+        "goal",
+        key,
+        `GOL do ${teamLabel(sideOf(key))}! ${scorer} balança a rede!${varTag}${assistTxt}`,
+        {
+          player: scorer,
+          assist,
+        },
+      );
     }
   };
   addGoals("home", homeGoals);
   addGoals("away", awayGoals);
 
   // assorted incidents within this half
-  const sprinkle = (n: number, type: MatchEvent["type"], bank: string[], w = W_FIELD) => {
+  const sprinkle = (
+    n: number,
+    type: MatchEvent["type"],
+    bank: string[],
+    w = W_FIELD,
+  ) => {
     for (let i = 0; i < n; i++) {
       const key: Side = rng() > 0.5 ? "home" : "away";
       const minute = randMin();
-      add(minute, type, key, fill(pick(bank, rng), availSide(key, minute), rng, w));
+      add(
+        minute,
+        type,
+        key,
+        fill(pick(bank, rng), availSide(key, minute), rng, w),
+      );
     }
   };
 
@@ -371,21 +486,38 @@ function buildHalfTimeline(
     const key: Side = rng() > 0.5 ? "home" : "away";
     const minute = randMin();
     const player = weightedPlayer(availSide(key, minute), rng, W_DEFENSE);
-    add(minute, "card", key, pick(TXT.yellow, rng).replace(/\{team\}/g, teamLabel(sideOf(key))).replace(/\{p\}/g, player), {
-      player,
-      card: "yellow",
-    });
+    add(
+      minute,
+      "card",
+      key,
+      pick(TXT.yellow, rng)
+        .replace(/\{team\}/g, teamLabel(sideOf(key)))
+        .replace(/\{p\}/g, player),
+      {
+        player,
+        card: "yellow",
+      },
+    );
   }
 
   // injury (occasional)
   if (rng() < 0.2) sprinkle(1, "injury", TXT.injury);
 
   // fill every still-empty minute with a possession line (minute-by-minute updates)
-  const busy = new Set(evs.filter((e) => e.minute >= start && e.minute <= end).map((e) => e.minute));
+  const busy = new Set(
+    evs
+      .filter((e) => e.minute >= start && e.minute <= end)
+      .map((e) => e.minute),
+  );
   for (let m = start; m <= end; m++) {
     if (busy.has(m)) continue;
     const key: Side = rng() > 0.5 ? "home" : "away";
-    add(m, "possession", key, fill(pick(TXT.possession, rng), availSide(key, m), rng, W_FIELD));
+    add(
+      m,
+      "possession",
+      key,
+      fill(pick(TXT.possession, rng), availSide(key, m), rng, W_FIELD),
+    );
   }
 
   if (half === 1) add(45, "halftime", null, "Fim do primeiro tempo.");
@@ -393,11 +525,15 @@ function buildHalfTimeline(
 
   // sort by minute; within a minute: goal first, possession before structural markers
   const rank = (e: MatchEvent) =>
-    e.type === "kickoff" ? -1
-      : e.type === "goal" ? 0
-      : e.type === "halftime" || e.type === "fulltime" ? 9
-      : e.type === "possession" ? 3
-      : 1;
+    e.type === "kickoff"
+      ? -1
+      : e.type === "goal"
+        ? 0
+        : e.type === "halftime" || e.type === "fulltime"
+          ? 9
+          : e.type === "possession"
+            ? 3
+            : 1;
   evs.sort((a, b) => a.minute - b.minute || rank(a) - rank(b));
 
   return {
@@ -423,7 +559,8 @@ function poisson(lambda: number, rng: () => number): number {
 
 function expectedGoals(attacker: SimSide, defender: SimSide): number {
   // midfield drives possession / chance volume
-  const midEdge = (attacker.strength.midfield - defender.strength.midfield) / 75;
+  const midEdge =
+    (attacker.strength.midfield - defender.strength.midfield) / 75;
   const base = (attacker.strength.attack - defender.strength.defense) / 24;
   const xg = 0.92 + base + midEdge;
   return Math.max(0.2, Math.min(2.35, xg));
@@ -484,10 +621,18 @@ function runShootout(home: SimSide, away: SimSide, rng: () => number) {
   return { kicks, h, a };
 }
 
-function makeSide(inp: SimInput, weight = 1): { side: SimSide; raw: TeamStrength } {
+function makeSide(
+  inp: SimInput,
+  weight = 1,
+): { side: SimSide; raw: TeamStrength } {
   const raw = computeStrength(inp.picks, inp.formationId);
   return {
-    side: { id: inp.id, name: inp.name, strength: applyMentality(raw, inp.mentality, weight), picks: inp.picks },
+    side: {
+      id: inp.id,
+      name: inp.name,
+      strength: applyMentality(raw, inp.mentality, weight),
+      picks: inp.picks,
+    },
     raw,
   };
 }
@@ -530,7 +675,7 @@ export function simulateSecondHalf(
   p1: SimInput,
   p2: SimInput,
   firstGoals: Record<string, number>,
-  preExpelled: Record<string, string[]> = {}
+  preExpelled: Record<string, string[]> = {},
 ): SecondHalfResult {
   const a = makeSide(p1);
   const b = makeSide(p2);
@@ -567,17 +712,34 @@ export function simulateSecondHalf(
     summary = `Empate em ${t1} a ${t2}. Nos pênaltis (${so.h} x ${so.a}), ${wName} levou a melhor!`;
   }
 
-  return { timeline, goals, shootout, penaltyScore, strengths: { [p1.id]: a.raw, [p2.id]: b.raw }, winnerId, summary };
+  return {
+    timeline,
+    goals,
+    shootout,
+    penaltyScore,
+    strengths: { [p1.id]: a.raw, [p2.id]: b.raw },
+    winnerId,
+    summary,
+  };
 }
 
 // ---- World Cup campaign ----
 
 /** Turn a full team (players in formation-slot order) into a SimInput. */
-export function simInputFromTeam(team: Team, formationId: string, mentality: Mentality): SimInput {
+export function simInputFromTeam(
+  team: Team,
+  formationId: string,
+  mentality: Mentality,
+): SimInput {
   const formation = getFormation(formationId)!;
   const picks: SquadPick[] = formation.slots.map((s, i) => {
     const player = team.players[i] ?? team.players[team.players.length - 1];
-    return { slotId: s.id, player, fromTeamId: team.id, effectiveRating: player.rating };
+    return {
+      slotId: s.id,
+      player,
+      fromTeamId: team.id,
+      effectiveRating: player.rating,
+    };
   });
   return { id: team.id, name: team.name, picks, formationId, mentality };
 }
@@ -589,7 +751,7 @@ export function simInputFromTeam(team: Team, formationId: string, mentality: Men
 export function simulateGauntletMatch(
   you: SimInput,
   opp: SimInput,
-  settleDrawWithShootout = false
+  settleDrawWithShootout = false,
 ): GauntletResult {
   const a = makeSide(you, 2); // player's mentality has double weight
   const b = makeSide(opp, 1);
@@ -605,7 +767,8 @@ export function simulateGauntletMatch(
 
   const youGoals = ga1 + ga2;
   const oppGoals = gb1 + gb2;
-  let outcome: "win" | "draw" | "loss" = youGoals > oppGoals ? "win" : youGoals === oppGoals ? "draw" : "loss";
+  let outcome: "win" | "draw" | "loss" =
+    youGoals > oppGoals ? "win" : youGoals === oppGoals ? "draw" : "loss";
   let shootout: ShootoutKick[] | null = null;
   let penaltyScore: Record<string, number> | null = null;
   let winnerId: string | null =
@@ -637,7 +800,9 @@ export function simulateGauntletMatch(
 
 /** Slots the player has not filled yet. */
 export function openSlots(player: PlayerPublic): string[] {
-  const formation = player.formationId ? getFormation(player.formationId) : undefined;
+  const formation = player.formationId
+    ? getFormation(player.formationId)
+    : undefined;
   if (!formation) return [];
   const filled = new Set(player.picks.map((p) => p.slotId));
   return formation.slots.filter((s) => !filled.has(s.id)).map((s) => s.id);
