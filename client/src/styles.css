@@ -347,8 +347,11 @@ label {
 }
 .room-panes > .room-pane {
   grid-area: 1 / 1;
+  opacity: 1;
+  transition: opacity 0.16s ease;
 }
 .room-pane.hidden {
+  opacity: 0;
   visibility: hidden;
   pointer-events: none;
 }

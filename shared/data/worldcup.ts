@@ -1,4 +1,4 @@
-import type { Team } from "../types.js";
+import type { Team, Player } from "../types.js";
 
 // ---------------- Draft pool: iconic World Cup national teams (since the 1950s) ----------------
 // You draft 11 legends from these. Ratings are estimates; legends rate high.
@@ -403,6 +403,247 @@ export const WC_DRAFT_TEAMS: Team[] = [
       { name: "Boufal", pos: "LW", rating: 81 },
     ],
   },
+  // ---- Weak historical sides (draft variety; much lower overall) ----
+  {
+    id: "wc-weak-el-salvador-1982", name: "El Salvador", season: "1982", league: "Copa do Mundo",
+    players: [
+      { name: "Luis Guevara Mora", pos: "GK", rating: 60 },
+      { name: "Francisco Jovel", pos: "RB", altPositions: ["CB"], rating: 57 },
+      { name: "Ramón Fagoaga", pos: "CB", rating: 58 },
+      { name: "Carlos Recinos", pos: "CB", rating: 55 },
+      { name: "Joaquín Ventura", pos: "LB", rating: 56 },
+      { name: "Norberto Huezo", pos: "CDM", rating: 60 },
+      { name: "José María Rivas", pos: "CM", rating: 57 },
+      { name: "Mágico González", pos: "CAM", altPositions: ["CF", "LW"], rating: 74 },
+      { name: "Ever Hernández", pos: "RW", rating: 57 },
+      { name: "Luis Ramírez Zapata", pos: "ST", rating: 60 },
+      { name: "Jaime Rodríguez", pos: "LW", rating: 58 },
+    ],
+  },
+  {
+    id: "wc-weak-zaire-1974", name: "Zaire", season: "1974", league: "Copa do Mundo",
+    players: [
+      { name: "Kazadi Mwamba", pos: "GK", rating: 60 },
+      { name: "Mwepu Ilunga", pos: "RB", rating: 56 },
+      { name: "Bwanga Tshimen", pos: "CB", rating: 60 },
+      { name: "Mukombo Mwanza", pos: "CB", rating: 57 },
+      { name: "Lobilo Boba", pos: "LB", rating: 55 },
+      { name: "Kilasu Massamba", pos: "CDM", rating: 56 },
+      { name: "Kidumu Mantantu", pos: "CM", rating: 58 },
+      { name: "Mayanga Maku", pos: "CAM", rating: 60 },
+      { name: "Kembo Uba Kembo", pos: "RW", rating: 60 },
+      { name: "Ndaye Mulamba", pos: "ST", altPositions: ["CF"], rating: 70 },
+      { name: "Kakoko Etepé", pos: "LW", rating: 59 },
+    ],
+  },
+  {
+    id: "wc-weak-haiti-1974", name: "Haiti", season: "1974", league: "Copa do Mundo",
+    players: [
+      { name: "Henri Francillon", pos: "GK", rating: 62 },
+      { name: "Wilner Nazaire", pos: "RB", rating: 56 },
+      { name: "Arsène Auguste", pos: "CB", rating: 58 },
+      { name: "Serge Ducoste", pos: "CB", rating: 57 },
+      { name: "Eddy Antoine", pos: "LB", rating: 55 },
+      { name: "Philippe Vorbe", pos: "CDM", altPositions: ["CM"], rating: 62 },
+      { name: "Fritz André", pos: "CM", rating: 56 },
+      { name: "Guy François", pos: "CAM", rating: 58 },
+      { name: "Roger Saint-Vil", pos: "RW", rating: 57 },
+      { name: "Emmanuel Sanon", pos: "ST", altPositions: ["LW"], rating: 70 },
+      { name: "Guy Saint-Vil", pos: "LW", rating: 58 },
+    ],
+  },
+  {
+    id: "wc-weak-arabia-saudita-2002", name: "Arábia Saudita", season: "2002", league: "Copa do Mundo",
+    players: [
+      { name: "Mohammed Al-Deayea", pos: "GK", rating: 66 },
+      { name: "Hussein Sulaimani", pos: "RB", rating: 60 },
+      { name: "Redha Tukar", pos: "CB", rating: 60 },
+      { name: "Abdullah Zubromawi", pos: "CB", rating: 59 },
+      { name: "Mohammed Al-Jahani", pos: "LB", rating: 58 },
+      { name: "Khamis Al-Owairan", pos: "CDM", rating: 60 },
+      { name: "Nawaf Al-Temyat", pos: "CM", altPositions: ["CAM"], rating: 64 },
+      { name: "Mohammed Al-Shlhoub", pos: "CAM", rating: 63 },
+      { name: "Talal Al-Meshal", pos: "RW", rating: 60 },
+      { name: "Sami Al-Jaber", pos: "ST", altPositions: ["CF"], rating: 68 },
+      { name: "Obeid Al-Dosari", pos: "LW", rating: 59 },
+    ],
+  },
+  {
+    id: "wc-weak-china-2002", name: "China", season: "2002", league: "Copa do Mundo",
+    players: [
+      { name: "Jiang Jin", pos: "GK", rating: 60 },
+      { name: "Sun Jihai", pos: "RB", altPositions: ["RM"], rating: 66 },
+      { name: "Fan Zhiyi", pos: "CB", rating: 66 },
+      { name: "Li Weifeng", pos: "CB", rating: 60 },
+      { name: "Wu Chengying", pos: "LB", rating: 56 },
+      { name: "Li Tie", pos: "CDM", altPositions: ["CM"], rating: 64 },
+      { name: "Qi Hong", pos: "CM", rating: 60 },
+      { name: "Ma Mingyu", pos: "CAM", rating: 58 },
+      { name: "Yang Chen", pos: "RW", rating: 60 },
+      { name: "Hao Haidong", pos: "ST", rating: 66 },
+      { name: "Qu Bo", pos: "LW", rating: 57 },
+    ],
+  },
+  {
+    id: "wc-weak-canada-1986", name: "Canadá", season: "1986", league: "Copa do Mundo",
+    players: [
+      { name: "Tino Lettieri", pos: "GK", rating: 60 },
+      { name: "Bruce Wilson", pos: "RB", rating: 58 },
+      { name: "Ian Bridge", pos: "CB", rating: 57 },
+      { name: "Randy Ragan", pos: "CB", rating: 57 },
+      { name: "Terry Felix", pos: "LB", rating: 55 },
+      { name: "Mike Sweeney", pos: "CDM", rating: 56 },
+      { name: "Gerry Gray", pos: "CM", rating: 56 },
+      { name: "Carl Valentine", pos: "CAM", altPositions: ["RW"], rating: 62 },
+      { name: "David Norman", pos: "RW", rating: 56 },
+      { name: "Igor Vrablic", pos: "ST", rating: 58 },
+      { name: "Branko Šegota", pos: "LW", altPositions: ["ST"], rating: 60 },
+    ],
+  },
+  {
+    id: "wc-weak-grecia-1994", name: "Grécia", season: "1994", league: "Copa do Mundo",
+    players: [
+      { name: "Antonis Minou", pos: "GK", rating: 58 },
+      { name: "Stratos Apostolakis", pos: "RB", rating: 60 },
+      { name: "Stelios Manolas", pos: "CB", rating: 62 },
+      { name: "Nikos Karageorgiou", pos: "CB", rating: 57 },
+      { name: "Ioannis Kalitzakis", pos: "LB", rating: 57 },
+      { name: "Nikos Tsiantakis", pos: "CDM", rating: 58 },
+      { name: "Tasos Mitropoulos", pos: "CM", rating: 60 },
+      { name: "Panagiotis Tsalouchidis", pos: "CAM", rating: 57 },
+      { name: "Apostolos Charalambidis", pos: "RW", rating: 58 },
+      { name: "Nikos Machlas", pos: "ST", rating: 64 },
+      { name: "Dimitris Saravakos", pos: "LW", altPositions: ["CAM"], rating: 62 },
+    ],
+  },
+  {
+    id: "wc-weak-honduras-2014", name: "Honduras", season: "2014", league: "Copa do Mundo",
+    players: [
+      { name: "Noel Valladares", pos: "GK", rating: 64 },
+      { name: "Brayan Beckeles", pos: "RB", rating: 60 },
+      { name: "Maynor Figueroa", pos: "CB", altPositions: ["LB"], rating: 64 },
+      { name: "Víctor Bernárdez", pos: "CB", rating: 62 },
+      { name: "Emilio Izaguirre", pos: "LB", rating: 64 },
+      { name: "Wilson Palacios", pos: "CDM", altPositions: ["CM"], rating: 64 },
+      { name: "Roger Espinoza", pos: "CM", rating: 62 },
+      { name: "Óscar García", pos: "CAM", rating: 58 },
+      { name: "Andy Najar", pos: "RW", altPositions: ["RB"], rating: 62 },
+      { name: "Carlo Costly", pos: "ST", rating: 60 },
+      { name: "Jerry Bengtson", pos: "LW", altPositions: ["ST"], rating: 60 },
+    ],
+  },
+  {
+    id: "wc-weak-catar-2022", name: "Catar", season: "2022", league: "Copa do Mundo",
+    players: [
+      { name: "Saad Al-Sheeb", pos: "GK", rating: 64 },
+      { name: "Pedro Miguel", pos: "RB", rating: 64 },
+      { name: "Boualem Khoukhi", pos: "CB", rating: 65 },
+      { name: "Bassam Al-Rawi", pos: "CB", rating: 63 },
+      { name: "Abdelkarim Hassan", pos: "LB", altPositions: ["LWB"], rating: 66 },
+      { name: "Karim Boudiaf", pos: "CDM", rating: 64 },
+      { name: "Assim Madibo", pos: "CM", rating: 62 },
+      { name: "Hassan Al-Haydos", pos: "CAM", altPositions: ["RW"], rating: 66 },
+      { name: "Akram Afif", pos: "RW", altPositions: ["LW", "CF"], rating: 72 },
+      { name: "Almoez Ali", pos: "ST", altPositions: ["CF"], rating: 70 },
+      { name: "Ismaïl Mohamad", pos: "LW", rating: 62 },
+    ],
+  },
+  {
+    id: "wc-weak-nova-zelandia-1982", name: "Nova Zelândia", season: "1982", league: "Copa do Mundo",
+    players: [
+      { name: "Frank van Hattum", pos: "GK", rating: 58 },
+      { name: "Adrian Elrick", pos: "RB", rating: 56 },
+      { name: "Bobby Almond", pos: "CB", rating: 56 },
+      { name: "Glen Dods", pos: "CB", rating: 56 },
+      { name: "John Hill", pos: "LB", rating: 55 },
+      { name: "Sam Malcolmson", pos: "CDM", rating: 56 },
+      { name: "Brian Turner", pos: "CM", rating: 58 },
+      { name: "Steve Sumner", pos: "CAM", altPositions: ["CM"], rating: 62 },
+      { name: "Grant Turner", pos: "RW", rating: 57 },
+      { name: "Steve Wooddin", pos: "ST", rating: 60 },
+      { name: "Wynton Rufer", pos: "LW", altPositions: ["ST", "CF"], rating: 66 },
+    ],
+  },
+  {
+    id: "wc-weak-bolivia-1994", name: "Bolívia", season: "1994", league: "Copa do Mundo",
+    players: [
+      { name: "Carlos Trucco", pos: "GK", rating: 60 },
+      { name: "José Melgar", pos: "RB", rating: 56 },
+      { name: "Marco Sandy", pos: "CB", rating: 60 },
+      { name: "Gustavo Quinteros", pos: "CB", rating: 58 },
+      { name: "Juan Manuel Peña", pos: "LB", altPositions: ["CB"], rating: 60 },
+      { name: "Luis Cristaldo", pos: "CDM", rating: 57 },
+      { name: "Julio César Baldivieso", pos: "CM", altPositions: ["CAM"], rating: 62 },
+      { name: "Marco Etcheverry", pos: "CAM", rating: 66 },
+      { name: "Erwin Sánchez", pos: "RW", altPositions: ["CAM"], rating: 64 },
+      { name: "William Ramallo", pos: "ST", rating: 57 },
+      { name: "Jaime Moreno", pos: "LW", altPositions: ["ST"], rating: 62 },
+    ],
+  },
+  {
+    id: "wc-weak-trinidad-e-tobago-2006", name: "Trinidad e Tobago", season: "2006", league: "Copa do Mundo",
+    players: [
+      { name: "Shaka Hislop", pos: "GK", rating: 64 },
+      { name: "Cyd Gray", pos: "RB", rating: 56 },
+      { name: "Dennis Lawrence", pos: "CB", rating: 58 },
+      { name: "Brent Sancho", pos: "CB", rating: 57 },
+      { name: "Avery John", pos: "LB", rating: 55 },
+      { name: "Chris Birchall", pos: "CDM", rating: 57 },
+      { name: "Densill Theobald", pos: "CM", rating: 56 },
+      { name: "Russell Latapy", pos: "CAM", rating: 64 },
+      { name: "Carlos Edwards", pos: "RW", altPositions: ["RB"], rating: 60 },
+      { name: "Stern John", pos: "ST", rating: 62 },
+      { name: "Dwight Yorke", pos: "LW", altPositions: ["CF", "CAM"], rating: 70 },
+    ],
+  },
+  {
+    id: "wc-weak-togo-2006", name: "Togo", season: "2006", league: "Copa do Mundo",
+    players: [
+      { name: "Kossi Agassa", pos: "GK", rating: 58 },
+      { name: "Daré Nibombé", pos: "RB", altPositions: ["CB"], rating: 56 },
+      { name: "Massamesso Tchangai", pos: "CB", rating: 55 },
+      { name: "Éric Akoto", pos: "CB", rating: 56 },
+      { name: "Jean-Paul Abalo", pos: "LB", rating: 55 },
+      { name: "Yao Junior Senaya", pos: "CDM", rating: 56 },
+      { name: "Alaixys Romao", pos: "CM", rating: 58 },
+      { name: "Moustapha Salifou", pos: "CAM", rating: 56 },
+      { name: "Adékanmi Olufadé", pos: "RW", rating: 56 },
+      { name: "Emmanuel Adebayor", pos: "ST", altPositions: ["CF"], rating: 72 },
+      { name: "Kader Coubadja", pos: "LW", rating: 57 },
+    ],
+  },
+  {
+    id: "wc-weak-coreia-do-sul-1954", name: "Coreia do Sul", season: "1954", league: "Copa do Mundo",
+    players: [
+      { name: "Hong Deok-yeong", pos: "GK", rating: 52 },
+      { name: "Park Kyu-jeong", pos: "RB", rating: 52 },
+      { name: "Kim Ji-seong", pos: "CB", rating: 52 },
+      { name: "Han Chang-hwa", pos: "CB", rating: 52 },
+      { name: "Park Jae-seung", pos: "LB", rating: 51 },
+      { name: "Min Byung-dae", pos: "CDM", altPositions: ["CM"], rating: 56 },
+      { name: "Lee Jong-gap", pos: "CM", rating: 53 },
+      { name: "Sung Nak-woon", pos: "CAM", rating: 54 },
+      { name: "Woo Sang-kwon", pos: "RW", rating: 53 },
+      { name: "Choi Jung-min", pos: "ST", rating: 54 },
+      { name: "Chung Nam-sik", pos: "LW", rating: 53 },
+    ],
+  },
+  {
+    id: "wc-weak-emirados-arabes-unidos-1990", name: "Emirados Árabes Unidos", season: "1990", league: "Copa do Mundo",
+    players: [
+      { name: "Muhsin Musabah", pos: "GK", rating: 56 },
+      { name: "Eisa Meer", pos: "RB", rating: 54 },
+      { name: "Khalil Mubarak", pos: "CB", rating: 55 },
+      { name: "Abdulrahman Mohamed", pos: "CB", rating: 54 },
+      { name: "Yousuf Hussain", pos: "LB", rating: 54 },
+      { name: "Nasser Khamis", pos: "CDM", rating: 55 },
+      { name: "Mohammed Juma'a", pos: "CM", rating: 58 },
+      { name: "Adnan Al-Talyani", pos: "CAM", altPositions: ["RW"], rating: 62 },
+      { name: "Ali Thani", pos: "RW", rating: 55 },
+      { name: "Khalid Ismail", pos: "ST", rating: 58 },
+      { name: "Fahad Khamees", pos: "LW", rating: 55 },
+    ],
+  },
 ];
 
 // ---------------- Final boss: a legendary side (Over 93+) ----------------
@@ -710,6 +951,29 @@ const WC_OPPONENT_BY_ID = new Map(
   [...WC_DRAFT_TEAMS, ...WC_OPPONENT_TEAMS, WC_BOSS].map((team) => [team.id, team]),
 );
 
+// Pool of all-time best / iconic sides eligible to be the final boss. The final
+// draws one of these (so it's not always Brazil 1970) and buffs it slightly, since
+// the final must be hard.
+const WC_FINALISTS: string[] = [
+  WC_BOSS.id, // Brasil 1970
+  "wc-brasil-1958",
+  "wc-brasil-2002",
+  "wc-brasil-1982",
+  "wc-alemanha-1974",
+  "wc-alemanha-2014",
+  "wc-alemanha-1990",
+  "wc-espanha-2010",
+  "wc-hungria-1954",
+  "wc-franca-2006",
+  "wc-franca-1998",
+  "wc-argentina-1986",
+  "wc-argentina-2022",
+  "wc-italia-2006",
+  "wc-holanda-1974",
+];
+
+const FINAL_BUFF = 4; // per-player rating bump for the final, capped at 99
+
 function cloneTeam(team: Team, league = team.league): Team {
   return {
     ...team,
@@ -719,10 +983,27 @@ function cloneTeam(team: Team, league = team.league): Team {
   };
 }
 
+/** Return a clone with every rating bumped by `amount` (capped at 99). */
+function buffTeam(team: Team, amount: number): Team {
+  const bump = (p: Player) => ({ ...p, rating: Math.min(99, p.rating + amount) });
+  return {
+    ...team,
+    players: team.players.map(bump),
+    bench: team.bench?.map(bump),
+  };
+}
+
 /** Pick an authored national team for a campaign round (0-based). */
 export function wcOpponentTeam(round: number, rng: () => number): Team {
   const cfg = WC_LADDER[round];
-  if (round >= WC_LADDER.length - 1) return cloneTeam(WC_BOSS, cfg.label);
+  if (round >= WC_LADDER.length - 1) {
+    // Final: draw one of the all-time greats and buff it (hard final, with variety).
+    const pool = WC_FINALISTS.map((id) => WC_OPPONENT_BY_ID.get(id)).filter(
+      (team): team is Team => Boolean(team),
+    );
+    const base = pool[Math.floor(rng() * pool.length)] ?? WC_BOSS;
+    return buffTeam(cloneTeam(base, cfg.label), FINAL_BUFF);
+  }
   const teams = cfg.opponentIds
     .map((id) => WC_OPPONENT_BY_ID.get(id))
     .filter((team): team is Team => Boolean(team));

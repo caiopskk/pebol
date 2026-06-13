@@ -64,10 +64,16 @@ function genCode(): string {
   return code;
 }
 
+// Reroll allowance per mode: Clássico (PvP/PvE) gets 5, Hardcore stays at 3.
+function rerollsForMode(mode: GameMode): number {
+  return mode === "hardcore" ? 3 : 5;
+}
+
 function newPlayer(
   name: string,
   socketId: string | null,
   isAI = false,
+  rerolls = 5,
 ): InternalPlayer {
   return {
     id: randomUUID(),
@@ -78,7 +84,7 @@ function newPlayer(
     mentality: null,
     attackFocus: "equilibrado",
     picks: [],
-    rerollsRemaining: 3,
+    rerollsRemaining: rerolls,
     halftimeReady: isAI,
     socketId,
     isAI,
@@ -96,7 +102,7 @@ export function createRoom(
   solo = false,
 ) {
   const code = genCode();
-  const host = newPlayer(name, socketId);
+  const host = newPlayer(name, socketId, false, rerollsForMode(mode));
   const room: Room = {
     code,
     phase: "lobby",
@@ -137,7 +143,7 @@ export function joinRoom(code: string, name: string, socketId: string) {
     return { room, playerId: slot.id };
   }
   if (room.phase !== "lobby") return { error: "Partida já começou." };
-  const guest = newPlayer(name, socketId);
+  const guest = newPlayer(name, socketId, false, rerollsForMode(room.mode));
   room.players.push(guest);
   return { room, playerId: guest.id };
 }
@@ -285,7 +291,13 @@ function advanceTurn(room: Room) {
   beginTurn(room);
 }
 
-function simInput(p: InternalPlayer) {
+// Hardcore vs the machine: buff the AI's strength so it's harder (not impossible)
+// to win — on top of the hidden ratings. ~+2.5% ≈ the player winning ~40% of even
+// matchups instead of ~50%.
+const HARDCORE_AI_SCALE = 1.025;
+
+function simInput(p: InternalPlayer, room: Room) {
+  const hardcoreAI = p.isAI && room.mode === "hardcore";
   return {
     id: p.id,
     name: p.name,
@@ -293,6 +305,7 @@ function simInput(p: InternalPlayer) {
     formationId: p.formationId!,
     mentality: p.mentality!,
     attackFocus: p.attackFocus,
+    strengthScale: hardcoreAI ? HARDCORE_AI_SCALE : 1,
   };
 }
 
@@ -302,7 +315,7 @@ function finishDraft(room: Room) {
     p.halftimeReady = p.isAI;
   });
   // only the first half is simulated now; the second half waits for halftime lineups
-  const fh = simulateFirstHalf(simInput(p1), simInput(p2));
+  const fh = simulateFirstHalf(simInput(p1, room), simInput(p2, room));
   room.expelled = fh.expelled;
   room.result = {
     homeId: p1.id,
@@ -369,8 +382,8 @@ export function readyHalftime(
   ) {
     const [p1, p2] = room.players;
     const sh = simulateSecondHalf(
-      simInput(p1),
-      simInput(p2),
+      simInput(p1, room),
+      simInput(p2, room),
       room.result.firstHalfGoals,
       room.expelled,
     );
@@ -423,7 +436,7 @@ export function rematch(room: Room) {
   room.expelled = undefined;
   for (const p of room.players) {
     p.picks = [];
-    p.rerollsRemaining = 3;
+    p.rerollsRemaining = rerollsForMode(room.mode);
     p.halftimeReady = p.isAI;
     // the AI comes back ready; the human confirms again
     p.ready = p.isAI;

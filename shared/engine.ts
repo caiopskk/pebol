@@ -706,6 +706,9 @@ export interface SimInput {
   formationId: string;
   mentality: Mentality;
   attackFocus?: AttackFocus;
+  // Optional global strength multiplier (e.g. Hardcore mode buffs the AI to make
+  // it harder, but not impossible, to win). Defaults to 1 (no change).
+  strengthScale?: number;
 }
 
 /** Penalty taker order: best finishers first. */
@@ -755,11 +758,17 @@ function makeSide(
   const raw = computeStrength(inp.picks, inp.formationId);
   const withMentality = applyMentality(raw, inp.mentality, weight);
   const focusMod = attackFocusMod(inp.picks, inp.attackFocus, raw.overall);
+  const scale = inp.strengthScale ?? 1;
   return {
     side: {
       id: inp.id,
       name: inp.name,
-      strength: { ...withMentality, attack: withMentality.attack * focusMod },
+      strength: {
+        attack: withMentality.attack * focusMod * scale,
+        midfield: withMentality.midfield * scale,
+        defense: withMentality.defense * scale,
+        overall: withMentality.overall * scale,
+      },
       picks: inp.picks,
       midCount: lineCount(inp.formationId, "MID"),
     },

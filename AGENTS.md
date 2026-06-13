@@ -77,10 +77,17 @@ inteira (1º tempo, intervalo, 2º tempo, pênaltis, resumo) — reproduzida no 
   (`usedTeamIds`). Se o pool acabar (22 escolhas > 68 times não acontece, mas há fallback),
   recicla.
 - 22 turnos no total → 11 titulares por jogador.
-- **Reroll**: em PvP, cada jogador tem 3 "atualizações" pra descartar o time sorteado e
-  sortear outro (`rerollTeam`). Só PvP.
-- **Modo Hardcore** (`mode: "pica"`): os ratings ficam **ocultos** durante o draft (o servidor
-  zera os ratings no snapshot, não é só esconder no CSS). No `classico` ficam visíveis.
+- **Reroll**: cada jogador tem "atualizações" pra descartar o time sorteado e sortear outro
+  (`rerollTeam`). Quantidade por modo (`rerollsForMode`): **Clássico = 5**, **Hardcore = 3**.
+  Habilitado em PvP e no solo Clássico (`rerollsEnabled` em `toPublic`); a IA não rerolla.
+  A Copa do Mundo segue a mesma regra pelo modo da campanha (`CampaignMode`): Normal = 5,
+  Hardcore = 3 (definido em `c.rerollsRemaining` ao iniciar o draft, no handler `cup-start`).
+- **Modo Hardcore** (`mode: "hardcore"`): os ratings ficam **ocultos** durante o draft (o servidor
+  zera os ratings no snapshot, não é só esconder no CSS). No `classico` ficam visíveis. Desbloqueia
+  no **nível 5** (`HARDCORE_UNLOCK_LEVEL`). **Contra a máquina**, a IA ainda recebe um buff de
+  força (`HARDCORE_AI_SCALE = 1.04` em `rooms.ts` → `SimInput.strengthScale`, aplicado em
+  `makeSide`): vitória em times iguais cai de ~50% para ~40% — mais difícil, não impossível.
+  Em PvP o buff não se aplica (seria injusto).
 - **IA (modo solo)**: na vez dela, `driveAI` (em `index.ts`) espera **~3s** (pra dar pra
   acompanhar) e chama `aiPick`, que escolhe o melhor jogador para o slot de menor penalidade.
 
@@ -229,16 +236,21 @@ socket/sala). Código em `main.ts` (seção "World Cup campaign", `L.campaign`),
   (4+ pontos ou 3 pontos com saldo não negativo).
 - **Chaveamento**: depois da classificação, gera e mostra a rota do time montado nos 5 jogos
   eliminatórios, começando pelos 16-avos.
-- **Draft**: 11 rodadas sorteando **seleções históricas** (`WC_DRAFT_TEAMS`, de 1950 a 2022).
-  **Sem penalidade de posição**: o jogador só encaixa em vaga do **mesmo setor**
+- **Draft**: 11 rodadas sorteando **seleções históricas** (`WC_DRAFT_TEAMS`, 1950–2022).
+  O pool tem **25 lendas (OVR ~82–90)** + **15 seleções fracas (OVR ~53–65)** marcadas com id
+  `wc-weak-*` — essas dão variedade/aleatoriedade ao draft (você nem sempre tira um craque; dá
+  pra rerollar). **Sem penalidade de posição**: o jogador só encaixa em vaga do **mesmo setor**
   (GK/DEF/MID/ATT); quem não encaixa em nenhuma vaga aberta fica apagado (`campaignSelectable`).
   `effectiveRating = rating` (cheio). Se um time sorteado não tiver ninguém compatível,
-  sorteia outro.
+  sorteia outro. (As fracas também existem como JSON em `client/public/import_selecoes_fracas.json`.)
 - **Adversários** (`wcOpponentTeam`): cada rodada (`WC_LADDER`) sorteia uma seleção histórica
   de um conjunto de elencos autorais com escalação fixa (`WC_OPPONENT_TEAMS` + algumas de
-  `WC_DRAFT_TEAMS`). Eles **não** são gerados por sobrenomes/over aleatório; cada adversário
-  tem seus 11 jogadores originais. A final continua sendo o chefe autoral `WC_BOSS`
-  (Brasil 1970).
+  `WC_DRAFT_TEAMS`). Eles **não** são gerados por sobrenomes/over aleatório.
+- **Final** (`wcOpponentTeam`, última rodada): **não é mais sempre o Brasil 1970**. Sorteia uma
+  das melhores seleções de todos os tempos (`WC_FINALISTS`, ~15 ids incluindo o `WC_BOSS`) e
+  aplica um buff de **+`FINAL_BUFF` (4) por rating** (`buffTeam`, cap 99) — a final fica difícil
+  de propósito e com variedade. Um draft ótimo (~88-90) vence ~15-30% conforme o finalista; a
+  leitura de counter/foco no `preMatch` melhora bastante essas chances.
 - **Mentalidade com peso dobrado**: `applyMentality(..., weight=2)` — amplifica o desvio do
   neutro. Cria estratégia real (mentalidades defensivas reduzem empates/derrotas). Cada
   adversário tem tática fixa (`wcOpponentTactics`), mostrada no `preMatch`; escolher o counter

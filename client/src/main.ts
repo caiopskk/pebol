@@ -448,7 +448,7 @@ function renderHome() {
                  </div>
                </div>
                <div class="home-account-actions">
-                 <button id="ha-achievements" class="primary alt account-action">Conquistas</button>
+                 <button id="ha-achievements" class="primary alt account-action">Progresso</button>
                  <button id="ha-admin" class="primary account-action">Gerenciar times</button>
                  <button id="ha-logout" class="primary alt account-action">Sair</button>
                </div>`
@@ -1598,7 +1598,7 @@ function startCampaign() {
     selectedPickSlotId: null,
     currentOpp: null,
     lastResult: null,
-    rerollsRemaining: 3,
+    rerollsRemaining: 5,
     campaignGoals: {},
     campaignAssists: {},
     groupTeams: [],
@@ -1809,6 +1809,8 @@ function renderCampaignSetup() {
       }),
   );
   document.getElementById("cup-start")!.onclick = () => {
+    // Reroll allowance follows the chosen mode: Normal = 5, Hardcore = 3.
+    c.rerollsRemaining = c.mode === "hardcore" ? 3 : 5;
     c.phase = "draft";
     campaignDrawTeam();
     render();
@@ -1853,7 +1855,7 @@ function campaignRerollTeam() {
   const c = L.campaign!;
   if (c.phase !== "draft") return;
   if (c.rerollsRemaining <= 0)
-    return showToast("Você já usou suas 3 atualizações.");
+    return showToast("Você já usou suas atualizações.");
   if (c.currentTeam) c.usedTeamIds.push(c.currentTeam.id);
   c.rerollsRemaining--;
   c.selectedPlayer = null;

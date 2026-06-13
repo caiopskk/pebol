@@ -13,6 +13,7 @@ jogadores, importação por JSON, conquistas e deploy em porta única para produ
 - **Modo solo vs Máquina** com técnico controlado pela IA e draft automático do adversário.
 - **Modo Clássico** com ratings visíveis durante o draft.
 - **Modo Hardcore** com ratings ocultos durante o draft, desbloqueado ao atingir o nível 5.
+  Contra a máquina, a IA também joga mais forte — mais difícil de vencer, mas não impossível.
 - **XP, níveis e títulos**: ganhe experiência jogando partidas, avançando fases da Copa e
   desbloqueando conquistas; cada 100 XP é um nível, com títulos de Aspirante a Imortal.
 - **Leaderboard por nível** na home, com pódio destacado e seu próprio nome em evidência.
@@ -160,12 +161,16 @@ súbita quando necessário.
 
 O modo Copa do Mundo é uma campanha single-player com 48 seleções:
 
-- Draft com seleções históricas.
+- Draft com seleções históricas. O pool mistura **lendas (OVR ~82-90)** com **seleções
+  historicamente fracas (OVR ~53-65)**, dando variedade ao sorteio — você nem sempre tira um
+  craque, e pode usar os rerolls para descartar um time fraco.
 - 3 jogos de fase de grupos.
 - Classificação dos 2 primeiros de cada grupo e melhores terceiros.
 - Mata-mata com 16-avos, oitavas, quartas, semifinal e final.
 - Adversários com escalações históricas, ano e bandeira.
 - Chaveamento escondendo adversários futuros quando apropriado.
+- **Final variável e buffada**: em vez de ser sempre o mesmo time, a final sorteia uma das
+  maiores seleções de todos os tempos e dá um leve buff nos ratings — é o jogo mais difícil.
 - Pênaltis em empates no mata-mata.
 - Estatísticas acumuladas de gols e assistências na campanha.
 
