@@ -1694,40 +1694,48 @@ function renderCampaignMatch() {
   app.innerHTML = `
     <div class="screen live cup-match">
       <div class="live-stage">
-        <div class="scoreboard">
-          <div class="sb-team"><span class="sb-badge you">VC</span><span class="sb-name">Seu time</span></div>
-          <div class="sb-center"><div class="sb-score"><span id="sc-l">0</span><span class="sb-sep">:</span><span id="sc-r">0</span></div><div class="sb-clock"><span id="clk">0</span>'</div></div>
-          <div class="sb-team right"><span class="sb-name">${escapeHtml(oppTeam.name)}</span><span class="sb-badge opp">ADV</span></div>
-        </div>
-        <div class="live-sub"><span class="sb-leg" id="half-label">1º Tempo</span><span class="agg-mini">${escapeHtml(WC_LADDER[c.round].label)}</span></div>
-        <div class="ballfield">
-          ${ballFieldSvg()}
-          <div class="bf-ball" id="bf-ball">${soccerBallSvg()}</div>
-        </div>
-        <div class="speed-row">
-          <span class="spd-label">Velocidade</span>
-          ${[1, 1.5, 2].map((v) => `<button class="spd ${v === L.matchSpeed ? "active" : ""}" data-spd="${v}">${v}x</button>`).join("")}
-          <button id="skip" class="ghost skip">Pular</button>
-        </div>
-        <div class="live-leaders" id="live-leaders"></div>
-        <div class="shootout-panel" id="shootout-panel" hidden>
-          <div class="shootout-head">
-            <span>Disputa de pênaltis</span>
-            <strong id="pen-score">0 x 0</strong>
-          </div>
-          <div class="shootout-lanes">
-            <div>
-              <h4>Seu time</h4>
-              <ul id="pen-you"></ul>
-            </div>
-            <div>
-              <h4>${escapeHtml(oppTeam.name)}</h4>
-              <ul id="pen-opp"></ul>
+        <div class="live-layout">
+          <div class="live-left">
+            <div class="ballfield">
+              ${ballFieldSvg()}
+              <div class="bf-ball" id="bf-ball">${soccerBallSvg()}</div>
             </div>
           </div>
+          <div class="live-center">
+            <div class="live-sub"><span class="sb-leg" id="half-label">1º Tempo</span><span class="agg-mini">${escapeHtml(WC_LADDER[c.round].label)}</span></div>
+            <div class="scoreboard">
+              <div class="sb-team"><span class="sb-badge you">VC</span><span class="sb-name">Seu time</span></div>
+              <div class="sb-center"><div class="sb-score"><span id="sc-l">0</span><span class="sb-sep">:</span><span id="sc-r">0</span></div><div class="sb-clock"><span id="clk">0</span>'</div></div>
+              <div class="sb-team right"><span class="sb-name">${escapeHtml(oppTeam.name)}</span><span class="sb-badge opp">ADV</span></div>
+            </div>
+            <div class="live-leaders" id="live-leaders"></div>
+            <div class="goal-overlay" id="goal-ov"><div class="goal-word">GOL!</div><div class="goal-scorer" id="goal-scorer"></div></div>
+            <div class="shootout-panel" id="shootout-panel" hidden>
+              <div class="shootout-head">
+                <span>Disputa de pênaltis</span>
+                <strong id="pen-score">0 x 0</strong>
+              </div>
+              <div class="shootout-lanes">
+                <div>
+                  <h4>Seu time</h4>
+                  <ul id="pen-you"></ul>
+                </div>
+                <div>
+                  <h4>${escapeHtml(oppTeam.name)}</h4>
+                  <ul id="pen-opp"></ul>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="live-right">
+            <div class="speed-row">
+              <span class="spd-label">Velocidade</span>
+              ${[1, 1.5, 2].map((v) => `<button class="spd ${v === L.matchSpeed ? "active" : ""}" data-spd="${v}">${v}x</button>`).join("")}
+              <button id="skip" class="ghost skip">Pular</button>
+            </div>
+            <ul class="event-feed" id="feed"></ul>
+          </div>
         </div>
-        <div class="goal-overlay" id="goal-ov"><div class="goal-word">GOL!</div><div class="goal-scorer" id="goal-scorer"></div></div>
-        <ul class="event-feed" id="feed"></ul>
       </div>
     </div>`;
 
@@ -2421,34 +2429,51 @@ function renderLiveMatch() {
   app.innerHTML = `
     <div class="screen live">
       <div class="live-stage">
-        <div class="scoreboard">
-          <div class="sb-team"><span class="sb-badge you">VC</span><span class="sb-name">${escapeHtml(you.name)}</span></div>
-          <div class="sb-center">
-            <div class="sb-score"><span id="sc-l">0</span><span class="sb-sep">:</span><span id="sc-r">0</span></div>
-            <div class="sb-clock"><span id="clk">0</span>'</div>
+        <div class="live-layout">
+          <div class="live-left">
+            <div class="ballfield">
+              ${ballFieldSvg()}
+              <div class="bf-ball" id="bf-ball">${soccerBallSvg()}</div>
+            </div>
           </div>
-          <div class="sb-team right"><span class="sb-name">${escapeHtml(opp.name)}</span><span class="sb-badge opp">ADV</span></div>
+          <div class="live-center">
+            <div class="live-sub">
+              <span class="sb-leg" id="half-label">1º Tempo</span>
+              <span class="agg-mini" id="pen-label"></span>
+            </div>
+            <div class="scoreboard">
+              <div class="sb-team"><span class="sb-badge you">VC</span><span class="sb-name">${escapeHtml(you.name)}</span></div>
+              <div class="sb-center">
+                <div class="sb-score"><span id="sc-l">0</span><span class="sb-sep">:</span><span id="sc-r">0</span></div>
+                <div class="sb-clock"><span id="clk">0</span>'</div>
+              </div>
+              <div class="sb-team right"><span class="sb-name">${escapeHtml(opp.name)}</span><span class="sb-badge opp">ADV</span></div>
+            </div>
+            <div class="live-leaders" id="live-leaders"></div>
+            <div class="goal-overlay" id="goal-ov">
+              <div class="goal-word">GOL!</div>
+              <div class="goal-scorer" id="goal-scorer"></div>
+            </div>
+            <div class="card-overlay" id="card-ov">
+              <div class="card-flash" id="card-flash"></div>
+              <div class="card-name" id="card-name"></div>
+            </div>
+          </div>
+          <div class="live-right">
+            <div class="speed-row">
+              <span class="spd-label">Velocidade</span>
+              ${(vsAI ? [1, 1.5, 2] : [1])
+                .map(
+                  (v) =>
+                    `<button class="spd ${v === speedFactor() ? "active" : ""}" data-spd="${v}">${v}x</button>`,
+                )
+                .join("")}
+              ${vsAI ? "" : `<span class="speed-note">Velocidade extra só contra a máquina</span>`}
+              <button id="skip" class="ghost skip">Pular</button>
+            </div>
+            <ul class="event-feed" id="feed"></ul>
+          </div>
         </div>
-        <div class="live-sub">
-          <span class="sb-leg" id="half-label">1º Tempo</span>
-          <span class="agg-mini" id="pen-label"></span>
-        </div>
-        <div class="ballfield">
-          ${ballFieldSvg()}
-          <div class="bf-ball" id="bf-ball">${soccerBallSvg()}</div>
-        </div>
-        <div class="speed-row">
-          <span class="spd-label">Velocidade</span>
-          ${(vsAI ? [1, 1.5, 2] : [1])
-            .map(
-              (v) =>
-                `<button class="spd ${v === speedFactor() ? "active" : ""}" data-spd="${v}">${v}x</button>`,
-            )
-            .join("")}
-          ${vsAI ? "" : `<span class="speed-note">Velocidade extra só contra a máquina</span>`}
-          <button id="skip" class="ghost skip">Pular</button>
-        </div>
-        <div class="live-leaders" id="live-leaders"></div>
         <div class="halftime-panel" id="half-panel" hidden>
           <div class="section-head">
             <h3>Intervalo</h3>
@@ -2477,15 +2502,6 @@ function renderLiveMatch() {
             <ul id="reserve-list" class="reserve-list"></ul>
           </div>
         </div>
-        <div class="goal-overlay" id="goal-ov">
-          <div class="goal-word">GOL!</div>
-          <div class="goal-scorer" id="goal-scorer"></div>
-        </div>
-        <div class="card-overlay" id="card-ov">
-          <div class="card-flash" id="card-flash"></div>
-          <div class="card-name" id="card-name"></div>
-        </div>
-        <ul class="event-feed" id="feed"></ul>
       </div>
     </div>
   `;
