@@ -79,7 +79,7 @@ inteira (1º tempo, intervalo, 2º tempo, pênaltis, resumo) — reproduzida no 
 - 22 turnos no total → 11 titulares por jogador.
 - **Reroll**: em PvP, cada jogador tem 3 "atualizações" pra descartar o time sorteado e
   sortear outro (`rerollTeam`). Só PvP.
-- **Modo Pica** (`mode: "pica"`): os ratings ficam **ocultos** durante o draft (o servidor
+- **Modo Hardcore** (`mode: "pica"`): os ratings ficam **ocultos** durante o draft (o servidor
   zera os ratings no snapshot, não é só esconder no CSS). No `classico` ficam visíveis.
 - **IA (modo solo)**: na vez dela, `driveAI` (em `index.ts`) espera **~3s** (pra dar pra
   acompanhar) e chama `aiPick`, que escolhe o melhor jogador para o slot de menor penalidade.
@@ -99,6 +99,7 @@ penaliza o rating:
 ### 4.4 Força do time (`computeStrength`)
 
 A partir dos `effectiveRating` dos 11 escalados, por linha:
+
 - **defesa** = `(média(DEF) × 3 + goleiro × 2) / 5`
 - **meio** = média(MID)
 - **ataque** = média(ATT)
@@ -112,14 +113,14 @@ triângulo) e o **triângulo de counter** (pressão→posse→contra-ataque→pr
 estilos do triângulo têm stats **net-neutros** (`attackMod + defenseMod = 2`, então ~50%
 vs equilibrada) — o valor deles vem do counter. `equilibrada` é o único **imune** a counters.
 
-| id | nome | ataque | defesa | counter |
-|---|---|---|---|---|
-| `aura` | Agressivo | ×1.12 | ×0.88 | — |
-| `equilibrada` | Equilibrada | ×1.00 | ×1.00 | imune |
-| `retranca` | Retranca | ×0.88 | ×1.12 | — |
-| `pressao` | Marcação pressão | ×1.06 | ×0.94 | neutraliza `posse` |
-| `posse` | Posse de Bola | ×1.03 | ×0.97 | neutraliza `contra_ataque` |
-| `contra_ataque` | Contra-ataque | ×0.96 | ×1.04 | neutraliza `pressao` |
+| id              | nome             | ataque | defesa | counter                    |
+| --------------- | ---------------- | ------ | ------ | -------------------------- |
+| `aura`          | Agressivo        | ×1.12  | ×0.88  | —                          |
+| `equilibrada`   | Equilibrada      | ×1.00  | ×1.00  | imune                      |
+| `retranca`      | Retranca         | ×0.88  | ×1.12  | —                          |
+| `pressao`       | Marcação pressão | ×1.06  | ×0.94  | neutraliza `posse`         |
+| `posse`         | Posse de Bola    | ×1.03  | ×0.97  | neutraliza `contra_ataque` |
+| `contra_ataque` | Contra-ataque    | ×0.96  | ×1.04  | neutraliza `pressao`       |
 
 **Counter** (`mentalityEdge` + `applyCounter`, engine): quando o estilo de um lado
 neutraliza o do outro, o vencedor ganha ataque ×1.06 / defesa ×1.02 e o neutralizado perde
@@ -158,6 +159,7 @@ fixo (`wcOpponentTactics`). Default `equilibrado` (back-compat: bots/testes que 
    propósito) e retoma do minuto 46.
 
 Regras que decorrem disso (cuidado ao mexer):
+
 - O 1º tempo da timeline **nunca muda** depois de gerado, só é anexado. O `evIdx` do client
   depende disso.
 - A retomada no client só acontece quando `allHalftimeReady() && result.secondHalfReady`.
@@ -192,7 +194,7 @@ Gerados no servidor (`buildHalfTimeline`, engine.ts), reproduzidos no client
   direita. `ballSpot(type, side)` define a zona por tipo (gol perto da trave adversária,
   escanteio na extremidade, defesa perto do próprio gol, posse no meio…).
 - **Tipos**: `kickoff, goal, chance, save, corner, offside, foul, card, injury, var,
-  possession, halftime, fulltime, penalty, info`.
+possession, halftime, fulltime, penalty, info`.
 - `possession` preenche **todo minuto vazio** → sensação minuto-a-minuto; tem delay curto.
 - **Expulsão**: o cartão vermelho é decidido primeiro em `buildHalfTimeline`; depois todo
   evento usa `availSide(key, minute)` pra **excluir o expulso** das citações a partir do
@@ -242,7 +244,7 @@ socket/sala). Código em `main.ts` (seção "World Cup campaign", `L.campaign`),
   adversário tem tática fixa (`wcOpponentTactics`), mostrada no `preMatch`; escolher o counter
   certo (ou evitar ser neutralizado) é a leitura principal antes de cada jogo.
 - **Fluxo de fases** (`CampaignState.phase`): `setup → draft → preMatch → match →
-  grupos/preMatch... → mata-mata/preMatch... → victory | gameover`. A partida reusa o campo+bola
+grupos/preMatch... → mata-mata/preMatch... → victory | gameover`. A partida reusa o campo+bola
   e o feed, mas é uma simulação contínua (sem intervalo interativo).
 - **Balanceamento**: difícil de propósito. Atenção: o rework do engine (4.5/4.6) aumentou o
   peso do rating e adicionou counters, então as taxas antigas (~80% nas primeiras, ~40-50%
@@ -302,6 +304,7 @@ cai num arquivo local `data/pebol.db`; em produção (Render) use as env vars.
   por `refreshTeamCache` no startup e quando um time oficial muda).
 
 **Env vars (produção / Render):**
+
 - `TURSO_DATABASE_URL` (ex: `libsql://...turso.io`) e `TURSO_AUTH_TOKEN` (token do `turso db tokens create`).
 - `JWT_SECRET` (segredo forte para assinar os tokens).
 - `ADMIN_USERS` (opcional, csv de usernames admin).
@@ -328,6 +331,7 @@ Ambos: draft → 1º tempo → emitem `halftimeReady` → 2º tempo → resultad
 tipos de evento e se `secondHalfReady` virou true.
 
 **Gotchas dos testes:**
+
 - A IA leva **3s por escolha** no draft → o solo-test demora ~35s. Se um teste estourar no
   meio do draft, o `guard` do loop está baixo, não é bug.
 - Depois do draft o resultado só tem o 1º tempo (`secondHalfReady:false`); é preciso emitir
@@ -349,10 +353,12 @@ no client têm hot-reload.
 ## 8. Como estender
 
 ### Adicionar um time (`shared/data/teams.ts`)
+
 Adicione ao array `TEAMS`: `id` único, `name`, `season`, `league`, **exatamente 11**
 `players` (spread sensato: 1 GK, ~4 DEF, ~3 MID, ~3 ATT), `pos` válidas, `rating` 60-99,
 `bench` opcional (melhora o intervalo). Ratings plausíveis em relação aos existentes (estrelas
 UCL ~88-94, titulares ~80-86, Brasileirão ~72-84). Valide:
+
 ```bash
 node_modules/.bin/tsx -e "import {TEAMS} from './shared/data/teams.ts';
 const v=new Set(['GK','RB','LB','CB','RWB','LWB','CDM','CM','CAM','RM','LM','RW','LW','CF','ST']);
@@ -363,7 +369,9 @@ console.log('teams',TEAMS.length,'problems',bad);"
 ```
 
 ### Adicionar um tipo de lance/evento
+
 Toca engine + client + CSS:
+
 1. `MatchEventType` em `shared/types.ts` → adicione `"foo"`.
 2. `ballSpot()` (engine) → `case "foo"` com a zona de campo.
 3. `buildHalfTimeline` (engine) → banco de texto em `TXT` + emissão (use `sprinkle(...)` pra
@@ -375,10 +383,12 @@ Toca engine + client + CSS:
    `processEvent`.
 
 ### Adicionar uma formação (`shared/formations.ts`)
+
 11 slots `{ id, pos, x, y }`. `x` 0-100 (esquerda→direita), `y` 0-100 (0 = próprio gol, 100 =
 ataque). Copie uma existente e ajuste as coordenadas.
 
 ### Adicionar um técnico/IA (`shared/data/managers.ts`)
+
 `{ name, club, mentality, formationId }`. A `mentality` e a `formationId` precisam existir.
 
 ---

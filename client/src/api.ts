@@ -1,5 +1,6 @@
 // REST client for auth + team CRUD (separate from net.ts, which is the socket layer).
 import type { Team } from "../../shared/types.js";
+import type { LevelProgress } from "../../shared/progression.js";
 
 const API_BASE =
   import.meta.env.VITE_SERVER_URL ||
@@ -25,8 +26,28 @@ export interface AchievementProgress {
   sortOrder: number;
   unlockedAt: number | null;
 }
+export interface UserProgress extends LevelProgress {
+  achievementXp: number;
+  activityXp: number;
+}
+export interface LeaderboardEntry extends UserProgress {
+  userId: string;
+  username: string;
+  rank: number;
+}
 
 let token: string | null = localStorage.getItem("pebol_token");
+let writeRequestLock:
+  | {
+      begin: () => void;
+      end: () => void;
+    }
+  | null = null;
+
+export function setWriteRequestLock(lock: typeof writeRequestLock): void {
+  writeRequestLock = lock;
+}
+
 export function getToken(): string | null {
   return token;
 }
@@ -37,17 +58,24 @@ export function setToken(t: string | null): void {
 }
 
 async function req<T>(path: string, opts: RequestInit = {}): Promise<T> {
-  const res = await fetch(API_BASE + path, {
-    ...opts,
-    headers: {
-      "Content-Type": "application/json",
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
-      ...(opts.headers || {}),
-    },
-  });
-  const data = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error((data as { error?: string }).error || "Erro de rede.");
-  return data as T;
+  const method = String(opts.method ?? "GET").toUpperCase();
+  const isWrite = ["POST", "PUT", "PATCH", "DELETE"].includes(method);
+  if (isWrite) writeRequestLock?.begin();
+  try {
+    const res = await fetch(API_BASE + path, {
+      ...opts,
+      headers: {
+        "Content-Type": "application/json",
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        ...(opts.headers || {}),
+      },
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error((data as { error?: string }).error || "Erro de rede.");
+    return data as T;
+  } finally {
+    if (isWrite) writeRequestLock?.end();
+  }
 }
 
 export const api = {
@@ -62,9 +90,16 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   me: () => req<{ user: AccountUser | null }>("/api/me"),
+  leaderboard: () => req<{ leaderboard: LeaderboardEntry[] }>("/api/leaderboard"),
+  progress: () => req<{ progress: UserProgress }>("/api/progress"),
   achievements: () => req<{ achievements: AchievementProgress[] }>("/api/achievements"),
   unlockAchievement: (id: string) =>
-    req<{ unlocked: boolean }>(`/api/achievements/${id}/unlock`, { method: "POST" }),
+    req<{ unlocked: boolean; progress: UserProgress }>(`/api/achievements/${id}/unlock`, { method: "POST" }),
+  grantXp: (amount: number, reason: string, sourceKey: string) =>
+    req<{ granted: boolean; progress: UserProgress }>("/api/xp", {
+      method: "POST",
+      body: JSON.stringify({ amount, reason, sourceKey }),
+    }),
   listTeams: () => req<{ teams: AdminTeam[] }>("/api/teams"),
   createTeam: (t: Partial<AdminTeam> & { official?: boolean }) =>
     req<{ team: AdminTeam }>("/api/teams", { method: "POST", body: JSON.stringify(t) }),

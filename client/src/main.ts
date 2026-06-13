@@ -40,10 +40,14 @@ import {
   api,
   setToken,
   getToken,
+  setWriteRequestLock,
   type AccountUser,
   type AdminTeam,
   type AchievementProgress,
+  type LeaderboardEntry,
+  type UserProgress,
 } from "./api.js";
+import { HARDCORE_UNLOCK_LEVEL } from "../../shared/progression.js";
 import {
   onRoomUpdate,
   onError,
@@ -62,6 +66,45 @@ const app = document.getElementById("app")!;
 let syncLiveUi: (() => void) | null = null;
 let cupDraftScrollTop = 0;
 const MATCH_SPEED_KEY = "pebol:match-speed";
+let writeLockCount = 0;
+
+function ensureWriteLockOverlay(): HTMLElement {
+  let el = document.getElementById("write-lock");
+  if (el) return el;
+  el = document.createElement("div");
+  el.id = "write-lock";
+  el.className = "write-lock";
+  el.setAttribute("role", "status");
+  el.setAttribute("aria-live", "polite");
+  el.setAttribute("aria-hidden", "true");
+  el.innerHTML = `
+    <div class="write-lock-card">
+      <span class="write-spinner" aria-hidden="true"></span>
+      <div>
+        <strong>Salvando alterações</strong>
+        <span>Aguarde a requisição terminar.</span>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  return el;
+}
+
+function setWriteLockVisible(visible: boolean) {
+  const el = ensureWriteLockOverlay();
+  el.classList.toggle("active", visible);
+  el.setAttribute("aria-hidden", visible ? "false" : "true");
+}
+
+setWriteRequestLock({
+  begin: () => {
+    writeLockCount += 1;
+    setWriteLockVisible(true);
+  },
+  end: () => {
+    writeLockCount = Math.max(0, writeLockCount - 1);
+    if (!writeLockCount) setWriteLockVisible(false);
+  },
+});
 
 function readSavedMatchSpeed(): number {
   const saved = Number(localStorage.getItem(MATCH_SPEED_KEY));
@@ -96,8 +139,12 @@ interface Local {
   campaign: CampaignState | null;
   // account + team admin (REST, separate from the socket game)
   account: AccountUser | null;
+  accountProgress: UserProgress | null;
+  leaderboard: LeaderboardEntry[] | null;
   accountScreen: "login" | "admin" | "achievements" | null;
   adminTeams: AdminTeam[] | null;
+  adminTeamSearch: string;
+  adminPlayerSearch: string;
   editingTeam: AdminTeam | "new" | null;
   achievements: AchievementProgress[] | null;
   achievementAwardKeys: Set<string>;
@@ -110,6 +157,7 @@ type CampaignPhase =
   | "match"
   | "gameover"
   | "victory";
+type CampaignMode = "normal" | "hardcore";
 interface CupGroupRow {
   id: string;
   name: string;
@@ -128,6 +176,8 @@ interface LiveStatLine {
 }
 interface CampaignState {
   phase: CampaignPhase;
+  mode: CampaignMode;
+  runId: string;
   formationId: string;
   mentality: Mentality;
   attackFocus: AttackFocus;
@@ -167,8 +217,12 @@ const L: Local = {
   intervalSubCount: 0,
   campaign: null,
   account: null,
+  accountProgress: null,
+  leaderboard: null,
   accountScreen: null,
   adminTeams: null,
+  adminTeamSearch: "",
+  adminPlayerSearch: "",
   editingTeam: null,
   achievements: null,
   achievementAwardKeys: new Set(),
@@ -334,8 +388,52 @@ function renderLiveStats(
 
 // ---------------- Home ----------------
 
+const LEADERBOARD_SLOTS = 10;
+
+function renderLeaderboard(): string {
+  const list = L.leaderboard ?? [];
+  const loading = L.leaderboard === null;
+  const rows = Array.from({ length: LEADERBOARD_SLOTS }, (_, i) => {
+    const rank = i + 1;
+    const p = list[i];
+    if (p) {
+      return `
+        <li class="rank-${p.rank} ${p.rank <= 3 ? "podium" : ""} ${L.account?.id === p.userId ? "you" : ""}">
+          <span class="rank">#${p.rank}</span>
+          <strong>${escapeHtml(p.username)}</strong>
+          <em>${escapeHtml(p.title)}</em>
+          <span class="level">Nv. ${p.level}</span>
+          <span class="xp">${p.xp} XP</span>
+        </li>`;
+    }
+    return `
+      <li class="placeholder">
+        <span class="rank">#${rank}</span>
+        <strong>${loading ? "…" : "Vago"}</strong>
+        <em>Aguardando jogador</em>
+        <span class="level">Nv. —</span>
+        <span class="xp">— XP</span>
+      </li>`;
+  }).join("");
+  return `
+    <section class="panel leaderboard-panel">
+      <div class="leaderboard-head">
+        <div>
+          <span class="cup-tag">Ranking</span>
+          <h2>Leaderboard por nível</h2>
+        </div>
+      </div>
+      <ol class="leaderboard-list">${rows}</ol>
+    </section>`;
+}
+
 function renderHome() {
   const acc = L.account;
+  const progress = L.accountProgress;
+  const hardcoreUnlocked = canUseHardcore();
+  const hardcoreLockText = acc
+    ? `Desbloqueia no nível ${HARDCORE_UNLOCK_LEVEL}`
+    : "Entre para desbloquear no nível 5";
   const savedName = escapeHtml(acc?.username ?? "");
   app.innerHTML = `
     <div class="screen home">
@@ -346,7 +444,7 @@ function renderHome() {
                  <div class="ha-main">
                    <span class="ha-kicker">Conta conectada</span>
                    <strong>${escapeHtml(acc.username)}</strong>
-                   <span>${acc.role === "admin" ? "Administrador" : "Usuário"}</span>
+                   <span>${acc.role === "admin" ? "Administrador" : "Usuário"} · Nível ${progress?.level ?? 1} · ${escapeHtml(progress?.title ?? "Aspirante")}</span>
                  </div>
                </div>
                <div class="home-account-actions">
@@ -360,21 +458,33 @@ function renderHome() {
         }
       </div>
       <div class="cards home-board">
-        <div class="panel home-panel create-card">
+        <div class="panel home-panel room-card">
           <div class="home-card-inner">
-            <h2>Criar sala</h2>
-            <label>Seu nome</label>
-            <input id="c-name" maxlength="20" placeholder="Insira seu nome" value="${savedName}" />
-            <label>Modo de jogo</label>
-            <div class="mode-pick">
-              <button class="mode-btn active" data-mode="classico">
-                <strong>Clássico</strong><span>Ratings visíveis</span>
-              </button>
-              <button class="mode-btn" data-mode="pica">
-                <strong>Pica</strong><span>Ratings ocultos</span>
-              </button>
+            <div class="room-tabs">
+              <button class="room-tab active" data-tab="create">Criar sala</button>
+              <button class="room-tab" data-tab="join">Entrar numa sala</button>
             </div>
-            <button id="c-create" class="primary">Criar sala (online)</button>
+            <div class="room-pane" data-pane="create">
+              <label>Seu nome</label>
+              <input id="c-name" maxlength="20" placeholder="Insira seu nome" value="${savedName}" />
+              <label>Modo de jogo</label>
+              <div class="mode-pick">
+                <button class="mode-btn active" data-mode="classico">
+                  <strong>Clássico</strong><span>Ratings visíveis</span>
+                </button>
+                <button class="mode-btn ${hardcoreUnlocked ? "" : "locked"}" data-mode="hardcore" ${hardcoreUnlocked ? "" : "disabled"} title="${escapeHtml(hardcoreUnlocked ? "Ratings ocultos" : hardcoreLockText)}">
+                  <strong>Hardcore</strong><span>${hardcoreUnlocked ? "Ratings ocultos" : hardcoreLockText}</span>
+                </button>
+              </div>
+              <button id="c-create" class="primary">Criar sala (online)</button>
+            </div>
+            <div class="room-pane hidden" data-pane="join">
+              <label>Seu nome</label>
+              <input id="j-name" maxlength="20" placeholder="Insira seu nome" value="${savedName}" />
+              <label>Código da sala</label>
+              <input id="j-code" maxlength="4" placeholder="XXXX" style="text-transform:uppercase" />
+              <button id="j-join" class="primary">Entrar</button>
+            </div>
           </div>
         </div>
 
@@ -383,16 +493,7 @@ function renderHome() {
           <p>Monte seu time no draft e desafie um amigo 1v1 ou jogue contra a máquina.</p>
         </div>
 
-        <div class="panel home-panel join-card">
-          <div class="home-card-inner">
-            <h2>Entrar numa sala</h2>
-            <label>Seu nome</label>
-            <input id="j-name" maxlength="20" placeholder="Insira seu nome" value="${savedName}" />
-            <label>Código da sala</label>
-            <input id="j-code" maxlength="4" placeholder="XXXX" style="text-transform:uppercase" />
-            <button id="j-join" class="primary">Entrar</button>
-          </div>
-        </div>
+        ${renderLeaderboard()}
 
         <div class="panel solo-panel">
           <div class="solo-actions">
@@ -419,6 +520,20 @@ function renderHome() {
     </div>
   `;
 
+  app.querySelectorAll<HTMLButtonElement>(".room-tab").forEach((tab) => {
+    tab.onclick = () => {
+      const which = tab.dataset.tab;
+      app
+        .querySelectorAll(".room-tab")
+        .forEach((t) => t.classList.toggle("active", t === tab));
+      app
+        .querySelectorAll<HTMLElement>(".room-pane")
+        .forEach((pane) =>
+          pane.classList.toggle("hidden", pane.dataset.pane !== which),
+        );
+    };
+  });
+
   let mode: GameMode = "classico";
   app.querySelectorAll<HTMLButtonElement>(".mode-btn").forEach((btn) => {
     btn.onclick = () => {
@@ -436,6 +551,10 @@ function renderHome() {
     ).trim();
     const name = solo ? typedName || "Você" : typedName;
     if (!name) return showToast("Digite seu nome.");
+    if (mode === "hardcore" && !canUseHardcore())
+      return showToast(
+        `Modo Hardcore desbloqueia no nível ${HARDCORE_UNLOCK_LEVEL}.`,
+      );
     const res = await createRoom(name, mode, solo);
     if (res.ok && res.youId) {
       L.youId = res.youId;
@@ -571,9 +690,9 @@ const ACHIEVEMENT_COPY: Record<
     description: "Vença uma partida contra a máquina.",
     points: 20,
   },
-  pica_win: {
+  hardcore_win: {
     title: "No escuro",
-    description: "Vença uma partida no modo Pica.",
+    description: "Vença uma partida no modo Hardcore.",
     points: 25,
   },
   custom_team: {
@@ -596,6 +715,66 @@ const ACHIEVEMENT_COPY: Record<
     description: "Vença a campanha da Copa do Mundo.",
     points: 100,
   },
+  group_escape_hardcore: {
+    title: "Classificado no escuro",
+    description: "Passe da fase de grupos da Copa do Mundo no modo Hardcore.",
+    points: 45,
+  },
+  world_champion_hardcore: {
+    title: "Lenda sem mapa",
+    description: "Vença a Copa do Mundo no modo Hardcore.",
+    points: 150,
+  },
+  cup_first_win: {
+    title: "Primeiro passo na Copa",
+    description: "Vença uma partida na campanha da Copa do Mundo.",
+    points: 25,
+  },
+  round_32_clear: {
+    title: "Sobreviveu ao funil",
+    description: "Passe pelos 16-avos de final da Copa do Mundo.",
+    points: 35,
+  },
+  quarterfinalist: {
+    title: "Entre os oito",
+    description: "Chegue às quartas de final da Copa do Mundo.",
+    points: 45,
+  },
+  semifinalist: {
+    title: "Quase lá",
+    description: "Chegue à semifinal da Copa do Mundo.",
+    points: 60,
+  },
+  finalist: {
+    title: "No jogo da taça",
+    description: "Chegue à final da Copa do Mundo.",
+    points: 75,
+  },
+  perfect_group: {
+    title: "Grupo perfeito",
+    description: "Vença os 3 jogos da fase de grupos da Copa do Mundo.",
+    points: 50,
+  },
+  cup_hardcore_first_win: {
+    title: "Vitória sem números",
+    description: "Vença uma partida da Copa do Mundo no modo Hardcore.",
+    points: 40,
+  },
+  big_win: {
+    title: "Goleada moral",
+    description: "Vença uma partida por 3 ou mais gols de diferença.",
+    points: 40,
+  },
+  comeback_win: {
+    title: "Virada de roteiro",
+    description: "Vença uma partida depois de estar perdendo no intervalo.",
+    points: 45,
+  },
+  red_card_win: {
+    title: "Com um a menos",
+    description: "Vença uma partida após receber cartão vermelho.",
+    points: 45,
+  },
 };
 
 interface AchievementNotice {
@@ -604,7 +783,14 @@ interface AchievementNotice {
   description: string;
   points: number;
 }
+interface XpNotice {
+  amount: number;
+  reason: string;
+  level: number;
+  title: string;
+}
 const achievementQueue: AchievementNotice[] = [];
+const xpQueue: XpNotice[] = [];
 let achievementNoticeTimer: number | undefined;
 let achievementNoticeActive = false;
 
@@ -634,7 +820,7 @@ function showNextAchievementNotice() {
       <strong>${escapeHtml(notice.title)}</strong>
       <p>${escapeHtml(notice.description)}</p>
     </div>
-    <em>${notice.points} pts</em>`;
+    <em>${notice.points} XP</em>`;
   document.body.appendChild(el);
   clearTimeout(achievementNoticeTimer);
   achievementNoticeTimer = window.setTimeout(() => {
@@ -647,16 +833,102 @@ function showNextAchievementNotice() {
   }, 4200);
 }
 
+function queueXpNotice(notice: XpNotice) {
+  xpQueue.push(notice);
+  showNextXpNotice();
+}
+
+function showNextXpNotice() {
+  if (document.getElementById("xp-pop")) return;
+  const notice = xpQueue.shift();
+  if (!notice) return;
+  const el = document.createElement("div");
+  el.id = "xp-pop";
+  el.className = "achievement-pop xp-pop";
+  el.innerHTML = `
+    <div class="achievement-pop-icon">XP</div>
+    <div class="achievement-pop-copy">
+      <span>Experiência</span>
+      <strong>+${notice.amount} XP</strong>
+      <p>${escapeHtml(notice.reason)} · Nível ${notice.level} — ${escapeHtml(notice.title)}</p>
+    </div>`;
+  document.body.appendChild(el);
+  window.setTimeout(() => {
+    el.classList.add("leaving");
+    window.setTimeout(() => {
+      el.remove();
+      showNextXpNotice();
+    }, 280);
+  }, 3200);
+}
+
 async function restoreSession() {
   if (!getToken()) return;
   try {
     const { user } = await api.me();
     L.account = user;
+    if (user) await loadProgress(false);
   } catch {
     setToken(null);
     L.account = null;
+    L.accountProgress = null;
   }
   render();
+}
+
+async function loadLeaderboard(shouldRender = true) {
+  try {
+    const { leaderboard } = await api.leaderboard();
+    L.leaderboard = leaderboard;
+  } catch {
+    L.leaderboard = [];
+  }
+  if (shouldRender) render();
+}
+
+async function loadProgress(shouldRender = true) {
+  if (!L.account) {
+    L.accountProgress = null;
+    return;
+  }
+  try {
+    const { progress } = await api.progress();
+    L.accountProgress = progress;
+  } catch {
+    L.accountProgress = null;
+  }
+  if (shouldRender) render();
+}
+
+async function grantXp(amount: number, reason: string, sourceKey: string) {
+  if (!L.account) return;
+  try {
+    const beforeLevel = L.accountProgress?.level ?? 1;
+    const r = await api.grantXp(amount, reason, sourceKey);
+    L.accountProgress = r.progress;
+    if (r.granted) {
+      void loadLeaderboard(false);
+      queueXpNotice({
+        amount,
+        reason,
+        level: r.progress.level,
+        title: r.progress.title,
+      });
+      if (r.progress.level > beforeLevel) {
+        showToast(
+          `Você chegou ao nível ${r.progress.level}: ${r.progress.title}.`,
+        );
+      }
+    }
+  } catch {
+    /* XP should never interrupt the game flow */
+  }
+}
+
+function canUseHardcore(): boolean {
+  return (
+    !!L.account && (L.accountProgress?.level ?? 1) >= HARDCORE_UNLOCK_LEVEL
+  );
 }
 
 function openLogin() {
@@ -684,6 +956,7 @@ function goHome() {
 function logout() {
   setToken(null);
   L.account = null;
+  L.accountProgress = null;
   L.accountScreen = null;
   L.adminTeams = null;
   render();
@@ -699,6 +972,7 @@ async function loadAchievements() {
   try {
     const { achievements } = await api.achievements();
     L.achievements = achievements;
+    await loadProgress(false);
   } catch (e) {
     showToast((e as Error).message);
     L.achievements = [];
@@ -736,6 +1010,7 @@ async function awardAchievements(ids: string[], sourceKey: string) {
   for (const id of pending) {
     try {
       const r = await api.unlockAchievement(id);
+      L.accountProgress = r.progress;
       if (r.unlocked) {
         queueAchievementNotice(id);
         if (L.achievements) {
@@ -751,6 +1026,7 @@ async function awardAchievements(ids: string[], sourceKey: string) {
 
 function renderAchievements() {
   const list = L.achievements;
+  const progress = L.accountProgress;
   const unlocked = list?.filter((a) => a.unlockedAt).length ?? 0;
   const total = list?.length ?? 0;
   const points =
@@ -761,13 +1037,28 @@ function renderAchievements() {
       <div class="admin-toolbar">
         <div class="admin-title">
           <span class="cup-tag">Perfil</span>
-          <h1>Conquistas</h1>
-          <p>${escapeHtml(L.account?.username ?? "")} · ${unlocked}/${total} desbloqueadas · ${points} pts</p>
+          <h1>Nível ${progress?.level ?? 1} · ${escapeHtml(progress?.title ?? "Aspirante")}</h1>
+          <p>${escapeHtml(L.account?.username ?? "")} · ${unlocked}/${total} conquistas · ${progress?.xp ?? points} XP</p>
         </div>
         <div class="admin-actions">
           <button id="ach-back" class="primary alt admin-action">Voltar</button>
         </div>
       </div>
+      ${
+        progress
+          ? `<section class="level-panel">
+              <div class="level-head">
+                <strong>${progress.currentLevelXp}/${progress.nextLevelXp} XP para o próximo nível</strong>
+                <span>${progress.nextTitle ? `Próximo título: ${escapeHtml(progress.nextTitle)} no nível ${progress.nextTitleLevel}` : "Título máximo alcançado"}</span>
+              </div>
+              <div class="level-bar"><span style="width:${Math.min(100, (progress.currentLevelXp / progress.nextLevelXp) * 100)}%"></span></div>
+              <div class="level-split">
+                <span>Conquistas: ${progress.achievementXp} XP</span>
+                <span>Partidas e fases: ${progress.activityXp} XP</span>
+              </div>
+            </section>`
+          : ""
+      }
       ${
         list === null
           ? `<p class="cup-note">Carregando…</p>`
@@ -779,7 +1070,7 @@ function renderAchievements() {
                   ) => `<article class="achievement-card ${a.unlockedAt ? "unlocked" : "locked"}">
                     <div class="achievement-top">
                       <span>${escapeHtml(a.category)}</span>
-                      <strong>${a.points} pts</strong>
+                      <strong>${a.points} XP</strong>
                     </div>
                     <h2>${escapeHtml(a.title)}</h2>
                     <p>${escapeHtml(a.description)}</p>
@@ -802,8 +1093,8 @@ function renderLogin() {
           <button class="auth-tab active" data-tab="login">Entrar</button>
           <button class="auth-tab" data-tab="signup">Criar conta</button>
         </div>
-        <label>Usuário</label><input id="au-user" maxlength="20" placeholder="seu usuário" />
-        <label>Senha</label><input id="au-pass" type="password" maxlength="40" placeholder="sua senha" />
+        <label>Usuário</label><input id="au-user" maxlength="20" placeholder="pebol_pro" />
+        <label>Senha</label><input id="au-pass" type="password" maxlength="40" placeholder="***********" />
         <button id="au-submit" class="primary">Entrar</button>
         <button id="au-back" class="ghost auth-back">Voltar ao jogo</button>
       </div>
@@ -833,6 +1124,7 @@ function renderLogin() {
         mode === "login" ? await api.login(u, p) : await api.signup(u, p);
       setToken(r.token);
       L.account = r.user;
+      await loadProgress(false);
       L.accountScreen = null;
       showToast(`Olá, ${r.user.username}!`);
       render();
@@ -847,10 +1139,40 @@ function canEditTeam(t: AdminTeam): boolean {
   return t.ownerId ? t.ownerId === L.account.id : L.account.role === "admin";
 }
 
+let adminTeamSearchTimer: number | undefined;
+let adminPlayerSearchTimer: number | undefined;
+
+function searchKey(v: string): string {
+  return v
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toLowerCase()
+    .trim();
+}
+
+function teamSearchText(t: AdminTeam): string {
+  return searchKey(
+    [
+      t.name,
+      t.alias,
+      t.season,
+      t.league,
+      t.kind === "national" ? "seleção national" : "clube club",
+      t.ownerId ? "seu time" : "oficial",
+      ...t.players.map((p) => p.name),
+      ...(t.bench ?? []).map((p) => p.name),
+    ].join(" "),
+  );
+}
+
 function renderAdmin() {
   if (L.editingTeam) return renderTeamForm();
   const teams = L.adminTeams;
   const isAdmin = L.account?.role === "admin";
+  const teamQuery = searchKey(L.adminTeamSearch);
+  const filteredTeams = teams?.filter((t) =>
+    teamQuery ? teamSearchText(t).includes(teamQuery) : true,
+  );
   app.innerHTML = `
     <div class="screen admin-screen">
       <div class="admin-toolbar">
@@ -867,11 +1189,18 @@ function renderAdmin() {
           <button id="adm-back" class="primary alt admin-action">Voltar</button>
         </div>
       </div>
+      <div class="admin-search">
+        <label>Pesquisar times
+          <input id="adm-team-search" value="${escapeHtml(L.adminTeamSearch)}" placeholder="Digite nome, liga, temporada ou jogador" autocomplete="off" />
+        </label>
+        <span>${teams ? `${filteredTeams?.length ?? 0} de ${teams.length} times` : "Carregando times"}</span>
+      </div>
       ${
         teams === null
           ? `<p class="cup-note">Carregando…</p>`
-          : `<div class="admin-list">
-            ${teams
+          : filteredTeams?.length
+            ? `<div class="admin-list">
+            ${filteredTeams
               .map(
                 (t) => `<div class="admin-row">
                   <div class="admin-row-main">
@@ -892,10 +1221,32 @@ function renderAdmin() {
               )
               .join("")}
           </div>`
+            : `<p class="cup-note">Nenhum time encontrado para essa busca.</p>`
       }
     </div>`;
   document.getElementById("adm-back")!.onclick = closeAccount;
+  const teamSearch = document.getElementById(
+    "adm-team-search",
+  ) as HTMLInputElement;
+  teamSearch.oninput = () => {
+    const value = teamSearch.value;
+    const cursor = teamSearch.selectionStart ?? value.length;
+    clearTimeout(adminTeamSearchTimer);
+    adminTeamSearchTimer = window.setTimeout(() => {
+      L.adminTeamSearch = value;
+      render();
+      window.requestAnimationFrame(() => {
+        const next = document.getElementById(
+          "adm-team-search",
+        ) as HTMLInputElement | null;
+        if (!next) return;
+        next.focus();
+        next.setSelectionRange(cursor, cursor);
+      });
+    }, 220);
+  };
   document.getElementById("adm-new")!.onclick = () => {
+    L.adminPlayerSearch = "";
     L.editingTeam = "new";
     render();
   };
@@ -907,6 +1258,7 @@ function renderAdmin() {
   app.querySelectorAll<HTMLButtonElement>("[data-edit]").forEach(
     (b) =>
       (b.onclick = () => {
+        L.adminPlayerSearch = "";
         L.editingTeam = teams!.find((t) => t.id === b.dataset.edit) ?? null;
         render();
       }),
@@ -954,6 +1306,50 @@ function playerRowHtml(p: Player, bench: boolean): string {
       <input class="pf-rt" type="number" min="40" max="99" value="${p.rating}" />
       ${bench ? `<button class="ghost pf-del" title="Remover">×</button>` : ""}
     </div>`;
+}
+
+function rowPlayerSearchText(row: HTMLElement): string {
+  const value = (selector: string) =>
+    (
+      row.querySelector<HTMLInputElement | HTMLSelectElement>(selector)
+        ?.value ?? ""
+    ).trim();
+  return searchKey(
+    [
+      value(".pf-name"),
+      value(".pf-pos"),
+      value(".pf-alt"),
+      value(".pf-rt"),
+    ].join(" "),
+  );
+}
+
+function applyPlayerSearch(query: string) {
+  const key = searchKey(query);
+  const groups = [
+    {
+      list: document.getElementById("tf-starters"),
+      empty: document.getElementById("tf-starters-empty"),
+    },
+    {
+      list: document.getElementById("tf-bench"),
+      empty: document.getElementById("tf-bench-empty"),
+    },
+  ];
+  for (const group of groups) {
+    const rows = [
+      ...(group.list?.querySelectorAll<HTMLElement>(".pf-row") ?? []),
+    ];
+    let visible = 0;
+    for (const row of rows) {
+      const match = !key || rowPlayerSearchText(row).includes(key);
+      row.hidden = !match;
+      if (match) visible += 1;
+    }
+    if (group.empty) {
+      group.empty.hidden = !key || visible > 0;
+    }
+  }
 }
 
 function collectPlayers(container: HTMLElement): Player[] {
@@ -1092,10 +1488,18 @@ function renderTeamForm() {
           ${isAdmin ? `<label>Tipo<select id="tf-kind"><option value="club" ${t.kind === "club" ? "selected" : ""}>Clube</option><option value="national" ${t.kind === "national" ? "selected" : ""}>Seleção</option></select></label>` : ""}
           ${isAdmin ? `<label class="tf-check"><input type="checkbox" id="tf-official" ${t.ownerId ? "" : "checked"} ${isNew ? "" : "disabled"} /> Time oficial (entra no jogo)</label>` : ""}
         </div>
+        <div class="admin-search player-search">
+          <label>Pesquisar jogadores
+            <input id="tf-player-search" value="${escapeHtml(L.adminPlayerSearch)}" placeholder="Digite nome, posição ou overall" autocomplete="off" />
+          </label>
+          <span>Filtra titulares e reservas sem salvar alterações.</span>
+        </div>
         <h3>Titulares (11)</h3>
         <div id="tf-starters" class="pf-list">${t.players.map((p) => playerRowHtml(p, false)).join("")}</div>
+        <p id="tf-starters-empty" class="pf-empty" hidden>Nenhum titular encontrado.</p>
         <h3>Reservas</h3>
         <div id="tf-bench" class="pf-list">${(t.bench ?? []).map((p) => playerRowHtml(p, true)).join("")}</div>
+        <p id="tf-bench-empty" class="pf-empty" hidden>Nenhum reserva encontrado.</p>
         <button id="tf-addbench" class="primary alt form-inline-action">Adicionar reserva</button>
         <div class="form-footer"><button id="tf-save" class="primary big">${isNew ? "Criar time" : "Salvar"}</button></div>
       </div>
@@ -1106,10 +1510,25 @@ function renderTeamForm() {
     render();
   };
   const bench = document.getElementById("tf-bench")!;
+  const playerSearch = document.getElementById(
+    "tf-player-search",
+  ) as HTMLInputElement;
+  playerSearch.oninput = () => {
+    const value = playerSearch.value;
+    clearTimeout(adminPlayerSearchTimer);
+    adminPlayerSearchTimer = window.setTimeout(() => {
+      L.adminPlayerSearch = value;
+      applyPlayerSearch(value);
+    }, 180);
+  };
   const bindBenchDel = () =>
-    bench
-      .querySelectorAll<HTMLButtonElement>(".pf-del")
-      .forEach((b) => (b.onclick = () => b.closest(".pf-row")!.remove()));
+    bench.querySelectorAll<HTMLButtonElement>(".pf-del").forEach(
+      (b) =>
+        (b.onclick = () => {
+          b.closest(".pf-row")!.remove();
+          applyPlayerSearch(playerSearch.value);
+        }),
+    );
   bindBenchDel();
   document.getElementById("tf-addbench")!.onclick = () => {
     bench.insertAdjacentHTML(
@@ -1117,7 +1536,9 @@ function renderTeamForm() {
       playerRowHtml({ name: "", pos: "ST", rating: 75 }, true),
     );
     bindBenchDel();
+    applyPlayerSearch(playerSearch.value);
   };
+  applyPlayerSearch(L.adminPlayerSearch);
   document.getElementById("tf-save")!.onclick = async () => {
     const val = (id: string) =>
       (document.getElementById(id) as HTMLInputElement)?.value.trim() ?? "";
@@ -1162,6 +1583,8 @@ function startCampaign() {
   L.playing = false;
   L.campaign = {
     phase: "setup",
+    mode: "normal",
+    runId: `cup:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
     formationId: "4-3-3",
     mentality: "equilibrada",
     attackFocus: "equilibrado",
@@ -1272,6 +1695,21 @@ function renderCampaign() {
 
 function renderCampaignSetup() {
   const c = L.campaign!;
+  const hardcoreUnlocked = canUseHardcore();
+  const modeOptions: { id: CampaignMode; name: string; desc: string }[] = [
+    {
+      id: "normal",
+      name: "Normal",
+      desc: "Ratings visíveis e dicas de encaixe tático.",
+    },
+    {
+      id: "hardcore",
+      name: "Hardcore",
+      desc: hardcoreUnlocked
+        ? "Sem ratings e sem dicas durante a campanha."
+        : `Desbloqueia no nível ${HARDCORE_UNLOCK_LEVEL}.`,
+    },
+  ];
   app.innerHTML = `
     <div class="screen cup-screen cup-setup-screen">
       <div class="cup-head">
@@ -1315,6 +1753,20 @@ function renderCampaignSetup() {
             <strong>Campanha 48 seleções</strong>
             <span>Monte o XI no draft, jogue a fase de grupos e avance para o mata-mata.</span>
           </div>
+          <div class="cup-mode-box">
+            <div class="setup-panel-head compact">
+              <h2>Modo da campanha</h2>
+              <span>${c.mode === "hardcore" ? "Hardcore" : "Normal"}</span>
+            </div>
+            <div class="cup-mode-grid">
+              ${modeOptions
+                .map((m) => {
+                  const locked = m.id === "hardcore" && !hardcoreUnlocked;
+                  return `<button class="cup-mode-btn ${m.id === c.mode ? "active" : ""} ${locked ? "locked" : ""}" data-cup-mode="${m.id}" ${locked ? "disabled" : ""}><strong>${m.name}</strong><span>${m.desc}</span></button>`;
+                })
+                .join("")}
+            </div>
+          </div>
           <div class="lobby-actions"><button id="cup-start" class="primary big">Começar a campanha</button></div>
         </section>
       </div>
@@ -1338,6 +1790,19 @@ function renderCampaignSetup() {
     (b) =>
       (b.onclick = () => {
         c.attackFocus = b.dataset.focus as AttackFocus;
+        render();
+      }),
+  );
+  app.querySelectorAll<HTMLButtonElement>(".cup-mode-btn").forEach(
+    (b) =>
+      (b.onclick = () => {
+        if (b.dataset.cupMode === "hardcore" && !canUseHardcore()) {
+          showToast(
+            `Copa Hardcore desbloqueia no nível ${HARDCORE_UNLOCK_LEVEL}.`,
+          );
+          return;
+        }
+        c.mode = b.dataset.cupMode as CampaignMode;
         render();
       }),
   );
@@ -1432,6 +1897,9 @@ function campaignAvgNumber(): number {
 
 function campaignStrengthSummary(): string {
   const c = L.campaign!;
+  if (c.mode === "hardcore") {
+    return `<div class="cup-draft-rating hidden-rating"><strong>??</strong><span>Ratings ocultos<br>Modo Hardcore</span></div>`;
+  }
   if (!c.picks.length) {
     return `<div class="cup-draft-rating"><strong>--</strong><span>Ataque -- · Meio -- · Defesa --</span></div>`;
   }
@@ -1445,6 +1913,7 @@ function campaignStrengthSummary(): string {
 
 function renderCampaignSquadRows(): string {
   const c = L.campaign!;
+  const hideRatings = c.mode === "hardcore";
   const f = getFormation(c.formationId)!;
   const bySlot = new Map(c.picks.map((p) => [p.slotId, p]));
   return `
@@ -1456,7 +1925,7 @@ function renderCampaignSquadRows(): string {
           <li class="${pick ? "filled" : "empty"}">
             <span>${posLabel(slot.pos)}</span>
             <strong>${pick ? escapeHtml(pick.player.name) : "--"}</strong>
-            <em>${pick ? pick.effectiveRating : "--"}</em>
+            <em>${pick ? (hideRatings ? "??" : pick.effectiveRating) : "--"}</em>
           </li>`;
         })
         .join("")}
@@ -1708,6 +2177,7 @@ function renderCampaignDraft() {
   const c = L.campaign!;
   const team = c.currentTeam!;
   const f = getFormation(c.formationId)!;
+  const hideRatings = c.mode === "hardcore";
   const selectable = campaignSelectable();
   const player = c.selectedPlayer
     ? team.players.find((p) => p.name === c.selectedPlayer)
@@ -1715,7 +2185,7 @@ function renderCampaignDraft() {
   app.innerHTML = `
     <div class="screen cup-screen cup-draft-screen">
       <div class="topbar">
-        <div class="room-code">Copa do Mundo — Draft</div>
+        <div class="room-code">Copa do Mundo — Draft ${hideRatings ? "Hardcore" : ""}</div>
         <div class="round-info">Jogador <strong>${c.picks.length + 1}</strong> / 11</div>
         <button id="cup-exit" class="ghost" style="margin-left:auto">Sair</button>
       </div>
@@ -1737,7 +2207,7 @@ function renderCampaignDraft() {
                 return `<li class="pl-item ${can ? "clickable" : "taken"} ${sel ? "selected" : ""}" data-player="${escapeHtml(pl.name)}">
                 <span class="pl-pos pos-${groupOf(pl.pos).toLowerCase()}" title="${escapeHtml(playerPosText(pl))}">${escapeHtml(playerPosText(pl))}</span>
                 <span class="pl-name">${escapeHtml(pl.name)}</span>
-                <span class="pl-rt">${pl.rating}</span></li>`;
+                <span class="pl-rt ${hideRatings ? "hidden" : ""}">${hideRatings ? "??" : pl.rating}</span></li>`;
               })
               .join("")}
           </ul>
@@ -1746,7 +2216,9 @@ function renderCampaignDraft() {
               ? `Clique numa <strong>vaga compatível</strong> (mesmo setor) para escalar <strong>${escapeHtml(c.selectedPlayer)}</strong>.`
               : c.selectedPickSlotId
                 ? `Clique numa <strong>vaga vazia</strong> do mesmo setor para mover o jogador, ou clique nele de novo para cancelar.`
-                : "Escolha jogadores que encaixem no setor aberto. Posição exata mantém o over cheio; adaptações próximas perdem um pouco."
+                : hideRatings
+                  ? "Escolha jogadores que encaixem no setor aberto. No Hardcore, os ratings ficam ocultos até o fim da campanha."
+                  : "Escolha jogadores que encaixem no setor aberto. Posição exata mantém o over cheio; adaptações próximas perdem um pouco."
           }</p>
         </section>
 
@@ -1862,6 +2334,7 @@ function renderCampaignPreMatch() {
   const c = L.campaign!;
   const ladder = WC_LADDER[c.round];
   const opp = c.currentOpp!;
+  const hideRatings = c.mode === "hardcore";
   const isGroup = c.round < 3;
   const isFinal = c.round === 7;
   const oppTactics = wcOpponentTactics(opp);
@@ -1904,18 +2377,17 @@ function renderCampaignPreMatch() {
             <div class="cup-vs-side">
               <div class="hero-crest you">${initials("Seu Time")}</div>
               <div class="hero-name">Seu time</div>
-              <div class="hero-tag">${c.formationId} · OVR ${campaignAvgNumber()} · ${escapeHtml(mentalityLabel(c.mentality))} · ${escapeHtml(attackFocusLabel(c.attackFocus))}</div>
+              <div class="hero-tag">${c.formationId} · ${hideRatings ? "OVR ??" : `OVR ${campaignAvgNumber()}`} · ${escapeHtml(mentalityLabel(c.mentality))} · ${escapeHtml(attackFocusLabel(c.attackFocus))}</div>
             </div>
             <span class="cup-vs-x">VS</span>
             <div class="cup-vs-side">
               ${oppFlag}
               <div class="hero-name">${escapeHtml(teamFullName(opp))}</div>
-              <div class="hero-tag">OVR ${teamAvg(opp).toFixed(0)} · ${oppTactics.formationId} · ${escapeHtml(mentalityLabel(oppTactics.mentality))} · ${escapeHtml(attackFocusLabel(oppTactics.attackFocus))}</div>
+              <div class="hero-tag">${hideRatings ? "OVR ??" : `OVR ${teamAvg(opp).toFixed(0)}`} · ${oppTactics.formationId} · ${escapeHtml(mentalityLabel(oppTactics.mentality))} · ${escapeHtml(attackFocusLabel(oppTactics.attackFocus))}</div>
             </div>
           </div>
           <div class="prematch-banners">
-            ${tacticBanner}
-            ${renderAttackFocusBanner(c.picks, c.attackFocus)}
+            ${hideRatings ? `<div class="tactic-banner hardcore">Modo Hardcore: ratings e dicas táticas estão ocultos.</div>` : `${tacticBanner}${renderAttackFocusBanner(c.picks, c.attackFocus)}`}
           </div>
           <div class="prematch-control-grid">
             <div class="prematch-ment">
@@ -1966,6 +2438,18 @@ function campaignAdvance() {
   const c = L.campaign!;
   L.playing = false;
   const r = c.lastResult!;
+  const roundKey = `${c.runId}:round:${c.round}:${r.youGoals}-${r.oppGoals}`;
+  void grantXp(
+    r.outcome === "win" ? 50 : r.outcome === "draw" ? 35 : 25,
+    r.outcome === "win" ? "Jogo da Copa vencido" : "Jogo da Copa concluído",
+    `xp:${roundKey}:match`,
+  );
+  const matchIds: string[] = [];
+  if (r.outcome === "win") matchIds.push("cup_first_win");
+  if (r.outcome === "win" && c.mode === "hardcore")
+    matchIds.push("cup_hardcore_first_win");
+  if (matchIds.length)
+    void awardAchievements(matchIds, `cup:match:${c.runId}:${c.round}`);
   addCampaignJourneyStats(r);
   if (c.round < 3) {
     recordGroupMatch("you", c.currentOpp!.id, r.youGoals, r.oppGoals);
@@ -1981,8 +2465,16 @@ function campaignAdvance() {
         rank <= 2 || (rank === 3 && bestThirdQualifies(youRow));
       c.groupQualifiedLabel = campaignQualificationLabel();
       if (c.groupQualified) {
+        const ids = ["group_escape"];
+        if (youRow.wins === 3) ids.push("perfect_group");
+        if (c.mode === "hardcore") ids.push("group_escape_hardcore");
+        void grantXp(
+          80,
+          "Classificação na fase de grupos",
+          `xp:${c.runId}:group-clear`,
+        );
         void awardAchievements(
-          ["group_escape"],
+          ids,
           `cup:group:${r.youGoals}-${r.oppGoals}:${Date.now()}`,
         );
         c.round = 3;
@@ -2000,9 +2492,26 @@ function campaignAdvance() {
         `cup:ko:${c.round}:${r.youGoals}-${r.oppGoals}:${Date.now()}`,
       );
     if (c.round === 7) {
-      void awardAchievements(["world_champion"], `cup:champion:${Date.now()}`);
+      const ids = ["world_champion"];
+      if (c.mode === "hardcore") ids.push("world_champion_hardcore");
+      void grantXp(150, "Título da Copa do Mundo", `xp:${c.runId}:champion`);
+      void awardAchievements(ids, `cup:champion:${Date.now()}`);
       c.phase = "victory";
     } else {
+      const stageAchievements: Record<number, string> = {
+        3: "round_32_clear",
+        4: "quarterfinalist",
+        5: "semifinalist",
+        6: "finalist",
+      };
+      const stageId = stageAchievements[c.round];
+      if (stageId)
+        void awardAchievements([stageId], `cup:stage:${c.runId}:${c.round}`);
+      void grantXp(
+        70,
+        `Fase concluída: ${campaignStageLabel(c.round)}`,
+        `xp:${c.runId}:stage:${c.round}`,
+      );
       c.round++;
       campaignBeginRound();
     }
@@ -2316,7 +2825,7 @@ function renderLobby() {
                 <button id="copy" class="ghost">copiar</button>
               </div>`
         }
-        <div class="mode-tag ${s.mode}">${s.mode === "pica" ? "Modo Pica" : "Modo Clássico"}</div>
+        <div class="mode-tag ${s.mode}">${s.mode === "hardcore" ? "Modo Hardcore" : "Modo Clássico"}</div>
         <button id="leave-room" class="ghost">Sair</button>
       </div>
 
@@ -2559,7 +3068,7 @@ function teamStrengthCard(p: PlayerPublic | undefined): string {
     return `<div class="cup-draft-rating draft-rating"><strong>--</strong><span>Overall time<br>Ataque -- · Meio -- · Defesa --</span></div>`;
   }
   if (L.state?.hideRatings) {
-    return `<div class="cup-draft-rating draft-rating"><strong>??</strong><span>Overall oculto<br>Modo Pica ativo</span></div>`;
+    return `<div class="cup-draft-rating draft-rating"><strong>??</strong><span>Overall oculto<br>Modo Hardcore ativo</span></div>`;
   }
   if (!p.picks.length || !p.formationId) {
     return `<div class="cup-draft-rating draft-rating"><strong>--</strong><span>Overall time<br>Ataque -- · Meio -- · Defesa --</span></div>`;
@@ -3540,10 +4049,19 @@ function awardRegularMatchAchievements() {
   const youWon = r.winnerId === you.id;
   const playerGoals = new Map<string, number>();
   const playerAssists = new Map<string, number>();
+  let youHalfGoals = 0;
+  let oppHalfGoals = 0;
+  let youRedCard = false;
   for (const ev of r.timeline) {
-    if (ev.type !== "goal") continue;
     const pid =
       ev.side === "home" ? r.homeId : ev.side === "away" ? r.awayId : "";
+    if (ev.type === "card" && ev.card === "red" && pid === you.id)
+      youRedCard = true;
+    if (ev.type !== "goal") continue;
+    if (ev.minute <= 45) {
+      if (pid === you.id) youHalfGoals++;
+      else if (pid === opp.id) oppHalfGoals++;
+    }
     if (pid !== you.id) continue;
     if (ev.player)
       playerGoals.set(ev.player, (playerGoals.get(ev.player) ?? 0) + 1);
@@ -3565,7 +4083,16 @@ function awardRegularMatchAchievements() {
     : 0;
   if (avg >= 85) ids.push("strong_draft");
   if (youWon && opp.isAI) ids.push("beat_machine");
-  if (youWon && s.mode === "pica") ids.push("pica_win");
+  if (youWon && s.mode === "hardcore") ids.push("hardcore_win");
+  if (youWon && yourGoals - oppGoals >= 3) ids.push("big_win");
+  if (youWon && youHalfGoals < oppHalfGoals) ids.push("comeback_win");
+  if (youWon && youRedCard) ids.push("red_card_win");
+  const xp = 25 + (youWon ? 25 : 0) + (r.penaltyScore ? 10 : 0);
+  void grantXp(
+    xp,
+    youWon ? "Partida vencida" : "Partida concluída",
+    `xp:${key}`,
+  );
   void awardAchievements(ids, key);
 }
 
@@ -3763,4 +4290,5 @@ function escapeHtml(s: string): string {
 }
 
 render();
+void loadLeaderboard();
 void restoreSession();

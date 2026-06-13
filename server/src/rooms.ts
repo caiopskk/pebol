@@ -13,7 +13,12 @@ import type {
 import { TEAMS, getTeam } from "../../shared/data/teams.js";
 import { getFormation } from "../../shared/formations.js";
 import { randomManager } from "../../shared/data/managers.js";
-import { effectiveRating, openSlots, simulateFirstHalf, simulateSecondHalf } from "../../shared/engine.js";
+import {
+  effectiveRating,
+  openSlots,
+  simulateFirstHalf,
+  simulateSecondHalf,
+} from "../../shared/engine.js";
 
 const TOTAL_SLOTS = 11;
 
@@ -51,12 +56,19 @@ function genCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
   do {
-    code = Array.from({ length: 4 }, () => chars[Math.floor(Math.random() * chars.length)]).join("");
+    code = Array.from(
+      { length: 4 },
+      () => chars[Math.floor(Math.random() * chars.length)],
+    ).join("");
   } while (rooms.has(code));
   return code;
 }
 
-function newPlayer(name: string, socketId: string | null, isAI = false): InternalPlayer {
+function newPlayer(
+  name: string,
+  socketId: string | null,
+  isAI = false,
+): InternalPlayer {
   return {
     id: randomUUID(),
     name: name.trim().slice(0, 20) || "Jogador",
@@ -77,7 +89,12 @@ function isPvP(room: Room): boolean {
   return room.players.length === 2 && room.players.every((p) => !p.isAI);
 }
 
-export function createRoom(name: string, mode: GameMode, socketId: string, solo = false) {
+export function createRoom(
+  name: string,
+  mode: GameMode,
+  socketId: string,
+  solo = false,
+) {
   const code = genCode();
   const host = newPlayer(name, socketId);
   const room: Room = {
@@ -172,7 +189,10 @@ export function ready(room: Room, playerId: string) {
   if (!p || room.phase !== "lobby") return;
   if (!p.formationId || !p.mentality) return;
   p.ready = true;
-  if (room.players.length === 2 && room.players.every((pl) => pl.ready && pl.formationId)) {
+  if (
+    room.players.length === 2 &&
+    room.players.every((pl) => pl.ready && pl.formationId)
+  ) {
     startDraft(room);
   }
 }
@@ -200,7 +220,12 @@ function beginTurn(room: Room) {
   room.takenThisRound = [];
 }
 
-export function pick(room: Room, playerId: string, slotId: string, playerName: string): string | null {
+export function pick(
+  room: Room,
+  playerId: string,
+  slotId: string,
+  playerName: string,
+): string | null {
   if (room.phase !== "draft") return "Não é fase de draft.";
   if (room.activePlayerId !== playerId) return "Não é a sua vez.";
   const player = room.players.find((p) => p.id === playerId)!;
@@ -234,7 +259,8 @@ export function rerollTeam(room: Room, playerId: string): string | null {
   const player = room.players.find((p) => p.id === playerId);
   if (!player) return "Jogador não encontrado.";
   if (player.isAI) return "A máquina não pode atualizar o time.";
-  if ((player.rerollsRemaining ?? 0) <= 0) return "Você já usou suas 3 atualizações.";
+  if ((player.rerollsRemaining ?? 0) <= 0)
+    return "Você já usou suas 3 atualizações.";
   if (room.currentTeam) room.usedTeamIds.push(room.currentTeam.id);
   player.rerollsRemaining = (player.rerollsRemaining ?? 0) - 1;
   beginTurn(room);
@@ -312,7 +338,12 @@ function applyHalftimeLineup(p: InternalPlayer, lineup: HalftimeLineup) {
       pos: pk.pos as Position,
       rating: Math.max(50, Math.min(99, Math.round(pk.rating))),
     };
-    return { slotId: pk.slotId, player, fromTeamId: pk.fromTeamId, effectiveRating: effectiveRating(player, slot.pos) };
+    return {
+      slotId: pk.slotId,
+      player,
+      fromTeamId: pk.fromTeamId,
+      effectiveRating: effectiveRating(player, slot.pos),
+    };
   });
   p.formationId = lineup.formationId;
   p.mentality = lineup.mentality;
@@ -320,7 +351,11 @@ function applyHalftimeLineup(p: InternalPlayer, lineup: HalftimeLineup) {
   p.picks = newPicks;
 }
 
-export function readyHalftime(room: Room, playerId: string, lineup?: HalftimeLineup) {
+export function readyHalftime(
+  room: Room,
+  playerId: string,
+  lineup?: HalftimeLineup,
+) {
   if (room.phase !== "result" || !room.result) return;
   const p = room.players.find((pl) => pl.id === playerId);
   if (!p) return;
@@ -328,9 +363,17 @@ export function readyHalftime(room: Room, playerId: string, lineup?: HalftimeLin
   p.halftimeReady = true;
 
   // once both confirmed, simulate the second half with the updated lineups
-  if (!room.result.secondHalfReady && room.players.every((pl) => pl.halftimeReady)) {
+  if (
+    !room.result.secondHalfReady &&
+    room.players.every((pl) => pl.halftimeReady)
+  ) {
     const [p1, p2] = room.players;
-    const sh = simulateSecondHalf(simInput(p1), simInput(p2), room.result.firstHalfGoals, room.expelled);
+    const sh = simulateSecondHalf(
+      simInput(p1),
+      simInput(p2),
+      room.result.firstHalfGoals,
+      room.expelled,
+    );
     room.result.timeline = [...room.result.timeline, ...sh.timeline];
     room.result.secondHalfReady = true;
     room.result.goals = sh.goals;
@@ -388,12 +431,11 @@ export function rematch(room: Room) {
   }
 }
 
-/** Build the public snapshot sent to clients (hides ratings in Pica mode). */
+/** Build the public snapshot sent to clients (hides ratings in Hardcore mode). */
 export function toPublic(room: Room): RoomState {
-  const hide = room.mode === "pica" && room.phase === "draft";
+  const hide = room.mode === "hardcore" && room.phase === "draft";
   const hasAI = room.players.some((p) => p.isAI);
-  const rerollsEnabled =
-    isPvP(room) || (hasAI && room.mode === "classico");
+  const rerollsEnabled = isPvP(room) || (hasAI && room.mode === "classico");
 
   const players: PlayerPublic[] = room.players.map((p) => ({
     id: p.id,
@@ -409,7 +451,7 @@ export function toPublic(room: Room): RoomState {
     picks: p.picks.map((pk) =>
       hide
         ? { ...pk, effectiveRating: 0, player: { ...pk.player, rating: 0 } }
-        : pk
+        : pk,
     ),
   }));
 

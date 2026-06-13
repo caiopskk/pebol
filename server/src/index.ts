@@ -27,7 +27,9 @@ import {
   setTeamPool,
 } from "./rooms.js";
 import { registerApi } from "./api.js";
-import { initDb, getOfficialTeams } from "./db.js";
+import { initDb, getOfficialTeams, getUserProgress } from "./db.js";
+import { userFromToken } from "./auth.js";
+import { HARDCORE_UNLOCK_LEVEL } from "../../shared/progression.js";
 
 // Load official clubs into the online draft pool, using the generic alias as the name
 // so the live game never shows the real (copyrighted) club names.
@@ -92,10 +94,33 @@ function driveAI(code: string) {
 io.on("connection", (socket) => {
   socket.on(
     "createRoom",
-    (
-      data: { name: string; mode: "classico" | "pica"; solo?: boolean },
+    async (
+      data: {
+        name: string;
+        mode: "classico" | "hardcore";
+        solo?: boolean;
+        token?: string | null;
+      },
       cb: (r: AckResult) => void,
     ) => {
+      if (data.mode === "hardcore") {
+        const user = userFromToken(data.token || undefined);
+        if (!user) {
+          cb?.({
+            ok: false,
+            error: "Entre na sua conta para jogar no modo Hardcore.",
+          });
+          return;
+        }
+        const progress = await getUserProgress(user.id);
+        if (progress.level < HARDCORE_UNLOCK_LEVEL) {
+          cb?.({
+            ok: false,
+            error: `Modo Hardcore desbloqueia no nível ${HARDCORE_UNLOCK_LEVEL}.`,
+          });
+          return;
+        }
+      }
       const { room, playerId } = createRoom(
         data.name,
         data.mode,

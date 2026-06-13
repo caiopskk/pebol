@@ -12,7 +12,10 @@ jogadores, importação por JSON, conquistas e deploy em porta única para produ
 - **1v1 online em tempo real** com salas por código, turnos sincronizados e Socket.io.
 - **Modo solo vs Máquina** com técnico controlado pela IA e draft automático do adversário.
 - **Modo Clássico** com ratings visíveis durante o draft.
-- **Modo Pica** com ratings ocultos durante o draft.
+- **Modo Hardcore** com ratings ocultos durante o draft, desbloqueado ao atingir o nível 5.
+- **XP, níveis e títulos**: ganhe experiência jogando partidas, avançando fases da Copa e
+  desbloqueando conquistas; cada 100 XP é um nível, com títulos de Aspirante a Imortal.
+- **Leaderboard por nível** na home, com pódio destacado e seu próprio nome em evidência.
 - **3 atualizações de time/seleção** no draft quando o modo permite reroll.
 - **10 formações** e **6 mentalidades** para montar o time.
 - **Foco de ataque**: equilibrado, pelos lados ou pelo meio.
@@ -117,17 +120,29 @@ Formações disponíveis:
 - 4-1-3-2
 - 4-1-4-1
 
-Mentalidades disponíveis:
+Mentalidades disponíveis. Há um **eixo** (puro tradeoff ataque↔defesa) e um **triângulo de
+counter**, onde escolher o estilo certo contra o do adversário rende uma grande vantagem
+tática (vale ~+5/6 de overall):
 
-- **Agressivo**: mais ataque, menos defesa.
-- **Equilibrada**: sem bônus nem penalidade.
-- **Retranca**: mais defesa, menos ataque.
-- **Marcação pressão**: pressiona a saída, com risco defensivo.
-- **Posse de Bola**: melhora controle e consistência.
-- **Contra-ataque**: favorece bloco baixo e transição rápida.
+- **Agressivo**: bem mais ataque, bem menos defesa.
+- **Equilibrada**: sem bônus, mas imune a counters (nenhum estilo te neutraliza).
+- **Retranca**: bem mais defesa, bem menos ataque.
+- **Marcação pressão**: ataque com risco defensivo. **Neutraliza Posse de Bola.**
+- **Posse de Bola**: controle do ritmo. **Neutraliza Contra-ataque.**
+- **Contra-ataque**: bloco baixo e transição. **Neutraliza Marcação pressão.**
 
-O foco de ataque muda como o time tenta criar chances: distribuído, pelos lados ou pelo
-meio. A dica de foco compara o elenco montado com a estratégia escolhida.
+Os três estilos do triângulo têm stats equilibrados (nenhum é dominante): o valor deles vem
+do counter. Como o resultado pesa bastante no rating do elenco (o time claramente melhor
+ganha ~74%), o jogo é mais tático e menos sorte; mesmo com o counter a favor, o time mais
+forte ainda pode vencer.
+
+O **foco de ataque** muda por onde o time cria chances: distribuído, pelos lados (premia
+boas pontas/laterais) ou pelo meio (premia o miolo). Um aviso compara o elenco montado com o
+foco escolhido. A **formação** também conta: mais jogadores de meio-campo dão superioridade
+numérica no setor.
+
+No modo solo da Copa, o adversário de cada jogo tem formação, mentalidade e foco próprios,
+mostrados antes da partida — escolher como contra-atacar a estratégia dele é parte do desafio.
 
 ## Partida ao vivo
 
@@ -223,7 +238,7 @@ As conquistas ficam no banco e são desbloqueadas por ações do usuário. Exemp
 - Três assistências em uma partida.
 - Time com overall alto.
 - Vitória contra a máquina.
-- Vitória no modo Pica.
+- Vitória no modo Hardcore.
 - Criar time personalizado.
 - Importar JSON.
 - Passar da fase de grupos da Copa.
@@ -231,6 +246,28 @@ As conquistas ficam no banco e são desbloqueadas por ações do usuário. Exemp
 
 Quando uma conquista é alcançada, a UI mostra um aviso temporário. A tela de conquistas
 exibe desbloqueadas, pendentes, categoria e pontuação.
+
+## Progressão, XP e leaderboard
+
+Cada conta acumula XP e sobe de nível. As fontes de XP são:
+
+- **Partidas** (1v1 e solo): XP por jogar, com bônus por vitória e por decisão nos pênaltis.
+- **Campanha da Copa**: XP por jogo, por passar da fase de grupos, por avançar no mata-mata
+  e um bônus grande ao ser campeão do mundo.
+- **Conquistas**: cada conquista desbloqueada concede os pontos dela como XP.
+
+Regras de nível (em `shared/progression.ts`):
+
+- **100 XP por nível** (`XP_PER_LEVEL`).
+- Títulos por faixa de nível: Aspirante (1), Promessa (10), Titular (20), Capitão (30),
+  Craque (40), Ídolo (50), Maestro (60), Lenda (70), Campeão continental (80),
+  Campeão do mundo (90) e Imortal (100).
+- O **Modo Hardcore** desbloqueia no **nível 5** (`HARDCORE_UNLOCK_LEVEL`).
+
+O XP é registrado no servidor por evento idempotente (cada concessão tem uma chave única,
+então a mesma ação não pontua duas vezes). A home mostra um **leaderboard por nível** com os
+melhores jogadores, pódio destacado e o jogador atual em evidência. Concessões de XP exibem
+um popup temporário no canto, no mesmo estilo das conquistas.
 
 ## Banco de dados
 
@@ -252,6 +289,29 @@ ADMIN_USERS=admin,caio
 `ADMIN_USERS` é opcional. O seed roda na inicialização quando a tabela de times está vazia,
 criando times oficiais, seleções históricas e conquistas.
 
+### Schema e migrações (deploy)
+
+Não é preciso atualizar o banco manualmente ao subir uma nova versão. O `initDb()` roda toda
+vez que o servidor inicia e é idempotente:
+
+- Cria tabelas que faltam com `CREATE TABLE IF NOT EXISTS` (inclui `user_xp_events`,
+  `user_achievements`, etc.) — uma versão nova com tabelas novas as cria sozinha no Turso já
+  existente, sem apagar dados.
+- Roda `migrateDb()` para colunas adicionadas em tabelas existentes (ex.: `alt_pos`), ignorando
+  o erro de coluna duplicada.
+- Re-semeia conquistas com `INSERT OR IGNORE` (novas conquistas entram; as existentes ficam).
+
+Pontos de atenção:
+
+- **Times**: o seed só roda quando a tabela `teams` está vazia. Times novos adicionados em
+  `data/teams.ts`/`worldcup.ts` **não** aparecem num banco já populado — adicione-os pela tela
+  de gerenciamento (CRUD) ou limpe a tabela.
+- **Alterar coluna de tabela existente** no futuro exige adicionar uma migração em `migrateDb()`,
+  no mesmo padrão do `alt_pos`. As features atuais (XP/leaderboard) usam tabela nova, então não
+  precisam disso.
+- O Turso persiste entre deploys; usuários existentes simplesmente começam com 0 XP quando a
+  feature é publicada.
+
 ## API
 
 Rotas principais:
@@ -261,6 +321,9 @@ Rotas principais:
 - `GET /api/me`
 - `GET /api/achievements`
 - `POST /api/achievements/:id/unlock`
+- `GET /api/leaderboard`
+- `GET /api/progress`
+- `POST /api/xp`
 - `GET /api/teams`
 - `POST /api/teams`
 - `PUT /api/teams/:id`
@@ -319,6 +382,7 @@ shared/
   types.ts             # tipos compartilhados
   formations.ts        # formações e posições no campo
   mentalities.ts       # mentalidades e modificadores
+  progression.ts       # XP por nível, títulos e desbloqueio do Hardcore
   engine.ts            # força do time, eventos, partida e pênaltis
   data/
     teams.ts           # clubes oficiais usados no seed

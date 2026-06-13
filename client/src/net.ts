@@ -18,7 +18,8 @@ export function onError(fn: (msg: string) => void) {
 }
 
 export function createRoom(name: string, mode: GameMode, solo = false): Promise<AckResult> {
-  return new Promise((resolve) => socket.emit("createRoom", { name, mode, solo }, resolve));
+  const token = localStorage.getItem("pebol_token");
+  return new Promise((resolve) => socket.emit("createRoom", { name, mode, solo, token }, resolve));
 }
 export function joinRoom(code: string, name: string): Promise<AckResult> {
   return new Promise((resolve) => socket.emit("joinRoom", { code, name }, resolve));

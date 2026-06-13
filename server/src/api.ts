@@ -9,6 +9,9 @@ import {
   deleteTeam,
   getAchievementProgress,
   unlockAchievement,
+  grantExperience,
+  getUserProgress,
+  getLeaderboard,
   maskTeamName,
   type DbTeam,
   type TeamInput,
@@ -57,13 +60,31 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
   });
   app.get("/api/me", (req: AuthRequest, res) => res.json({ user: req.authUser ?? null }));
 
+  app.get("/api/leaderboard", async (req, res) => {
+    res.json({ leaderboard: await getLeaderboard(Number(req.query.limit) || 10) });
+  });
+
+  app.get("/api/progress", requireAuth, async (req: AuthRequest, res) => {
+    res.json({ progress: await getUserProgress(req.authUser!.id) });
+  });
+
   app.get("/api/achievements", requireAuth, async (req: AuthRequest, res) => {
     res.json({ achievements: await getAchievementProgress(req.authUser!.id) });
   });
 
   app.post("/api/achievements/:id/unlock", requireAuth, async (req: AuthRequest, res) => {
     const unlocked = await unlockAchievement(req.authUser!.id, req.params.id);
-    res.json({ unlocked });
+    res.json({ unlocked, progress: await getUserProgress(req.authUser!.id) });
+  });
+
+  app.post("/api/xp", requireAuth, async (req: AuthRequest, res) => {
+    const amount = Math.round(Number(req.body?.amount));
+    const sourceKey = String(req.body?.sourceKey ?? "");
+    const reason = String(req.body?.reason ?? "");
+    if (!Number.isFinite(amount) || amount <= 0)
+      return res.status(400).json({ error: "XP inválido." });
+    const r = await grantExperience(req.authUser!.id, sourceKey, amount, reason);
+    res.json(r);
   });
 
   app.get("/api/teams", async (req: AuthRequest, res) => {
