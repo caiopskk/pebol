@@ -1,4 +1,13 @@
 {
+  "observacoes": [
+    "O arquivo pode conter { \"teams\": [...] } ou um array direto de times.",
+    "Cada time precisa ter exatamente 11 jogadores em players.",
+    "bench é opcional e representa reservas disponíveis para substituições.",
+    "kind pode ser club ou national.",
+    "official=true só cria time oficial quando quem importa é admin; usuários comuns criam times próprios.",
+    "posições válidas: GK, RB, LB, CB, RWB, LWB, CDM, CM, CAM, RM, LM, RW, LW, CF, ST.",
+    "altPositions pode ser array ou texto separado por vírgula; positions também é aceito e vira posições alternativas."
+  ],
   "teams": [
     {
       "name": "Time Exemplo",
@@ -17,7 +26,7 @@
         { "name": "Meia Um Exemplo", "pos": "CM", "rating": 83 },
         { "name": "Meia Dois Exemplo", "pos": "CAM", "altPositions": ["CM", "CF"], "rating": 84 },
         { "name": "Ponta Direita Exemplo", "pos": "RW", "rating": 82 },
-        { "name": "Centroavante Exemplo", "pos": "ST", "altPositions": ["CF"], "rating": 85 },
+        { "name": "Centroavante Exemplo", "pos": "ST", "altPositions": "CF, LW", "rating": 85 },
         { "name": "Ponta Esquerda Exemplo", "pos": "LW", "rating": 82 }
       ],
       "bench": [
@@ -44,7 +53,7 @@
         { "name": "MEI Nacional", "pos": "CAM", "rating": 85 },
         { "name": "PD Nacional", "pos": "RW", "rating": 84 },
         { "name": "CA Nacional", "pos": "ST", "rating": 86 },
-        { "name": "PE Nacional", "pos": "LW", "rating": 84 }
+        { "name": "PE Nacional", "pos": "LW", "positions": ["LW", "RW", "CF"], "rating": 84 }
       ],
       "bench": [
         { "name": "Reserva Nacional 1", "pos": "GK", "rating": 78 },

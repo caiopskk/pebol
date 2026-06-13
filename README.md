@@ -82,19 +82,19 @@ vaga aberta da formação.
 
 As posições usam siglas em português na interface:
 
-| Sigla | Posição |
-| --- | --- |
-| GOL | Goleiro |
-| LD / LE | Laterais |
-| ZAG | Zagueiro |
-| ALD / ALE | Alas |
-| VOL | Volante |
-| MC | Meia central |
-| MEI | Meia ofensivo |
-| MD / ME | Meias laterais |
-| PD / PE | Pontas |
-| SA | Segundo atacante |
-| CA | Centroavante |
+| Sigla     | Posição          |
+| --------- | ---------------- |
+| GOL       | Goleiro          |
+| LD / LE   | Laterais         |
+| ZAG       | Zagueiro         |
+| ALD / ALE | Alas             |
+| VOL       | Volante          |
+| MC        | Meia central     |
+| MEI       | Meia ofensivo    |
+| MD / ME   | Meias laterais   |
+| PD / PE   | Pontas           |
+| SA        | Segundo atacante |
+| CA        | Centroavante     |
 
 Escalar fora da posição reduz o rating efetivo. A penalidade é leve para posições parecidas,
 média entre setores próximos e pesada para setores distantes ou goleiro improvisado.
@@ -179,7 +179,7 @@ Cada time deve ter 11 titulares e pode ter banco de reservas.
 Na tela de gerenciamento existe o botão **Baixar modelo**, que baixa:
 
 ```text
-client/public/modelo_importacao_times.json
+client/public/import_teams_model.json.json
 ```
 
 Formato resumido:
@@ -196,11 +196,14 @@ Formato resumido:
       "alias": "Time Generico",
       "players": [
         { "name": "Goleiro", "pos": "GK", "rating": 82 },
-        { "name": "Atacante", "pos": "ST", "altPositions": ["CF"], "rating": 85 }
+        {
+          "name": "Atacante",
+          "pos": "ST",
+          "altPositions": ["CF"],
+          "rating": 85
+        }
       ],
-      "bench": [
-        { "name": "Reserva", "pos": "CM", "rating": 77 }
-      ]
+      "bench": [{ "name": "Reserva", "pos": "CM", "rating": 77 }]
     }
   ]
 }
@@ -337,7 +340,7 @@ client/
   public/
     pebol_logo.png
     world_cup_trophy.png
-    modelo_importacao_times.json
+    import_teams_model.json.json
   src/
     main.ts            # UI principal
     net.ts             # socket client

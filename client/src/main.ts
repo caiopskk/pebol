@@ -861,7 +861,7 @@ function renderAdmin() {
         </div>
         <div class="admin-actions">
           <input id="adm-import-file" type="file" accept="application/json,.json" hidden />
-          <a class="primary alt admin-action download-action" href="/modelo_importacao_times.json" download>Baixar modelo</a>
+          <a class="primary alt admin-action download-action" href="/import_teams_model.json" download>Baixar modelo</a>
           <button id="adm-import" class="primary alt admin-action">Importar JSON</button>
           <button id="adm-new" class="primary admin-action">Novo time</button>
           <button id="adm-back" class="primary alt admin-action">Voltar</button>
@@ -1195,14 +1195,30 @@ function mentalityLabel(m: Mentality): string {
   return MENTALITIES.find((x) => x.id === m)?.name ?? m;
 }
 
-const ATTACK_FOCUS_OPTIONS: { id: AttackFocus; name: string; desc: string }[] = [
-  { id: "equilibrado", name: "Equilibrado", desc: "Ataque distribuído, sem ênfase." },
-  { id: "lados", name: "Pelos lados", desc: "Joga aberto: usa pontas e laterais. Forte se eles forem bons." },
-  { id: "meio", name: "Pelo meio", desc: "Joga por dentro: usa o miolo (meias e atacantes). Forte se o miolo for bom." },
-];
+const ATTACK_FOCUS_OPTIONS: { id: AttackFocus; name: string; desc: string }[] =
+  [
+    {
+      id: "equilibrado",
+      name: "Equilibrado",
+      desc: "Ataque distribuído, sem ênfase.",
+    },
+    {
+      id: "lados",
+      name: "Pelos lados",
+      desc: "Joga aberto: usa pontas e laterais. Forte se eles forem bons.",
+    },
+    {
+      id: "meio",
+      name: "Pelo meio",
+      desc: "Joga por dentro: usa o miolo (meias e atacantes). Forte se o miolo for bom.",
+    },
+  ];
 
 function attackFocusLabel(f: AttackFocus | undefined): string {
-  return ATTACK_FOCUS_OPTIONS.find((x) => x.id === (f ?? "equilibrado"))?.name ?? "Equilibrado";
+  return (
+    ATTACK_FOCUS_OPTIONS.find((x) => x.id === (f ?? "equilibrado"))?.name ??
+    "Equilibrado"
+  );
 }
 
 function renderAttackFocusBanner(
@@ -1775,8 +1791,9 @@ function renderCampaignDraft() {
   const moveSource = selectedPick?.player ?? null;
   const activePlayer = player ?? moveSource;
 
-  app.querySelectorAll<HTMLElement>(".you-board .slot.filled").forEach(
-    (slotEl) => {
+  app
+    .querySelectorAll<HTMLElement>(".you-board .slot.filled")
+    .forEach((slotEl) => {
       const slotId = slotEl.dataset.slot!;
       if (c.selectedPickSlotId === slotId) slotEl.classList.add("selected-sub");
       slotEl.onclick = (ev) => {
@@ -1788,8 +1805,7 @@ function renderCampaignDraft() {
         c.selectedPickSlotId = c.selectedPickSlotId === slotId ? null : slotId;
         render();
       };
-    },
-  );
+    });
 
   if (activePlayer) {
     app
@@ -1819,9 +1835,13 @@ function campaignRelocate(fromSlotId: string, toSlotId: string) {
   const c = L.campaign!;
   const pick = c.picks.find((p) => p.slotId === fromSlotId);
   if (!pick) return;
-  const slot = getFormation(c.formationId)?.slots.find((s) => s.id === toSlotId);
+  const slot = getFormation(c.formationId)?.slots.find(
+    (s) => s.id === toSlotId,
+  );
   pick.slotId = toSlotId;
-  pick.effectiveRating = slot ? effectiveRating(pick.player, slot.pos) : pick.player.rating;
+  pick.effectiveRating = slot
+    ? effectiveRating(pick.player, slot.pos)
+    : pick.player.rating;
   c.selectedPickSlotId = null;
   render();
 }
@@ -2361,10 +2381,12 @@ function renderLobby() {
     </div>
   `;
 
-  app.querySelector<HTMLButtonElement>("#copy")?.addEventListener("click", () => {
-    navigator.clipboard?.writeText(s.code);
-    showToast("Código copiado!");
-  });
+  app
+    .querySelector<HTMLButtonElement>("#copy")
+    ?.addEventListener("click", () => {
+      navigator.clipboard?.writeText(s.code);
+      showToast("Código copiado!");
+    });
   app.querySelector<HTMLButtonElement>("#leave-room")!.onclick = goHome;
 
   app.querySelectorAll<HTMLButtonElement>(".form-btn").forEach((btn) => {
@@ -2932,7 +2954,9 @@ function renderLiveMatch() {
   const halfForm = document.getElementById("half-form") as HTMLSelectElement;
   const halfMent = document.getElementById("half-ment") as HTMLSelectElement;
   const halfFocus = document.getElementById("half-focus") as HTMLSelectElement;
-  const halfFocusReport = document.getElementById("half-focus-report") as HTMLDivElement;
+  const halfFocusReport = document.getElementById(
+    "half-focus-report",
+  ) as HTMLDivElement;
   const halfContinue = document.getElementById(
     "half-continue",
   ) as HTMLButtonElement;
@@ -3045,7 +3069,10 @@ function renderLiveMatch() {
   }
 
   function refreshHalftimeSquad(status?: string) {
-    halfFocusReport.innerHTML = renderAttackFocusBanner(you.picks, halfFocus.value as AttackFocus);
+    halfFocusReport.innerHTML = renderAttackFocusBanner(
+      you.picks,
+      halfFocus.value as AttackFocus,
+    );
     halfPitch.innerHTML = renderPitch(
       getFormation(you.formationId ?? L.formationId)!,
       you.picks,
