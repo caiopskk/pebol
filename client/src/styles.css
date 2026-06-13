@@ -1190,6 +1190,23 @@ label {
 .slot-rt {
   line-height: 1;
 }
+.slot-hidden-pos {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 1.65rem;
+  line-height: 1;
+  font-size: 0.72rem;
+  font-weight: 900;
+  letter-spacing: -0.02rem;
+}
+.pitch.small .slot-dot:has(.slot-hidden-pos) {
+  width: 32px;
+  height: 32px;
+}
+.pitch.small .slot-hidden-pos {
+  font-size: 0.62rem;
+}
 .slot-pen {
   position: absolute;
   top: -6px;
@@ -1442,6 +1459,7 @@ label {
   color: #04130c;
   min-width: 38px;
   text-align: center;
+  white-space: nowrap;
 }
 .pl-name {
   flex: 1;
@@ -2786,7 +2804,7 @@ label {
   width: 100%;
   min-height: 2rem;
   display: grid;
-  grid-template-columns: 3.25rem minmax(0, 1fr) 2.5rem;
+  grid-template-columns: minmax(4.2rem, auto) minmax(0, 1fr) 2.5rem;
   grid-template-areas: "pos name rating";
   gap: 0.5rem;
   align-items: center;
@@ -2808,6 +2826,11 @@ label {
 }
 .reserve-option .pl-pos {
   grid-area: pos;
+  min-width: 0;
+  width: max-content;
+  max-width: 5.5rem;
+  justify-self: start;
+  overflow: visible;
 }
 .reserve-option .pl-name {
   grid-area: name;

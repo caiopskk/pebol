@@ -81,8 +81,7 @@ function ensureWriteLockOverlay(): HTMLElement {
     <div class="write-lock-card">
       <span class="write-spinner" aria-hidden="true"></span>
       <div>
-        <strong>Salvando alterações</strong>
-        <span>Aguarde a requisição terminar.</span>
+        <strong>Sincronizando</strong>
       </div>
     </div>`;
   document.body.appendChild(el);
@@ -3096,20 +3095,26 @@ function renderPitch(
   showPos = false,
 ): string {
   const bySlot = new Map(picks.map((p) => [p.slotId, p]));
+  const hideRatings =
+    !!L.state?.hideRatings || L.campaign?.mode === "hardcore";
   const nodes = formation.slots
     .map((slot) => {
       const pick = bySlot.get(slot.id);
       const filled = !!pick;
       const cls = filled ? "filled" : highlightEmpty ? "empty open" : "empty";
       const rating =
-        pick && !L.state?.hideRatings
+        pick && !hideRatings
           ? `<span class="slot-rt">${pick.effectiveRating}</span>`
           : "";
       const penal =
         pick &&
-        !L.state?.hideRatings &&
+        !hideRatings &&
         pick.effectiveRating < pick.player.rating
           ? `<span class="slot-pen" title="Fora de posição">▼</span>`
+          : "";
+      const hiddenPos =
+        pick && hideRatings
+          ? `<span class="slot-hidden-pos">${posLabel(slot.pos)}</span>`
           : "";
       const posTag =
         filled && showPos
@@ -3121,7 +3126,7 @@ function renderPitch(
              style="left:${slot.x}%; bottom:${slot.y}%">
           ${posTag}
           <div class="slot-dot pos-${groupOf(slot.pos).toLowerCase()}">
-            ${rating}${penal}
+            ${hiddenPos}${rating}${penal}
           </div>
           <span class="slot-name">${escapeHtml(label)}</span>
         </div>`;
