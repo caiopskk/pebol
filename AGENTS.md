@@ -106,16 +106,39 @@ A partir dos `effectiveRating` dos 11 escalados, por linha:
 
 ### 4.5 Mentalidades (`mentalities.ts`)
 
-Multiplicam a força de ataque/defesa na simulação (não os ratings em si):
+Multiplicam a força de ataque/defesa na simulação (não os ratings em si). Há dois
+grupos: o **eixo** (aura/equilibrada/retranca — puro tradeoff ataque↔defesa, fora do
+triângulo) e o **triângulo de counter** (pressão→posse→contra-ataque→pressão). Os três
+estilos do triângulo têm stats **net-neutros** (`attackMod + defenseMod = 2`, então ~50%
+vs equilibrada) — o valor deles vem do counter. `equilibrada` é o único **imune** a counters.
 
-| id | nome | ataque | defesa |
-|---|---|---|---|
-| `aura` | Agressivo | ×1.10 | ×0.92 |
-| `equilibrada` | Equilibrada | ×1.00 | ×1.00 |
-| `retranca` | Retranca | ×0.92 | ×1.10 |
-| `pressao` | Marcação pressão | ×1.07 | ×0.95 |
-| `posse` | Posse de Bola | ×1.04 | ×1.04 |
-| `contra_ataque` | Contra-ataque | ×1.05 | ×1.07 |
+| id | nome | ataque | defesa | counter |
+|---|---|---|---|---|
+| `aura` | Agressivo | ×1.12 | ×0.88 | — |
+| `equilibrada` | Equilibrada | ×1.00 | ×1.00 | imune |
+| `retranca` | Retranca | ×0.88 | ×1.12 | — |
+| `pressao` | Marcação pressão | ×1.06 | ×0.94 | neutraliza `posse` |
+| `posse` | Posse de Bola | ×1.03 | ×0.97 | neutraliza `contra_ataque` |
+| `contra_ataque` | Contra-ataque | ×0.96 | ×1.04 | neutraliza `pressao` |
+
+**Counter** (`mentalityEdge` + `applyCounter`, engine): quando o estilo de um lado
+neutraliza o do outro, o vencedor ganha ataque ×1.06 / defesa ×1.02 e o neutralizado perde
+ataque ×0.92 / defesa ×0.97. Vale ~76% de vitória (≈ +5/6 de overall) — é a principal leitura
+tática. No 1v1 a leitura acontece no intervalo; na Copa, o adversário tem tática fixa por time
+(`wcOpponentTactics`, determinística por `id:season`) e o jogador escolhe a mentalidade no
+`preMatch` (com aviso de vantagem/risco). Matemática: net-neutro exige `attackMod+defenseMod=2`.
+
+### 4.5b Foco de ataque (`AttackFocus`, engine `attackFocusMod`)
+
+Segunda dimensão tática, **independente** da mentalidade (campo `attackFocus` em
+PlayerPublic/SimInput/HalftimeLineup; setup, intervalo e preMatch da Copa têm seletor).
+Valores: `equilibrado` (neutro), `lados` (usa LB/RB/LWB/RWB/LM/RM/LW/RW), `meio`
+(usa CDM/CM/CAM/CF/ST). O modificador é `clamp(0.9..1.11, 1 + (médiaDaZona − overall)/120)`
+multiplicando o **ataque**: canalizar pela zona forte do seu elenco dá até ~+11% de ataque
+(~+5/6% de vitória); forçar pela zona fraca pune (~-5%). Premia ler o próprio draft. É uma
+camada terciária (abaixo do counter e do gap de rating). Adversários da Copa também têm foco
+fixo (`wcOpponentTactics`). Default `equilibrado` (back-compat: bots/testes que não enviam
+`attackFocus` caem nele).
 
 ### 4.6 Simulação da partida — DOIS tempos com re-simulação no intervalo
 
@@ -142,9 +165,13 @@ Regras que decorrem disso (cuidado ao mexer):
   eventos do 2º tempo só citam quem está em campo então.
 
 **Matemática dos gols** (`expectedGoals` + `poisson`): para cada lado,
-`xg = 0.92 + (ataque − defesaAdv)/24 + (meio − meioAdv)/75`, limitado a `[0.2, 2.35]`, e
-**× 0.5 por tempo**. O nº de gols do tempo é uma amostra de Poisson com esse xg. O 1º tempo
-usa as forças iniciais; o 2º usa as forças pós-intervalo.
+`xg = 0.78 + (ataque − defesaAdv)/15 + (meio − meioAdv)/48 + (nMeio − nMeioAdv)×0.05`,
+limitado a `[0.15, 2.7]`, e **× 0.5 por tempo**. O nº de gols do tempo é uma amostra de
+Poisson com esse xg. `nMeio` = nº de slots do grupo MID na formação (superioridade numérica
+de meio; alas LWB/RWB contam como DEF). O gap de rating pesa bastante de propósito (menos
+sorte: o time ~5 de overall melhor ganha ~74%, empate ~50%). A base baixa (0.78) reduz "gol
+grátis". O 1º tempo usa as forças iniciais; o 2º usa as forças pós-intervalo. Os mods de
+mentalidade e o counter (`applyCounter`) são aplicados **antes** do xg.
 
 **Empate no tempo normal** → disputa de pênaltis (`runShootout`): 5 cobranças cada +
 morte súbita, ~26% de chance de erro por cobrança, cobradores ordenados pelos melhores
@@ -211,12 +238,16 @@ socket/sala). Código em `main.ts` (seção "World Cup campaign", `L.campaign`),
   tem seus 11 jogadores originais. A final continua sendo o chefe autoral `WC_BOSS`
   (Brasil 1970).
 - **Mentalidade com peso dobrado**: `applyMentality(..., weight=2)` — amplifica o desvio do
-  neutro. Cria estratégia real (mentalidades defensivas reduzem empates/derrotas).
+  neutro. Cria estratégia real (mentalidades defensivas reduzem empates/derrotas). Cada
+  adversário tem tática fixa (`wcOpponentTactics`), mostrada no `preMatch`; escolher o counter
+  certo (ou evitar ser neutralizado) é a leitura principal antes de cada jogo.
 - **Fluxo de fases** (`CampaignState.phase`): `setup → draft → preMatch → match →
   grupos/preMatch... → mata-mata/preMatch... → victory | gameover`. A partida reusa o campo+bola
   e o feed, mas é uma simulação contínua (sem intervalo interativo).
-- **Balanceamento** (Monte Carlo, draft ótimo): ~80% nas 3 primeiras, caindo a ~40-50% nas
-  finais; campanha perfeita ~2-10% conforme a mentalidade. É pra ser difícil de propósito.
+- **Balanceamento**: difícil de propósito. Atenção: o rework do engine (4.5/4.6) aumentou o
+  peso do rating e adicionou counters, então as taxas antigas (~80% nas primeiras, ~40-50%
+  nas finais) mudaram — re-rode o Monte Carlo se for recalibrar. A leitura de tática no
+  `preMatch` agora é um fator real de quem joga bem.
 
 Decisões de design tomadas (ajustáveis): posição por **setor** (não idêntica); partidas com
 **narração ao vivo** (com pular); adversários históricos com escalação fixa + chefe real.

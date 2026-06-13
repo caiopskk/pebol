@@ -6,53 +6,76 @@ export interface MentalityDef {
   desc: string;
   attackMod: number; // multiplier applied to attack strength
   defenseMod: number; // multiplier applied to defense strength
+  counters: Mentality | null; // style this one tactically disrupts (rock-paper-scissors)
 }
 
+// Two groups of styles:
+//  - Axis trio (aura / equilibrada / retranca): pure attack<->defense tradeoffs,
+//    outside the counter triangle. Equilibrada is the only counter-immune style.
+//  - Counter triangle (pressao -> posse -> contra_ataque -> pressao): balanced
+//    base stats, but each hard-counters one other style. Reading the opponent
+//    and picking the right counter is worth roughly a goal (see applyCounter).
 export const MENTALITIES: MentalityDef[] = [
   {
     id: "aura",
     name: "Agressivo",
-    desc: "Vai pra cima: +10% de ataque, mas -8% de defesa.",
-    attackMod: 1.1,
-    defenseMod: 0.92,
+    desc: "Tudo pra frente: +12% ataque, -12% defesa. Aposta alta, sem rede.",
+    attackMod: 1.12,
+    defenseMod: 0.88,
+    counters: null,
   },
   {
     id: "equilibrada",
     name: "Equilibrada",
-    desc: "Sem bônus nem penalidades.",
+    desc: "Sem bônus, mas imune a leituras: nenhum estilo te neutraliza.",
     attackMod: 1.0,
     defenseMod: 1.0,
+    counters: null,
   },
   {
     id: "retranca",
     name: "Retranca",
-    desc: "Fecha o jogo: +10% de defesa, mas -8% de ataque.",
-    attackMod: 0.92,
-    defenseMod: 1.1,
+    desc: "Ferrolho: +12% defesa, -12% ataque.",
+    attackMod: 0.88,
+    defenseMod: 1.12,
+    counters: null,
   },
   {
     id: "pressao",
     name: "Marcação pressão",
-    desc: "Rouba bola no campo rival: +7% ataque, -5% defesa.",
-    attackMod: 1.07,
-    defenseMod: 0.95,
+    desc: "Sufoca a saída de bola: +6% ataque, -6% defesa. Neutraliza a Posse de Bola.",
+    attackMod: 1.06,
+    defenseMod: 0.94,
+    counters: "posse",
   },
   {
     id: "posse",
     name: "Posse de Bola",
-    desc: "Controla o ritmo: +4% ataque e +4% defesa.",
-    attackMod: 1.04,
-    defenseMod: 1.04,
+    desc: "Controla o ritmo: +3% ataque, -3% defesa. Neutraliza o Contra-ataque.",
+    attackMod: 1.03,
+    defenseMod: 0.97,
+    counters: "contra_ataque",
   },
   {
     id: "contra_ataque",
     name: "Contra-ataque",
-    desc: "Bloco baixo e saída rápida: +5% ataque e +7% defesa.",
-    attackMod: 1.05,
-    defenseMod: 1.07,
+    desc: "Bloco baixo, saída rápida: -4% ataque, +4% defesa. Neutraliza a Marcação pressão.",
+    attackMod: 0.96,
+    defenseMod: 1.04,
+    counters: "pressao",
   },
 ];
 
 export function getMentality(id: Mentality): MentalityDef {
   return MENTALITIES.find((m) => m.id === id) ?? MENTALITIES[1];
+}
+
+/**
+ * Counter triangle resolution: returns which side gets the tactical edge when
+ * `a` and `b` face each other, or null if neither counters the other.
+ */
+export function mentalityEdge(a: Mentality, b: Mentality): "a" | "b" | null {
+  if (getMentality(a).counters === b) return "a";
+  if (getMentality(b).counters === a) return "b";
+  return null;
 }

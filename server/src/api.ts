@@ -32,6 +32,7 @@ function validateTeam(t: TeamInput): string | null {
   for (const p of [...t.players, ...(t.bench ?? [])]) {
     if (!p || typeof p.name !== "string" || !p.name.trim()) return "Todo jogador precisa de um nome.";
     if (!VALID_POS.has(p.pos)) return `Posição inválida: ${p.pos}.`;
+    if (p.altPositions?.some((pos) => !VALID_POS.has(pos))) return `Posição alternativa inválida em ${p.name}.`;
     if (typeof p.rating !== "number" || p.rating < 40 || p.rating > 99) return "Rating deve ser entre 40 e 99.";
   }
   return null;

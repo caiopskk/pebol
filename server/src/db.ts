@@ -72,7 +72,8 @@ export async function initDb(): Promise<void> {
         alias TEXT NOT NULL DEFAULT '', owner_id TEXT, created_at INTEGER NOT NULL)`,
       `CREATE TABLE IF NOT EXISTS players (
         id TEXT PRIMARY KEY, team_id TEXT NOT NULL, name TEXT NOT NULL, pos TEXT NOT NULL,
-        rating INTEGER NOT NULL, is_bench INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL DEFAULT 0)`,
+        rating INTEGER NOT NULL, alt_pos TEXT NOT NULL DEFAULT '',
+        is_bench INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL DEFAULT 0)`,
       `CREATE TABLE IF NOT EXISTS achievements (
         id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL,
         category TEXT NOT NULL, points INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL DEFAULT 0)`,
@@ -85,8 +86,18 @@ export async function initDb(): Promise<void> {
     ],
     "write",
   );
+  await migrateDb();
   await seedAchievements();
   await seedIfEmpty();
+}
+
+async function migrateDb(): Promise<void> {
+  try {
+    await db.execute("ALTER TABLE players ADD COLUMN alt_pos TEXT NOT NULL DEFAULT ''");
+  } catch (err) {
+    const msg = (err instanceof Error ? err.message : String(err)).toLowerCase();
+    if (!msg.includes("duplicate column")) throw err;
+  }
 }
 
 async function seedAchievements(): Promise<void> {
@@ -132,21 +143,41 @@ async function writePlayers(teamId: string, t: TeamInput): Promise<void> {
     ...(t.bench ?? []).map((p, i) => ({ p, bench: 1, i })),
   ];
   for (const { p, bench, i } of rows) {
+    const altPos = normalizeAltPositions(p).join(",");
     await db.execute({
-      sql: `INSERT INTO players (id,team_id,name,pos,rating,is_bench,sort_order) VALUES (?,?,?,?,?,?,?)`,
-      args: [randomUUID(), teamId, String(p.name).slice(0, 40), p.pos, clampRating(p.rating), bench, i],
+      sql: `INSERT INTO players (id,team_id,name,pos,rating,alt_pos,is_bench,sort_order) VALUES (?,?,?,?,?,?,?,?)`,
+      args: [randomUUID(), teamId, String(p.name).slice(0, 40), p.pos, clampRating(p.rating), altPos, bench, i],
     });
   }
 }
 
 const clampRating = (n: number) => Math.max(40, Math.min(99, Math.round(Number(n) || 60)));
 
+function normalizeAltPositions(p: Player): Position[] {
+  return (p.altPositions ?? []).filter((pos, idx, arr) => pos !== p.pos && arr.indexOf(pos) === idx);
+}
+
+function parseAltPositions(v: unknown, main: Position): Position[] | undefined {
+  const positions = String(v ?? "")
+    .split(",")
+    .map((p) => p.trim())
+    .filter(Boolean) as Position[];
+  const unique = positions.filter((pos, idx, arr) => pos !== main && arr.indexOf(pos) === idx);
+  return unique.length ? unique : undefined;
+}
+
 function rowsToTeams(teamRows: Record<string, unknown>[], playerRows: Record<string, unknown>[]): DbTeam[] {
   const byTeam = new Map<string, { players: Player[]; bench: Player[] }>();
   for (const p of [...playerRows].sort((a, b) => Number(a.sort_order) - Number(b.sort_order))) {
     const tid = String(p.team_id);
     if (!byTeam.has(tid)) byTeam.set(tid, { players: [], bench: [] });
-    const pl: Player = { name: String(p.name), pos: String(p.pos) as Position, rating: Number(p.rating) };
+    const pos = String(p.pos) as Position;
+    const pl: Player = {
+      name: String(p.name),
+      pos,
+      altPositions: parseAltPositions(p.alt_pos, pos),
+      rating: Number(p.rating),
+    };
     (Number(p.is_bench) ? byTeam.get(tid)!.bench : byTeam.get(tid)!.players).push(pl);
   }
   return teamRows.map((t) => {

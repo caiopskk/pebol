@@ -12,7 +12,8 @@ export type Position =
 
 export interface Player {
   name: string;
-  pos: Position;
+  pos: Position; // main/natural position
+  altPositions?: Position[]; // optional secondary positions with full familiarity
   rating: number; // 60-99
 }
 
@@ -27,6 +28,10 @@ export interface Team {
 
 export type Mentality = "aura" | "equilibrada" | "retranca" | "pressao" | "posse" | "contra_ataque";
 export type GameMode = "classico" | "pica";
+
+/** Attacking focus: where the team channels its attack. Rewards the matching
+ * part of the squad (wide players for "lados", the spine for "meio"). */
+export type AttackFocus = "equilibrado" | "lados" | "meio";
 
 /** A slot in the formation on the pitch. */
 export interface FormationSlot {
@@ -65,6 +70,7 @@ export interface PlayerPublic {
   halftimeReady?: boolean;
   formationId: string | null;
   mentality: Mentality | null;
+  attackFocus?: AttackFocus;
   picks: SquadPick[];
 }
 
@@ -164,6 +170,7 @@ export interface GauntletResult {
 export interface HalftimeLineup {
   formationId: string;
   mentality: Mentality;
+  attackFocus?: AttackFocus;
   picks: { slotId: string; name: string; pos: Position; rating: number; fromTeamId: string }[];
 }
 
@@ -177,7 +184,7 @@ export interface ServerToClient {
 export interface ClientToServer {
   createRoom: (data: { name: string; mode: GameMode; solo?: boolean }, cb: (res: AckResult) => void) => void;
   joinRoom: (data: { code: string; name: string }, cb: (res: AckResult) => void) => void;
-  setup: (data: { formationId: string; mentality: Mentality }) => void;
+  setup: (data: { formationId: string; mentality: Mentality; attackFocus?: AttackFocus }) => void;
   ready: () => void;
   pick: (data: { slotId: string; playerName: string }) => void;
   rerollTeam: () => void;

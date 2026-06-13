@@ -4,6 +4,7 @@ import type {
   PlayerPublic,
   GameMode,
   Mentality,
+  AttackFocus,
   MatchResult,
   MatchEvent,
   Player,
@@ -18,14 +19,17 @@ import {
   groupOf,
   posLabel,
 } from "../../shared/formations.js";
-import { MENTALITIES } from "../../shared/mentalities.js";
+import { MENTALITIES, mentalityEdge } from "../../shared/mentalities.js";
 import {
   computeStrength,
   effectiveRating,
+  playerPositions,
   simInputFromTeam,
   simulateGauntletMatch,
+  wcOpponentTactics,
 } from "../../shared/engine.js";
 import { getTeam } from "../../shared/data/teams.js";
+import { teamPalette } from "./colors.js";
 import {
   WC_DRAFT_TEAMS,
   wcOpponentTeam,
@@ -55,6 +59,7 @@ import {
 
 const app = document.getElementById("app")!;
 let syncLiveUi: (() => void) | null = null;
+let cupDraftScrollTop = 0;
 const MATCH_SPEED_KEY = "pebol:match-speed";
 
 function readSavedMatchSpeed(): number {
@@ -75,6 +80,7 @@ interface Local {
   // setup choices (before sending)
   formationId: string;
   mentality: Mentality;
+  attackFocus: AttackFocus;
   toast: string | null;
   // live match playback
   matchPlayed: boolean;
@@ -123,11 +129,13 @@ interface CampaignState {
   phase: CampaignPhase;
   formationId: string;
   mentality: Mentality;
+  attackFocus: AttackFocus;
   round: number; // 0..7 — 3 group matches + 5 knockout rounds
   picks: SquadPick[]; // your drafted XI
   currentTeam: Team | null; // team drawn this draft round
   usedTeamIds: string[];
   selectedPlayer: string | null;
+  selectedPickSlotId: string | null; // when set, the user picked one of their fielded players to relocate
   currentOpp: Team | null; // opponent for the current round
   lastResult: GauntletResult | null;
   rerollsRemaining: number;
@@ -146,6 +154,7 @@ const L: Local = {
   selectedPlayer: null,
   formationId: "4-3-3",
   mentality: "equilibrada",
+  attackFocus: "equilibrado",
   toast: null,
   matchPlayed: false,
   matchSpeed: readSavedMatchSpeed(),
@@ -278,33 +287,48 @@ function renderLiveStats(
   target: HTMLElement,
   stats: Map<string, LiveStatLine>,
 ) {
-  const leaders = [...stats.entries()]
-    .filter(([, s]) => s.goals || s.assists)
-    .sort(
-      (a, b) =>
-        b[1].goals - a[1].goals ||
-        b[1].assists - a[1].assists ||
-        a[0].localeCompare(b[0]),
-    )
-    .slice(0, 5);
+  const sortStats = (entries: [string, LiveStatLine][]) =>
+    entries
+      .filter(([, s]) => s.goals || s.assists)
+      .sort(
+        (a, b) =>
+          b[1].goals - a[1].goals ||
+          b[1].assists - a[1].assists ||
+          a[0].localeCompare(b[0]),
+      )
+      .slice(0, 5);
+  const you = sortStats(
+    [...stats.entries()].filter(([, s]) => s.side === "you"),
+  );
+  const opp = sortStats(
+    [...stats.entries()].filter(([, s]) => s.side === "opp"),
+  );
+  const column = (side: "you" | "opp", entries: [string, LiveStatLine][]) => `
+    <div class="live-stat-col ${side}">
+      <div class="live-stat-col-head">${side === "you" ? "Seu time" : "Adversário"}</div>
+      ${
+        entries.length
+          ? `<div class="live-stat-list">${entries
+              .map(
+                ([name, s]) => `
+                <div class="live-stat-row ${s.side}">
+                  <strong>${escapeHtml(name)}</strong>
+                  <span>${s.goals}G ${s.assists}A</span>
+                </div>`,
+              )
+              .join("")}</div>`
+          : `<div class="live-stat-empty">Aguardando o primeiro gol.</div>`
+      }
+    </div>`;
   target.innerHTML = `
     <div class="live-stat-head">
       <span>Participações em gol</span>
       <small>Gols / Assist.</small>
     </div>
-    ${
-      leaders.length
-        ? `<div class="live-stat-list">${leaders
-            .map(
-              ([name, s]) => `
-              <div class="live-stat-row ${s.side}">
-                <strong>${escapeHtml(name)}</strong>
-                <span>${s.goals}G ${s.assists}A</span>
-              </div>`,
-            )
-            .join("")}</div>`
-        : `<div class="live-stat-empty">Aguardando o primeiro gol.</div>`
-    }`;
+    <div class="live-stat-cols">
+      ${column("you", you)}
+      ${column("opp", opp)}
+    </div>`;
 }
 
 // ---------------- Home ----------------
@@ -479,23 +503,98 @@ const ALL_POS = [
   "CF",
   "ST",
 ];
+
+function playerPosText(p: Player): string {
+  return playerPositions(p).map(posLabel).join("/");
+}
+
+/** Team name with season appended, unless the name already contains it. */
+function teamFullName(team: { name: string; season?: string }): string {
+  if (!team.season || team.name.includes(team.season)) return team.name;
+  return `${team.name} ${team.season}`;
+}
+
+function parseAltPositionsInput(
+  value: string,
+  main: Player["pos"],
+): Player["pos"][] | undefined {
+  const alt = value
+    .split(/[,\s/]+/)
+    .map((pos) => pos.trim().toUpperCase())
+    .filter(Boolean)
+    .filter((pos): pos is Player["pos"] => ALL_POS.includes(pos))
+    .filter((pos, idx, arr) => pos !== main && arr.indexOf(pos) === idx);
+  return alt.length ? alt : undefined;
+}
 const ACHIEVEMENT_COPY: Record<
   string,
   { title: string; description: string; points: number }
 > = {
-  first_goal: { title: "Primeiro grito", description: "Marque seu primeiro gol em uma partida.", points: 10 },
-  first_win: { title: "Primeira vitória", description: "Vença uma partida em qualquer modo.", points: 20 },
-  clean_sheet: { title: "Muralha", description: "Vença uma partida sem sofrer gols.", points: 25 },
-  penalty_win: { title: "Sangue frio", description: "Vença uma decisão por pênaltis.", points: 30 },
-  hat_trick: { title: "Hat-trick", description: "Faça três gols com o mesmo jogador em uma partida.", points: 35 },
-  assist_master: { title: "Garçom da rodada", description: "Dê três assistências na mesma partida.", points: 30 },
-  strong_draft: { title: "Elenco pesado", description: "Monte um time com overall 85 ou mais.", points: 25 },
-  beat_machine: { title: "Sem bug no sistema", description: "Vença uma partida contra a máquina.", points: 20 },
-  pica_win: { title: "No escuro", description: "Vença uma partida no modo Pica.", points: 25 },
-  custom_team: { title: "Dono da prancheta", description: "Crie um time personalizado.", points: 20 },
-  json_import: { title: "Olheiro digital", description: "Importe times usando um arquivo JSON.", points: 25 },
-  group_escape: { title: "Passou no sufoco", description: "Classifique-se na fase de grupos da Copa do Mundo.", points: 30 },
-  world_champion: { title: "Campeão do mundo", description: "Vença a campanha da Copa do Mundo.", points: 100 },
+  first_goal: {
+    title: "Primeiro grito",
+    description: "Marque seu primeiro gol em uma partida.",
+    points: 10,
+  },
+  first_win: {
+    title: "Primeira vitória",
+    description: "Vença uma partida em qualquer modo.",
+    points: 20,
+  },
+  clean_sheet: {
+    title: "Muralha",
+    description: "Vença uma partida sem sofrer gols.",
+    points: 25,
+  },
+  penalty_win: {
+    title: "Sangue frio",
+    description: "Vença uma decisão por pênaltis.",
+    points: 30,
+  },
+  hat_trick: {
+    title: "Hat-trick",
+    description: "Faça três gols com o mesmo jogador em uma partida.",
+    points: 35,
+  },
+  assist_master: {
+    title: "Garçom da rodada",
+    description: "Dê três assistências na mesma partida.",
+    points: 30,
+  },
+  strong_draft: {
+    title: "Elenco pesado",
+    description: "Monte um time com overall 85 ou mais.",
+    points: 25,
+  },
+  beat_machine: {
+    title: "Sem bug no sistema",
+    description: "Vença uma partida contra a máquina.",
+    points: 20,
+  },
+  pica_win: {
+    title: "No escuro",
+    description: "Vença uma partida no modo Pica.",
+    points: 25,
+  },
+  custom_team: {
+    title: "Dono da prancheta",
+    description: "Crie um time personalizado.",
+    points: 20,
+  },
+  json_import: {
+    title: "Olheiro digital",
+    description: "Importe times usando um arquivo JSON.",
+    points: 25,
+  },
+  group_escape: {
+    title: "Passou no sufoco",
+    description: "Classifique-se na fase de grupos da Copa do Mundo.",
+    points: 30,
+  },
+  world_champion: {
+    title: "Campeão do mundo",
+    description: "Vença a campanha da Copa do Mundo.",
+    points: 100,
+  },
 };
 
 interface AchievementNotice {
@@ -653,9 +752,9 @@ function renderAchievements() {
   const list = L.achievements;
   const unlocked = list?.filter((a) => a.unlockedAt).length ?? 0;
   const total = list?.length ?? 0;
-  const points = list
-    ?.filter((a) => a.unlockedAt)
-    .reduce((sum, a) => sum + a.points, 0) ?? 0;
+  const points =
+    list?.filter((a) => a.unlockedAt).reduce((sum, a) => sum + a.points, 0) ??
+    0;
   app.innerHTML = `
     <div class="screen admin-screen achievements-screen">
       <div class="admin-toolbar">
@@ -674,7 +773,9 @@ function renderAchievements() {
           : `<div class="achievement-grid">
               ${list
                 .map(
-                  (a) => `<article class="achievement-card ${a.unlockedAt ? "unlocked" : "locked"}">
+                  (
+                    a,
+                  ) => `<article class="achievement-card ${a.unlockedAt ? "unlocked" : "locked"}">
                     <div class="achievement-top">
                       <span>${escapeHtml(a.category)}</span>
                       <strong>${a.points} pts</strong>
@@ -848,24 +949,32 @@ function playerRowHtml(p: Player, bench: boolean): string {
     <div class="pf-row">
       <input class="pf-name" value="${escapeHtml(p.name)}" placeholder="Nome" maxlength="40" />
       <select class="pf-pos">${ALL_POS.map((po) => `<option ${po === p.pos ? "selected" : ""}>${po}</option>`).join("")}</select>
+      <input class="pf-alt" value="${escapeHtml((p.altPositions ?? []).join(", "))}" placeholder="Alt. ex: LW, ST" maxlength="40" />
       <input class="pf-rt" type="number" min="40" max="99" value="${p.rating}" />
       ${bench ? `<button class="ghost pf-del" title="Remover">×</button>` : ""}
     </div>`;
 }
 
 function collectPlayers(container: HTMLElement): Player[] {
-  return [...container.querySelectorAll<HTMLElement>(".pf-row")].map((row) => ({
-    name: (row.querySelector(".pf-name") as HTMLInputElement).value.trim(),
-    pos: (row.querySelector(".pf-pos") as HTMLSelectElement)
-      .value as Player["pos"],
-    rating: Math.max(
-      40,
-      Math.min(
-        99,
-        Number((row.querySelector(".pf-rt") as HTMLInputElement).value) || 75,
+  return [...container.querySelectorAll<HTMLElement>(".pf-row")].map((row) => {
+    const pos = (row.querySelector(".pf-pos") as HTMLSelectElement)
+      .value as Player["pos"];
+    return {
+      name: (row.querySelector(".pf-name") as HTMLInputElement).value.trim(),
+      pos,
+      altPositions: parseAltPositionsInput(
+        (row.querySelector(".pf-alt") as HTMLInputElement).value,
+        pos,
       ),
-    ),
-  }));
+      rating: Math.max(
+        40,
+        Math.min(
+          99,
+          Number((row.querySelector(".pf-rt") as HTMLInputElement).value) || 75,
+        ),
+      ),
+    };
+  });
 }
 
 type TeamImport = Partial<AdminTeam> & { official?: boolean };
@@ -878,16 +987,34 @@ function normalizeImportedPlayer(v: unknown, teamName: string): Player {
   if (!isRecord(v)) throw new Error(`Jogador inválido em ${teamName}.`);
   const name = String(v.name ?? "").trim();
   const pos = String(v.pos ?? "").toUpperCase();
+  const rawAlt = Array.isArray(v.altPositions)
+    ? v.altPositions
+    : Array.isArray(v.positions)
+      ? v.positions.filter((p) => String(p).toUpperCase() !== pos)
+      : typeof v.altPositions === "string"
+        ? v.altPositions.split(/[,\s/]+/)
+        : [];
   const rating = Math.round(Number(v.rating));
   if (!name) throw new Error(`Há jogador sem nome em ${teamName}.`);
-  if (!ALL_POS.includes(pos)) throw new Error(`Posição inválida em ${teamName}: ${pos}.`);
+  if (!ALL_POS.includes(pos))
+    throw new Error(`Posição inválida em ${teamName}: ${pos}.`);
   if (!Number.isFinite(rating) || rating < 40 || rating > 99)
     throw new Error(`Rating inválido em ${teamName}: ${name}.`);
-  return { name, pos: pos as Player["pos"], rating };
+  const altPositions = rawAlt
+    .map((p) => String(p).trim().toUpperCase())
+    .filter((p): p is Player["pos"] => ALL_POS.includes(p))
+    .filter((p, idx, arr) => p !== pos && arr.indexOf(p) === idx);
+  return {
+    name,
+    pos: pos as Player["pos"],
+    altPositions: altPositions.length ? altPositions : undefined,
+    rating,
+  };
 }
 
 function normalizeImportedTeam(v: unknown, isAdmin: boolean): TeamImport {
-  if (!isRecord(v)) throw new Error("Cada item importado precisa ser um objeto de time.");
+  if (!isRecord(v))
+    throw new Error("Cada item importado precisa ser um objeto de time.");
   const name = String(v.name ?? "").trim();
   if (!name) throw new Error("Todo time importado precisa de name.");
   const playersRaw = Array.isArray(v.players) ? v.players : [];
@@ -907,12 +1034,11 @@ function normalizeImportedTeam(v: unknown, isAdmin: boolean): TeamImport {
 }
 
 function parseImportedTeams(raw: unknown, isAdmin: boolean): TeamImport[] {
-  const source =
-    Array.isArray(raw)
-      ? raw
-      : isRecord(raw) && Array.isArray(raw.teams)
-        ? raw.teams
-        : [raw];
+  const source = Array.isArray(raw)
+    ? raw
+    : isRecord(raw) && Array.isArray(raw.teams)
+      ? raw.teams
+      : [raw];
   return source.map((item) => normalizeImportedTeam(item, isAdmin));
 }
 
@@ -925,8 +1051,13 @@ async function importTeamsFromFile(input: HTMLInputElement) {
     const teams = parseImportedTeams(raw, L.account?.role === "admin");
     if (!teams.length) return showToast("Nenhum time encontrado no JSON.");
     for (const team of teams) await api.createTeam(team);
-    void awardAchievements(["json_import", "custom_team"], `import:${file.name}:${file.size}:${Date.now()}`);
-    showToast(`${teams.length} time${teams.length > 1 ? "s" : ""} importado${teams.length > 1 ? "s" : ""}.`);
+    void awardAchievements(
+      ["json_import", "custom_team"],
+      `import:${file.name}:${file.size}:${Date.now()}`,
+    );
+    showToast(
+      `${teams.length} time${teams.length > 1 ? "s" : ""} importado${teams.length > 1 ? "s" : ""}.`,
+    );
     await loadAdminTeams();
   } catch (e) {
     showToast((e as Error).message || "JSON inválido.");
@@ -1032,11 +1163,13 @@ function startCampaign() {
     phase: "setup",
     formationId: "4-3-3",
     mentality: "equilibrada",
+    attackFocus: "equilibrado",
     round: 0,
     picks: [],
     currentTeam: null,
     usedTeamIds: [],
     selectedPlayer: null,
+    selectedPickSlotId: null,
     currentOpp: null,
     lastResult: null,
     rerollsRemaining: 3,
@@ -1059,6 +1192,16 @@ function campaignExit() {
 
 function mentalityLabel(m: Mentality): string {
   return MENTALITIES.find((x) => x.id === m)?.name ?? m;
+}
+
+const ATTACK_FOCUS_OPTIONS: { id: AttackFocus; name: string; desc: string }[] = [
+  { id: "equilibrado", name: "Equilibrado", desc: "Ataque distribuído, sem ênfase." },
+  { id: "lados", name: "Pelos lados", desc: "Joga aberto: usa pontas e laterais. Forte se eles forem bons." },
+  { id: "meio", name: "Pelo meio", desc: "Joga por dentro: usa o miolo (meias e atacantes). Forte se o miolo for bom." },
+];
+
+function attackFocusLabel(f: AttackFocus | undefined): string {
+  return ATTACK_FOCUS_OPTIONS.find((x) => x.id === (f ?? "equilibrado"))?.name ?? "Equilibrado";
 }
 
 function campaignProgress(won: number): string {
@@ -1113,6 +1256,10 @@ function renderCampaignSetup() {
             ${MENTALITIES.map((m) => `<button class="ment-btn ${m.id === c.mentality ? "active" : ""}" data-ment="${m.id}"><strong>${m.name}</strong><span>${m.desc}</span></button>`).join("")}
           </div>
         </div>
+        <h2>Foco de ataque</h2>
+        <div class="focus-grid">
+          ${ATTACK_FOCUS_OPTIONS.map((f) => `<button class="focus-btn ${f.id === c.attackFocus ? "active" : ""}" data-focus="${f.id}"><strong>${f.name}</strong><span>${f.desc}</span></button>`).join("")}
+        </div>
         <div class="lobby-actions"><button id="cup-start" class="primary big">Começar a campanha</button></div>
       </div>
     </div>`;
@@ -1128,6 +1275,13 @@ function renderCampaignSetup() {
     (b) =>
       (b.onclick = () => {
         c.mentality = b.dataset.ment as Mentality;
+        render();
+      }),
+  );
+  app.querySelectorAll<HTMLButtonElement>(".focus-btn").forEach(
+    (b) =>
+      (b.onclick = () => {
+        c.attackFocus = b.dataset.focus as AttackFocus;
         render();
       }),
   );
@@ -1151,13 +1305,16 @@ function campaignSelectable(): Set<string> {
   const openGroups = new Set(campaignOpenSlots().map((s) => groupOf(s.pos)));
   return new Set(
     c.currentTeam.players
-      .filter((p) => openGroups.has(groupOf(p.pos)))
+      .filter((p) =>
+        playerPositions(p).some((pos) => openGroups.has(groupOf(pos))),
+      )
       .map((p) => p.name),
   );
 }
 
 function campaignDrawTeam() {
   const c = L.campaign!;
+  cupDraftScrollTop = 0;
   for (let tries = 0; tries < 10; tries++) {
     const pool = WC_DRAFT_TEAMS.filter((t) => !c.usedTeamIds.includes(t.id));
     const src = pool.length ? pool : WC_DRAFT_TEAMS;
@@ -1184,6 +1341,7 @@ function campaignRerollTeam() {
 function campaignPlace(slotId: string, player: Player) {
   const c = L.campaign!;
   const slot = getFormation(c.formationId)?.slots.find((s) => s.id === slotId);
+  c.selectedPickSlotId = null;
   c.picks.push({
     slotId,
     player,
@@ -1283,7 +1441,7 @@ function renderCampaignJourneyLeaders(): string {
 function groupRow(team: Pick<Team, "id" | "name" | "season">): CupGroupRow {
   return {
     id: team.id,
-    name: team.season ? `${team.name} ${team.season}` : team.name,
+    name: teamFullName(team),
     played: 0,
     wins: 0,
     draws: 0,
@@ -1521,7 +1679,7 @@ function renderCampaignDraft() {
                 const can = selectable.has(pl.name);
                 const sel = c.selectedPlayer === pl.name;
                 return `<li class="pl-item ${can ? "clickable" : "taken"} ${sel ? "selected" : ""}" data-player="${escapeHtml(pl.name)}">
-                <span class="pl-pos pos-${groupOf(pl.pos).toLowerCase()}">${posLabel(pl.pos)}</span>
+                <span class="pl-pos pos-${groupOf(pl.pos).toLowerCase()}" title="${escapeHtml(playerPosText(pl))}">${escapeHtml(playerPosText(pl))}</span>
                 <span class="pl-name">${escapeHtml(pl.name)}</span>
                 <span class="pl-rt">${pl.rating}</span></li>`;
               })
@@ -1530,13 +1688,15 @@ function renderCampaignDraft() {
           <p class="draft-hint">${
             c.selectedPlayer
               ? `Clique numa <strong>vaga compatível</strong> (mesmo setor) para escalar <strong>${escapeHtml(c.selectedPlayer)}</strong>.`
-              : "Escolha jogadores que encaixem no setor aberto. Posição exata mantém o over cheio; adaptações próximas perdem um pouco."
+              : c.selectedPickSlotId
+                ? `Clique numa <strong>vaga vazia</strong> do mesmo setor para mover o jogador, ou clique nele de novo para cancelar.`
+                : "Escolha jogadores que encaixem no setor aberto. Posição exata mantém o over cheio; adaptações próximas perdem um pouco."
           }</p>
         </section>
 
         <section class="board you-board cup-draft-pitch">
-          <h3>Seu time <span class="ovr">${campaignAvg()}</span></h3>
-          ${renderPitch(f, c.picks, !!c.selectedPlayer, true)}
+          <h3>Seu time</h3>
+          ${renderPitch(f, c.picks, !!c.selectedPlayer || !!c.selectedPickSlotId, true)}
         </section>
 
         <section class="board cup-draft-summary">
@@ -1553,26 +1713,77 @@ function renderCampaignDraft() {
   document.getElementById("cup-exit")!.onclick = campaignExit;
   document.getElementById("cup-reroll-team")!.onclick = () =>
     campaignRerollTeam();
+  const playerListEl = app.querySelector<HTMLUListElement>(".player-list");
+  if (playerListEl) {
+    playerListEl.scrollTop = cupDraftScrollTop;
+    playerListEl.addEventListener("scroll", () => {
+      cupDraftScrollTop = playerListEl.scrollTop;
+    });
+  }
   app.querySelectorAll<HTMLLIElement>(".pl-item.clickable").forEach(
     (li) =>
       (li.onclick = () => {
         c.selectedPlayer = li.dataset.player!;
+        c.selectedPickSlotId = null;
         render();
       }),
   );
-  if (player) {
+
+  const selectedPick = c.selectedPickSlotId
+    ? c.picks.find((p) => p.slotId === c.selectedPickSlotId)
+    : null;
+  const moveSource = selectedPick?.player ?? null;
+  const activePlayer = player ?? moveSource;
+
+  app.querySelectorAll<HTMLElement>(".you-board .slot.filled").forEach(
+    (slotEl) => {
+      const slotId = slotEl.dataset.slot!;
+      if (c.selectedPickSlotId === slotId) slotEl.classList.add("selected-sub");
+      slotEl.onclick = (ev) => {
+        ev.stopPropagation();
+        if (c.selectedPlayer) {
+          // user was drafting a new player but clicked a filled slot — switch to relocate
+          c.selectedPlayer = null;
+        }
+        c.selectedPickSlotId = c.selectedPickSlotId === slotId ? null : slotId;
+        render();
+      };
+    },
+  );
+
+  if (activePlayer) {
     app
       .querySelectorAll<HTMLElement>(".you-board .slot.empty")
       .forEach((slotEl) => {
-        const slot = f.slots.find((s) => s.id === slotEl.dataset.slot)!;
-        if (groupOf(slot.pos) === groupOf(player.pos)) {
+        const slotId = slotEl.dataset.slot!;
+        const slot = f.slots.find((s) => s.id === slotId)!;
+        const slotGroup = groupOf(slot.pos);
+        const fits = playerPositions(activePlayer).some(
+          (pos) => groupOf(pos) === slotGroup,
+        );
+        if (fits) {
           slotEl.classList.add("open");
-          slotEl.onclick = () => campaignPlace(slot.id, player);
+          slotEl.onclick = (ev) => {
+            ev.stopPropagation();
+            if (moveSource) campaignRelocate(c.selectedPickSlotId!, slotId);
+            else campaignPlace(slotId, activePlayer);
+          };
         } else {
           slotEl.classList.remove("open");
         }
       });
   }
+}
+
+function campaignRelocate(fromSlotId: string, toSlotId: string) {
+  const c = L.campaign!;
+  const pick = c.picks.find((p) => p.slotId === fromSlotId);
+  if (!pick) return;
+  const slot = getFormation(c.formationId)?.slots.find((s) => s.id === toSlotId);
+  pick.slotId = toSlotId;
+  pick.effectiveRating = slot ? effectiveRating(pick.player, slot.pos) : pick.player.rating;
+  c.selectedPickSlotId = null;
+  render();
 }
 
 function campaignBeginRound() {
@@ -1593,6 +1804,19 @@ function renderCampaignPreMatch() {
   const opp = c.currentOpp!;
   const isGroup = c.round < 3;
   const isFinal = c.round === 7;
+  const oppTactics = wcOpponentTactics(opp);
+  const counterOf = (m: Mentality): Mentality | undefined =>
+    MENTALITIES.find((x) => x.counters === m)?.id;
+  const edge = mentalityEdge(c.mentality, oppTactics.mentality);
+  const goodCounter = counterOf(oppTactics.mentality);
+  const tacticBanner =
+    edge === "a"
+      ? `<div class="tactic-banner good">Vantagem tática: seu estilo neutraliza ${escapeHtml(mentalityLabel(oppTactics.mentality))}.</div>`
+      : edge === "b"
+        ? `<div class="tactic-banner bad">Cuidado: ${escapeHtml(mentalityLabel(oppTactics.mentality))} neutraliza seu estilo.${goodCounter ? ` Considere ${escapeHtml(mentalityLabel(goodCounter))}.` : ""}</div>`
+        : goodCounter
+          ? `<div class="tactic-banner tip">Dica: ${escapeHtml(mentalityLabel(goodCounter))} neutraliza ${escapeHtml(mentalityLabel(oppTactics.mentality))}.</div>`
+          : "";
   app.innerHTML = `
     <div class="screen cup-screen">
       <div class="cup-head">
@@ -1606,13 +1830,32 @@ function renderCampaignPreMatch() {
           <div class="cup-vs-side">
             <div class="hero-crest you">${initials("Seu Time")}</div>
             <div class="hero-name">Seu time</div>
-            <div class="hero-tag">${c.formationId} · OVR ${campaignAvgNumber()} · ${escapeHtml(mentalityLabel(c.mentality))}</div>
+            <div class="hero-tag">${c.formationId} · OVR ${campaignAvgNumber()} · ${escapeHtml(mentalityLabel(c.mentality))} · ${escapeHtml(attackFocusLabel(c.attackFocus))}</div>
           </div>
           <span class="cup-vs-x">VS</span>
           <div class="cup-vs-side">
             <div class="hero-crest opp">${initials(opp.name)}</div>
             <div class="hero-name">${escapeHtml(opp.name)}</div>
-            <div class="hero-tag">OVR ${teamAvg(opp).toFixed(0)} · elenco original</div>
+            <div class="hero-tag">OVR ${teamAvg(opp).toFixed(0)} · ${oppTactics.formationId} · ${escapeHtml(mentalityLabel(oppTactics.mentality))} · ${escapeHtml(attackFocusLabel(oppTactics.attackFocus))}</div>
+          </div>
+        </div>
+        ${tacticBanner}
+        <div class="prematch-ment">
+          <span class="prematch-ment-label">Sua mentalidade (peso dobrado)</span>
+          <div class="prematch-ment-row">
+            ${MENTALITIES.map(
+              (m) =>
+                `<button class="ment-chip ${m.id === c.mentality ? "active" : ""}" data-ment="${m.id}" title="${escapeHtml(m.desc)}">${escapeHtml(m.name)}</button>`,
+            ).join("")}
+          </div>
+        </div>
+        <div class="prematch-ment">
+          <span class="prematch-ment-label">Foco de ataque</span>
+          <div class="prematch-ment-row">
+            ${ATTACK_FOCUS_OPTIONS.map(
+              (f) =>
+                `<button class="focus-chip ${f.id === c.attackFocus ? "active" : ""}" data-focus="${f.id}" title="${escapeHtml(f.desc)}">${escapeHtml(f.name)}</button>`,
+            ).join("")}
           </div>
         </div>
         <p class="cup-note">${
@@ -1626,6 +1869,20 @@ function renderCampaignPreMatch() {
       </div>
     </div>`;
   document.getElementById("cup-exit")!.onclick = campaignExit;
+  app.querySelectorAll<HTMLButtonElement>(".ment-chip").forEach(
+    (b) =>
+      (b.onclick = () => {
+        c.mentality = b.dataset.ment as Mentality;
+        render();
+      }),
+  );
+  app.querySelectorAll<HTMLButtonElement>(".focus-chip").forEach(
+    (b) =>
+      (b.onclick = () => {
+        c.attackFocus = b.dataset.focus as AttackFocus;
+        render();
+      }),
+  );
   document.getElementById("cup-play")!.onclick = () => {
     c.phase = "match";
     render();
@@ -1651,7 +1908,10 @@ function campaignAdvance() {
         rank <= 2 || (rank === 3 && bestThirdQualifies(youRow));
       c.groupQualifiedLabel = campaignQualificationLabel();
       if (c.groupQualified) {
-        void awardAchievements(["group_escape"], `cup:group:${r.youGoals}-${r.oppGoals}:${Date.now()}`);
+        void awardAchievements(
+          ["group_escape"],
+          `cup:group:${r.youGoals}-${r.oppGoals}:${Date.now()}`,
+        );
         c.round = 3;
         setupKnockoutPath();
         campaignBeginRound();
@@ -1661,12 +1921,15 @@ function campaignAdvance() {
     }
   } else if (r.outcome === "win") {
     const ids = r.penaltyScore ? ["penalty_win"] : [];
-    if (ids.length) void awardAchievements(ids, `cup:ko:${c.round}:${r.youGoals}-${r.oppGoals}:${Date.now()}`);
+    if (ids.length)
+      void awardAchievements(
+        ids,
+        `cup:ko:${c.round}:${r.youGoals}-${r.oppGoals}:${Date.now()}`,
+      );
     if (c.round === 7) {
       void awardAchievements(["world_champion"], `cup:champion:${Date.now()}`);
       c.phase = "victory";
-    }
-    else {
+    } else {
       c.round++;
       campaignBeginRound();
     }
@@ -1685,11 +1948,20 @@ function renderCampaignMatch() {
     picks: c.picks,
     formationId: c.formationId,
     mentality: c.mentality,
+    attackFocus: c.attackFocus,
   };
-  const oppSim = simInputFromTeam(oppTeam, "4-3-3", "equilibrada");
+  const oppTactics = wcOpponentTactics(oppTeam);
+  const oppSim = {
+    ...simInputFromTeam(oppTeam, oppTactics.formationId, oppTactics.mentality),
+    attackFocus: oppTactics.attackFocus,
+  };
   const r = simulateGauntletMatch(youSim, oppSim, c.round >= 3);
   c.lastResult = r;
   L.playing = true;
+  const oppPalette = teamPalette(oppTeam.name);
+  const oppBadge = oppPalette.flagSvg
+    ? `<span class="sb-badge flag">${oppPalette.flagSvg}</span>`
+    : `<span class="sb-badge opp">ADV</span>`;
 
   app.innerHTML = `
     <div class="screen live cup-match">
@@ -1706,7 +1978,7 @@ function renderCampaignMatch() {
             <div class="scoreboard">
               <div class="sb-team"><span class="sb-badge you">VC</span><span class="sb-name">Seu time</span></div>
               <div class="sb-center"><div class="sb-score"><span id="sc-l">0</span><span class="sb-sep">:</span><span id="sc-r">0</span></div><div class="sb-clock"><span id="clk">0</span>'</div></div>
-              <div class="sb-team right"><span class="sb-name">${escapeHtml(oppTeam.name)}</span><span class="sb-badge opp">ADV</span></div>
+              <div class="sb-team right"><span class="sb-name">${escapeHtml(teamFullName(oppTeam))}</span>${oppBadge}</div>
             </div>
             <div class="live-leaders" id="live-leaders"></div>
             <div class="goal-overlay" id="goal-ov"><div class="goal-word">GOL!</div><div class="goal-scorer" id="goal-scorer"></div></div>
@@ -1721,7 +1993,7 @@ function renderCampaignMatch() {
                   <ul id="pen-you"></ul>
                 </div>
                 <div>
-                  <h4>${escapeHtml(oppTeam.name)}</h4>
+                  <h4>${escapeHtml(teamFullName(oppTeam))}</h4>
                   <ul id="pen-opp"></ul>
                 </div>
               </div>
@@ -1998,6 +2270,17 @@ function renderLobby() {
         </div>
       </div>
 
+      <h2>Foco de ataque</h2>
+      <div class="focus-grid">
+        ${ATTACK_FOCUS_OPTIONS.map(
+          (f) => `
+          <button class="focus-btn ${f.id === L.attackFocus ? "active" : ""}" data-focus="${f.id}">
+            <strong>${f.name}</strong>
+            <span>${f.desc}</span>
+          </button>`,
+        ).join("")}
+      </div>
+
       <div class="lobby-actions">
         <button id="ready" class="primary big ${youReady ? "done" : ""}" ${youReady ? "disabled" : ""}>
           ${youReady ? "✓ Pronto! Aguardando…" : "Confirmar e ficar pronto"}
@@ -2014,7 +2297,7 @@ function renderLobby() {
   app.querySelectorAll<HTMLButtonElement>(".form-btn").forEach((btn) => {
     btn.onclick = () => {
       L.formationId = btn.dataset.form!;
-      sendSetup(L.formationId, L.mentality);
+      sendSetup(L.formationId, L.mentality, L.attackFocus);
       render();
     };
   });
@@ -2022,13 +2305,21 @@ function renderLobby() {
   app.querySelectorAll<HTMLButtonElement>(".ment-btn").forEach((btn) => {
     btn.onclick = () => {
       L.mentality = btn.dataset.ment as Mentality;
-      sendSetup(L.formationId, L.mentality);
+      sendSetup(L.formationId, L.mentality, L.attackFocus);
+      render();
+    };
+  });
+
+  app.querySelectorAll<HTMLButtonElement>(".focus-btn").forEach((btn) => {
+    btn.onclick = () => {
+      L.attackFocus = btn.dataset.focus as AttackFocus;
+      sendSetup(L.formationId, L.mentality, L.attackFocus);
       render();
     };
   });
 
   app.querySelector<HTMLButtonElement>("#ready")!.onclick = () => {
-    sendSetup(L.formationId, L.mentality);
+    sendSetup(L.formationId, L.mentality, L.attackFocus);
     sendReady();
   };
 }
@@ -2063,7 +2354,7 @@ function renderDraft() {
     return `
       <li class="pl-item ${taken ? "taken" : ""} ${selected ? "selected" : ""} ${clickable ? "clickable" : ""}"
           data-player="${escapeHtml(pl.name)}">
-        <span class="pl-pos pos-${groupOf(pl.pos).toLowerCase()}">${posLabel(pl.pos)}</span>
+        <span class="pl-pos pos-${groupOf(pl.pos).toLowerCase()}" title="${escapeHtml(playerPosText(pl))}">${escapeHtml(playerPosText(pl))}</span>
         <span class="pl-name">${escapeHtml(pl.name)}</span>
         ${s.hideRatings ? `<span class="pl-rt hidden">??</span>` : `<span class="pl-rt">${pl.rating}</span>`}
         ${taken ? `<span class="pl-tick">✓</span>` : ""}
@@ -2426,6 +2717,15 @@ function renderLiveMatch() {
   const sideToPid = (side: "home" | "away" | null) =>
     side === "home" ? r.homeId : side === "away" ? r.awayId : "";
 
+  const oppPalette = teamPalette(opp.name);
+  const youPalette = teamPalette(you.name);
+  const youBadge = youPalette.flagSvg
+    ? `<span class="sb-badge flag">${youPalette.flagSvg}</span>`
+    : `<span class="sb-badge you">VC</span>`;
+  const oppBadge = oppPalette.flagSvg
+    ? `<span class="sb-badge flag">${oppPalette.flagSvg}</span>`
+    : `<span class="sb-badge opp">ADV</span>`;
+
   app.innerHTML = `
     <div class="screen live">
       <div class="live-stage">
@@ -2442,12 +2742,12 @@ function renderLiveMatch() {
               <span class="agg-mini" id="pen-label"></span>
             </div>
             <div class="scoreboard">
-              <div class="sb-team"><span class="sb-badge you">VC</span><span class="sb-name">${escapeHtml(you.name)}</span></div>
+              <div class="sb-team">${youBadge}<span class="sb-name">${escapeHtml(you.name)}</span></div>
               <div class="sb-center">
                 <div class="sb-score"><span id="sc-l">0</span><span class="sb-sep">:</span><span id="sc-r">0</span></div>
                 <div class="sb-clock"><span id="clk">0</span>'</div>
               </div>
-              <div class="sb-team right"><span class="sb-name">${escapeHtml(opp.name)}</span><span class="sb-badge opp">ADV</span></div>
+              <div class="sb-team right"><span class="sb-name">${escapeHtml(opp.name)}</span>${oppBadge}</div>
             </div>
             <div class="live-leaders" id="live-leaders"></div>
             <div class="goal-overlay" id="goal-ov">
@@ -2490,6 +2790,11 @@ function renderLiveMatch() {
                 ${MENTALITIES.map((m) => `<option value="${m.id}" ${m.id === (you.mentality ?? L.mentality) ? "selected" : ""}>${m.name}</option>`).join("")}
               </select>
             </label>
+            <label>Foco
+              <select id="half-focus">
+                ${ATTACK_FOCUS_OPTIONS.map((f) => `<option value="${f.id}" ${f.id === (you.attackFocus ?? L.attackFocus) ? "selected" : ""}>${f.name}</option>`).join("")}
+              </select>
+            </label>
             <button id="half-continue" class="primary">Voltar para o jogo</button>
           </div>
           <div class="halftime-squad">
@@ -2517,6 +2822,7 @@ function renderLiveMatch() {
   const halfPanel = document.getElementById("half-panel") as HTMLDivElement;
   const halfForm = document.getElementById("half-form") as HTMLSelectElement;
   const halfMent = document.getElementById("half-ment") as HTMLSelectElement;
+  const halfFocus = document.getElementById("half-focus") as HTMLSelectElement;
   const halfContinue = document.getElementById(
     "half-continue",
   ) as HTMLButtonElement;
@@ -2591,7 +2897,7 @@ function renderLiveMatch() {
         return `
           <li>
             <button class="reserve-option${selected}" data-reserve="${escapeHtml(p.name)}" ${L.intervalSubCount >= 5 ? "disabled" : ""}>
-              <span class="pl-pos pos-${groupOf(p.pos).toLowerCase()}">${posLabel(p.pos)}</span>
+              <span class="pl-pos pos-${groupOf(p.pos).toLowerCase()}" title="${escapeHtml(playerPosText(p))}">${escapeHtml(playerPosText(p))}</span>
               <span class="pl-name">${escapeHtml(p.name)}</span>
               <span class="pl-team">${escapeHtml(team ? `${team.name} ${team.season}` : "Reserva")}</span>
               ${s.hideRatings ? `<span class="pl-rt hidden">??</span>` : `<span class="pl-rt">${p.rating}</span>`}
@@ -2677,11 +2983,11 @@ function renderLiveMatch() {
           const f = getFormation(you.formationId ?? L.formationId);
           const slotPos = f?.slots.find((s) => s.id === L.selectedSubOut)?.pos;
           const posInfo =
-            slotPos && slotPos !== pick.player.pos
-              ? `${posLabel(slotPos)}, natural ${posLabel(pick.player.pos)}`
+            slotPos && !playerPositions(pick.player).includes(slotPos)
+              ? `${posLabel(slotPos)}, natural ${playerPosText(pick.player)}`
               : slotPos
                 ? posLabel(slotPos)
-                : posLabel(pick.player.pos);
+                : playerPosText(pick.player);
           subStatus.textContent = `${pick.player.name} (${posInfo}) selecionado. Clique em outro jogador para trocar de posição, ou escolha um reserva.`;
         } else {
           subStatus.textContent = "Escolha um reserva.";
@@ -2898,6 +3204,7 @@ function renderLiveMatch() {
       halfContinue.classList.toggle("done", ready);
       halfForm.disabled = ready;
       halfMent.disabled = ready;
+      halfFocus.disabled = ready;
       reserveList
         .querySelectorAll<HTMLButtonElement>(".reserve-option")
         .forEach((btn) => {
@@ -2936,19 +3243,23 @@ function renderLiveMatch() {
       if (you.halftimeReady) return;
       L.formationId = halfForm.value;
       L.mentality = halfMent.value as Mentality;
+      L.attackFocus = halfFocus.value as AttackFocus;
       you.formationId = L.formationId;
       you.mentality = L.mentality;
+      you.attackFocus = L.attackFocus;
       you.halftimeReady = true;
       const current = me();
       if (current) {
         current.halftimeReady = true;
         current.formationId = L.formationId;
         current.mentality = L.mentality;
+        current.attackFocus = L.attackFocus;
       }
       // send the updated lineup so the server re-simulates the 2nd half with it
       sendHalftimeReady({
         formationId: L.formationId,
         mentality: L.mentality,
+        attackFocus: L.attackFocus,
         picks: you.picks.map((pk) => ({
           slotId: pk.slotId,
           name: pk.player.name,
@@ -3087,10 +3398,13 @@ function awardRegularMatchAchievements() {
   const playerAssists = new Map<string, number>();
   for (const ev of r.timeline) {
     if (ev.type !== "goal") continue;
-    const pid = ev.side === "home" ? r.homeId : ev.side === "away" ? r.awayId : "";
+    const pid =
+      ev.side === "home" ? r.homeId : ev.side === "away" ? r.awayId : "";
     if (pid !== you.id) continue;
-    if (ev.player) playerGoals.set(ev.player, (playerGoals.get(ev.player) ?? 0) + 1);
-    if (ev.assist) playerAssists.set(ev.assist, (playerAssists.get(ev.assist) ?? 0) + 1);
+    if (ev.player)
+      playerGoals.set(ev.player, (playerGoals.get(ev.player) ?? 0) + 1);
+    if (ev.assist)
+      playerAssists.set(ev.assist, (playerAssists.get(ev.assist) ?? 0) + 1);
   }
   const yourGoals = r.goals[you.id] ?? 0;
   const oppGoals = r.goals[opp.id] ?? 0;
@@ -3099,9 +3413,11 @@ function awardRegularMatchAchievements() {
   if (youWon && oppGoals === 0) ids.push("clean_sheet");
   if (youWon && r.penaltyScore) ids.push("penalty_win");
   if ([...playerGoals.values()].some((n) => n >= 3)) ids.push("hat_trick");
-  if ([...playerAssists.values()].some((n) => n >= 3)) ids.push("assist_master");
+  if ([...playerAssists.values()].some((n) => n >= 3))
+    ids.push("assist_master");
   const avg = you.picks.length
-    ? you.picks.reduce((sum, p) => sum + p.effectiveRating, 0) / you.picks.length
+    ? you.picks.reduce((sum, p) => sum + p.effectiveRating, 0) /
+      you.picks.length
     : 0;
   if (avg >= 85) ids.push("strong_draft");
   if (youWon && opp.isAI) ids.push("beat_machine");

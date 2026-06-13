@@ -30,10 +30,18 @@ export async function signup(username: string, password: string): Promise<AuthRe
   const isFirst = Number(count.rows[0].c) === 0;
   const role: Role = isFirst || ADMIN_USERS.includes(username) ? "admin" : "user";
   const id = randomUUID();
-  await db.execute({
-    sql: "INSERT INTO users (id,username,password_hash,role,created_at) VALUES (?,?,?,?,?)",
-    args: [id, username, bcrypt.hashSync(password, 10), role, Date.now()],
-  });
+  try {
+    await db.execute({
+      sql: "INSERT INTO users (id,username,password_hash,role,created_at) VALUES (?,?,?,?,?)",
+      args: [id, username, bcrypt.hashSync(password, 10), role, Date.now()],
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("UNIQUE") || msg.includes("users.username")) {
+      return { error: "Esse usuário já existe. Entre com essa conta ou escolha outro nome." };
+    }
+    throw err;
+  }
   const user: AuthUser = { id, username, role };
   return { user, token: sign(user) };
 }

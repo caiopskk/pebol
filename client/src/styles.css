@@ -367,6 +367,23 @@ label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px
 .ment-btn span { font-size: 12px; color: var(--muted); }
 .ment-btn.active { border-color: var(--accent); background: rgba(31, 199, 125, 0.12); }
 
+.focus-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; margin-top: 8px; }
+.focus-btn {
+  display: flex; flex-direction: column; gap: 4px; text-align: left;
+  padding: 14px; border-radius: var(--radius-sm); border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.2); color: var(--text); transition: 0.15s; cursor: pointer;
+}
+.focus-btn strong { font-size: 14px; }
+.focus-btn span { font-size: 12px; color: var(--muted); }
+.focus-btn.active { border-color: var(--accent); background: rgba(31, 199, 125, 0.12); color: var(--accent); }
+.focus-btn:hover { border-color: var(--accent); }
+.focus-chip {
+  padding: 8px 14px; border-radius: 9px; border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.2); color: var(--text); font-weight: 700; font-size: 13px; cursor: pointer;
+}
+.focus-chip.active { border-color: var(--accent); background: rgba(31, 199, 125, 0.14); color: var(--accent); }
+.focus-chip:hover { border-color: var(--accent); }
+
 .lobby-actions { display: flex; justify-content: center; margin-top: 28px; }
 
 /* ---------- Pitch ---------- */
@@ -417,6 +434,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px
 .pitch.small .slot-name { font-size: 9px; }
 .slot-rt { line-height: 1; }
 .slot-pen { position: absolute; top: -6px; right: -6px; color: var(--danger); font-size: 11px; }
+
 
 /* ---------- Draft ---------- */
 .draft-layout { display: grid; grid-template-columns: 1.1fr 1fr 1.1fr; gap: 18px; align-items: start; }
@@ -523,7 +541,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px
   border-radius: 0;
 }
 .cup-draft-source .player-list {
-  max-height: 27rem;
+  max-height: 40rem;
   overflow: auto;
   padding-right: 0.25rem;
 }
@@ -630,7 +648,7 @@ label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px
 .live-layout {
   width: 100%;
   display: grid;
-  grid-template-columns: minmax(32rem, 1.45fr) minmax(25rem, 0.98fr) minmax(25rem, 1fr);
+  grid-template-columns: minmax(22rem, 1fr) minmax(26rem, 1.05fr) minmax(22rem, 1fr);
   gap: clamp(1.25rem, 2.6vw, 2.75rem);
   align-items: center;
 }
@@ -735,6 +753,28 @@ label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px
   font-size: 12px;
   font-weight: 700;
 }
+.live-stat-cols {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+.live-stat-col {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.live-stat-col-head {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.6px;
+  color: var(--muted);
+  padding: 0 4px 6px;
+  border-bottom: 1px solid var(--line);
+}
+.live-stat-col.you .live-stat-col-head { color: var(--accent); }
+.live-stat-col.opp .live-stat-col-head { color: var(--blue); }
 .live-stat-list {
   display: grid;
   grid-template-columns: 1fr;
@@ -888,10 +928,20 @@ label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px
 
 /* ---------- Ball field (live ball position) ---------- */
 .ballfield {
-  position: relative; width: 100%; max-width: 54rem; aspect-ratio: 105 / 68;
-  margin: 0 auto; border-radius: 12px; overflow: hidden;
+  position: relative; width: 100%; max-width: 38rem; aspect-ratio: 105 / 68;
+  margin: 0 auto; border-radius: 0; overflow: hidden;
   border: 1px solid var(--line); box-shadow: var(--shadow);
 }
+.sb-badge.flag {
+  padding: 0;
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  overflow: hidden;
+  width: 56px;
+  height: 38px;
+  border-radius: 6px;
+}
+.sb-badge.flag svg { width: 100%; height: 100%; display: block; }
 .bf-svg { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 .bf-pitch { fill: #2d7a45; }
 .bf-grid { stroke: rgba(255, 255, 255, 0.07); stroke-width: 0.18; }
@@ -1097,10 +1147,12 @@ label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 6px
 .half-pitch .slot.filled {
   cursor: pointer;
 }
-.half-pitch .slot.selected-sub .slot-dot {
+.half-pitch .slot.selected-sub .slot-dot,
+.cup-draft-pitch .slot.selected-sub .slot-dot {
   border-color: var(--gold);
   box-shadow: 0 0 0 5px rgba(255, 206, 84, 0.22), 0 3px 8px rgba(0, 0, 0, 0.45);
 }
+.cup-draft-pitch .slot.filled { cursor: pointer; }
 .slot-postag {
   position: absolute; top: -9px; left: 50%; transform: translateX(-50%);
   font-size: 8px; font-weight: 800; letter-spacing: 0.3px; line-height: 1;
@@ -1447,6 +1499,26 @@ select option:checked {
 .cup-vs-side { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .cup-vs-x { font-size: 26px; font-weight: 900; color: var(--faint); }
 
+.tactic-banner {
+  margin: 0 auto 14px; max-width: 540px; padding: 10px 14px; border-radius: 10px;
+  font-size: 13px; font-weight: 700; border: 1px solid var(--line);
+}
+.tactic-banner.good { color: var(--accent); border-color: rgba(31, 199, 125, 0.5); background: rgba(31, 199, 125, 0.1); }
+.tactic-banner.bad { color: #ff7676; border-color: rgba(229, 72, 72, 0.5); background: rgba(229, 72, 72, 0.1); }
+.tactic-banner.tip { color: var(--gold); border-color: rgba(255, 206, 84, 0.4); background: rgba(255, 206, 84, 0.08); }
+.prematch-ment { margin: 0 auto 14px; max-width: 640px; }
+.prematch-ment-label {
+  display: block; font-size: 11px; font-weight: 800; text-transform: uppercase;
+  letter-spacing: 0.6px; color: var(--muted); margin-bottom: 8px;
+}
+.prematch-ment-row { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center; }
+.ment-chip {
+  padding: 8px 14px; border-radius: 9px; border: 1px solid var(--line);
+  background: rgba(0, 0, 0, 0.2); color: var(--text); font-weight: 700; font-size: 13px; cursor: pointer;
+}
+.ment-chip.active { border-color: var(--accent); background: rgba(31, 199, 125, 0.14); color: var(--accent); }
+.ment-chip:hover { border-color: var(--accent); }
+
 .cup-end { display: flex; justify-content: center; align-items: flex-start; padding-top: 30px; }
 .cup-end-card {
   max-width: min(760px, 100%); width: 100%; text-align: center; border-radius: var(--radius); padding: 34px 28px;
@@ -1703,7 +1775,7 @@ select option:checked {
 }
 .pf-row {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 7rem 5rem auto;
+  grid-template-columns: minmax(0, 1fr) 6rem minmax(8rem, 0.75fr) 5rem auto;
   gap: 0.5rem;
   align-items: center;
   padding: 0.5rem;

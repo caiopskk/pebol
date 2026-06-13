@@ -3,6 +3,7 @@ import type {
   Position,
   SquadPick,
   Mentality,
+  AttackFocus,
   TeamStrength,
   MatchEvent,
   ShootoutKick,
@@ -12,7 +13,7 @@ import type {
   PlayerPublic,
 } from "./types.js";
 import { groupOf, getFormation } from "./formations.js";
-import { getMentality } from "./mentalities.js";
+import { getMentality, mentalityEdge } from "./mentalities.js";
 
 /**
  * Rating penalty when a player is fielded out of position.
@@ -40,8 +41,37 @@ export function positionPenalty(
   return dist === 1 ? 10 : 22;
 }
 
+function defaultAltPositions(pos: Position): Position[] {
+  const map: Partial<Record<Position, Position[]>> = {
+    RB: ["RWB"],
+    RWB: ["RB", "RM"],
+    LB: ["LWB"],
+    LWB: ["LB", "LM"],
+    CDM: ["CM"],
+    CM: ["CDM", "CAM"],
+    CAM: ["CM", "CF"],
+    RM: ["RW", "RWB"],
+    LM: ["LW", "LWB"],
+    RW: ["RM", "LW"],
+    LW: ["LM", "RW"],
+    CF: ["ST", "CAM"],
+    ST: ["CF"],
+  };
+  return map[pos] ?? [];
+}
+
+export function playerPositions(player: Player): Position[] {
+  return [player.pos, ...defaultAltPositions(player.pos), ...(player.altPositions ?? [])].filter(
+    (pos, idx, arr) => arr.indexOf(pos) === idx,
+  );
+}
+
+export function playerPositionPenalty(player: Player, slotPos: Position): number {
+  return Math.min(...playerPositions(player).map((pos) => positionPenalty(pos, slotPos)));
+}
+
 export function effectiveRating(player: Player, slotPos: Position): number {
-  const r = player.rating - positionPenalty(player.pos, slotPos);
+  const r = player.rating - playerPositionPenalty(player, slotPos);
   return Math.max(40, Math.round(r));
 }
 
@@ -112,6 +142,65 @@ interface SimSide {
   name: string;
   strength: TeamStrength; // mentality already applied
   picks: SquadPick[];
+  midCount: number; // number of midfield slots in the formation (numerical superiority)
+}
+
+/** Count formation slots in a given position group. */
+function lineCount(formationId: string, group: "DEF" | "MID" | "ATT"): number {
+  const f = getFormation(formationId);
+  return f ? f.slots.filter((s) => groupOf(s.pos) === group).length : 0;
+}
+
+// Wide vs central positions, for the attacking-focus tactic.
+const WIDE_POS = new Set<Position>(["LB", "RB", "LWB", "RWB", "LM", "RM", "LW", "RW"]);
+const CENTRAL_POS = new Set<Position>(["CDM", "CM", "CAM", "CF", "ST"]);
+
+function zoneAvg(picks: SquadPick[], set: Set<Position>): number | null {
+  const r = picks
+    .filter((p) => set.has(p.player.pos))
+    .map((p) => p.effectiveRating);
+  return r.length ? r.reduce((a, b) => a + b, 0) / r.length : null;
+}
+
+/**
+ * Attacking-focus multiplier applied to a side's attack. Channelling the attack
+ * down a zone (wings/center) rewards squads strong there and punishes forcing it
+ * through a weak zone — so it's a real read on your own draft. Capped at ±~11%.
+ */
+function attackFocusMod(
+  picks: SquadPick[],
+  focus: AttackFocus | undefined,
+  overall: number,
+): number {
+  if (!focus || focus === "equilibrado") return 1;
+  const zone = focus === "lados" ? WIDE_POS : CENTRAL_POS;
+  const avg = zoneAvg(picks, zone);
+  if (avg == null) return 1;
+  return Math.max(0.9, Math.min(1.11, 1 + (avg - overall) / 120));
+}
+
+/**
+ * How well each attacking focus fits a squad: per-zone average vs the team's
+ * overall, and the focus the squad is best suited to (or "equilibrado" if no
+ * zone clearly stands out). Used by the UI to advise the player.
+ */
+export function attackFocusReport(picks: SquadPick[]): {
+  wide: number | null;
+  central: number | null;
+  overall: number;
+  best: AttackFocus;
+} {
+  const overall = picks.length
+    ? picks.reduce((a, p) => a + p.effectiveRating, 0) / picks.length
+    : 0;
+  const wide = zoneAvg(picks, WIDE_POS);
+  const central = zoneAvg(picks, CENTRAL_POS);
+  const wideDelta = wide == null ? -Infinity : wide - overall;
+  const centralDelta = central == null ? -Infinity : central - overall;
+  let best: AttackFocus = "equilibrado";
+  if (Math.max(wideDelta, centralDelta) > 1.5)
+    best = wideDelta >= centralDelta ? "lados" : "meio";
+  return { wide, central, overall, best };
 }
 
 type Side = "home" | "away";
@@ -558,12 +647,44 @@ function poisson(lambda: number, rng: () => number): number {
 }
 
 function expectedGoals(attacker: SimSide, defender: SimSide): number {
-  // midfield drives possession / chance volume
-  const midEdge =
-    (attacker.strength.midfield - defender.strength.midfield) / 75;
-  const base = (attacker.strength.attack - defender.strength.defense) / 24;
-  const xg = 0.92 + base + midEdge;
-  return Math.max(0.2, Math.min(2.35, xg));
+  // Rating gaps drive most of the result (steeper than before, so the better
+  // squad wins more reliably ~ less luck). The flat base is small so it adds
+  // little free noise.
+  const base = (attacker.strength.attack - defender.strength.defense) / 15;
+  // midfield quality gap...
+  const midRating =
+    (attacker.strength.midfield - defender.strength.midfield) / 48;
+  // ...plus numerical superiority in midfield (formation choice matters)
+  const midControl = (attacker.midCount - defender.midCount) * 0.05;
+  const xg = 0.78 + base + midRating + midControl;
+  return Math.max(0.15, Math.min(2.7, xg));
+}
+
+/**
+ * Apply the mentality counter triangle to both sides' strengths. The countering
+ * side gets an attacking edge; the countered side is disrupted (loses attack and
+ * a bit of defense). Worth roughly a goal — this is the main tactical read.
+ */
+function applyCounter(
+  a: SimSide,
+  aMent: Mentality,
+  b: SimSide,
+  bMent: Mentality,
+): void {
+  const edge = mentalityEdge(aMent, bMent);
+  if (!edge) return;
+  const winner = edge === "a" ? a : b;
+  const loser = edge === "a" ? b : a;
+  winner.strength = {
+    ...winner.strength,
+    attack: winner.strength.attack * 1.06,
+    defense: winner.strength.defense * 1.02,
+  };
+  loser.strength = {
+    ...loser.strength,
+    attack: loser.strength.attack * 0.92,
+    defense: loser.strength.defense * 0.97,
+  };
 }
 
 function makeRng(seed: number): () => number {
@@ -584,6 +705,7 @@ export interface SimInput {
   picks: SquadPick[];
   formationId: string;
   mentality: Mentality;
+  attackFocus?: AttackFocus;
 }
 
 /** Penalty taker order: best finishers first. */
@@ -631,12 +753,15 @@ function makeSide(
   weight = 1,
 ): { side: SimSide; raw: TeamStrength } {
   const raw = computeStrength(inp.picks, inp.formationId);
+  const withMentality = applyMentality(raw, inp.mentality, weight);
+  const focusMod = attackFocusMod(inp.picks, inp.attackFocus, raw.overall);
   return {
     side: {
       id: inp.id,
       name: inp.name,
-      strength: applyMentality(raw, inp.mentality, weight),
+      strength: { ...withMentality, attack: withMentality.attack * focusMod },
       picks: inp.picks,
+      midCount: lineCount(inp.formationId, "MID"),
     },
     raw,
   };
@@ -653,6 +778,7 @@ export interface HalfSimResult {
 export function simulateFirstHalf(p1: SimInput, p2: SimInput): HalfSimResult {
   const a = makeSide(p1);
   const b = makeSide(p2);
+  applyCounter(a.side, p1.mentality, b.side, p2.mentality);
   const rng = makeRng(Math.floor(Math.random() * 2 ** 31));
   const g1 = poisson(expectedGoals(a.side, b.side) * 0.5, rng);
   const g2 = poisson(expectedGoals(b.side, a.side) * 0.5, rng);
@@ -684,6 +810,7 @@ export function simulateSecondHalf(
 ): SecondHalfResult {
   const a = makeSide(p1);
   const b = makeSide(p2);
+  applyCounter(a.side, p1.mentality, b.side, p2.mentality);
   const rng = makeRng(Math.floor(Math.random() * 2 ** 31));
   const g1b = poisson(expectedGoals(a.side, b.side) * 0.5, rng);
   const g2b = poisson(expectedGoals(b.side, a.side) * 0.5, rng);
@@ -730,6 +857,44 @@ export function simulateSecondHalf(
 
 // ---- World Cup campaign ----
 
+/** Stable string hash (FNV-1a) for deterministic per-team tactics. */
+function hashStr(s: string): number {
+  let h = 2166136261;
+  for (let i = 0; i < s.length; i++) {
+    h ^= s.charCodeAt(i);
+    h = Math.imul(h, 16777619);
+  }
+  return h >>> 0;
+}
+
+const WC_OPP_FORMATIONS = ["4-3-3", "4-4-2", "3-5-2", "4-2-3-1", "4-1-4-1"];
+const WC_OPP_MENTALITIES: Mentality[] = [
+  "aura",
+  "equilibrada",
+  "retranca",
+  "pressao",
+  "posse",
+  "contra_ataque",
+];
+const WC_OPP_FOCUS: AttackFocus[] = ["equilibrado", "lados", "meio"];
+
+/**
+ * Deterministic tactics for a World Cup opponent, so reading and countering
+ * their style is a real decision (and stable for a given team across replays).
+ */
+export function wcOpponentTactics(team: Team): {
+  formationId: string;
+  mentality: Mentality;
+  attackFocus: AttackFocus;
+} {
+  const h = hashStr(`${team.id}:${team.season}`);
+  return {
+    formationId: WC_OPP_FORMATIONS[h % WC_OPP_FORMATIONS.length],
+    mentality: WC_OPP_MENTALITIES[(h >>> 8) % WC_OPP_MENTALITIES.length],
+    attackFocus: WC_OPP_FOCUS[(h >>> 16) % WC_OPP_FOCUS.length],
+  };
+}
+
 /** Turn a full team (players in formation-slot order) into a SimInput. */
 export function simInputFromTeam(
   team: Team,
@@ -760,6 +925,7 @@ export function simulateGauntletMatch(
 ): GauntletResult {
   const a = makeSide(you, 2); // player's mentality has double weight
   const b = makeSide(opp, 1);
+  applyCounter(a.side, you.mentality, b.side, opp.mentality);
   const rng = makeRng(Math.floor(Math.random() * 2 ** 31));
 
   const ga1 = poisson(expectedGoals(a.side, b.side) * 0.5, rng);

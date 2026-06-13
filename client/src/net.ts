@@ -1,5 +1,5 @@
 import { io, Socket } from "socket.io-client";
-import type { RoomState, AckResult, GameMode, Mentality, HalftimeLineup } from "../../shared/types.js";
+import type { RoomState, AckResult, GameMode, Mentality, AttackFocus, HalftimeLineup } from "../../shared/types.js";
 
 // In dev, connect straight to the server (port 3001) on the same host, so it works
 // on localhost and on a LAN. In production the client is served by the server (same origin).
@@ -23,8 +23,12 @@ export function createRoom(name: string, mode: GameMode, solo = false): Promise<
 export function joinRoom(code: string, name: string): Promise<AckResult> {
   return new Promise((resolve) => socket.emit("joinRoom", { code, name }, resolve));
 }
-export function sendSetup(formationId: string, mentality: Mentality) {
-  socket.emit("setup", { formationId, mentality });
+export function sendSetup(
+  formationId: string,
+  mentality: Mentality,
+  attackFocus?: AttackFocus,
+) {
+  socket.emit("setup", { formationId, mentality, attackFocus });
 }
 export function sendReady() {
   socket.emit("ready");

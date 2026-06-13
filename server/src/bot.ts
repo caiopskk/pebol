@@ -2,7 +2,7 @@
 // Usage: tsx server/src/bot.ts <CODE> [name]
 import { io } from "socket.io-client";
 import type { RoomState } from "../../shared/types.js";
-import { openSlots, positionPenalty } from "../../shared/engine.js";
+import { effectiveRating, openSlots } from "../../shared/engine.js";
 
 const code = (process.argv[2] || "").toUpperCase();
 const name = process.argv[3] || "Bot";
@@ -34,7 +34,7 @@ s.on("roomUpdate", (st: RoomState) => {
       if (st.takenThisRound.includes(pl.name)) continue;
       for (const slotId of open) {
         const slot = meP.formationId ? slotPos(st, slotId) : pl.pos;
-        const score = pl.rating - positionPenalty(pl.pos, slot);
+        const score = effectiveRating(pl, slot);
         if (!best || score > best.score) best = { slot: slotId, player: pl.name, score };
       }
     }

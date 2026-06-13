@@ -9,15 +9,15 @@
       "alias": "Time Genérico",
       "players": [
         { "name": "Goleiro Exemplo", "pos": "GK", "rating": 82 },
-        { "name": "Lateral Direito Exemplo", "pos": "RB", "rating": 78 },
+        { "name": "Lateral Direito Exemplo", "pos": "RB", "altPositions": ["RWB"], "rating": 78 },
         { "name": "Zagueiro Um Exemplo", "pos": "CB", "rating": 80 },
         { "name": "Zagueiro Dois Exemplo", "pos": "CB", "rating": 79 },
         { "name": "Lateral Esquerdo Exemplo", "pos": "LB", "rating": 77 },
         { "name": "Volante Exemplo", "pos": "CDM", "rating": 81 },
         { "name": "Meia Um Exemplo", "pos": "CM", "rating": 83 },
-        { "name": "Meia Dois Exemplo", "pos": "CAM", "rating": 84 },
+        { "name": "Meia Dois Exemplo", "pos": "CAM", "altPositions": ["CM", "CF"], "rating": 84 },
         { "name": "Ponta Direita Exemplo", "pos": "RW", "rating": 82 },
-        { "name": "Centroavante Exemplo", "pos": "ST", "rating": 85 },
+        { "name": "Centroavante Exemplo", "pos": "ST", "altPositions": ["CF"], "rating": 85 },
         { "name": "Ponta Esquerda Exemplo", "pos": "LW", "rating": 82 }
       ],
       "bench": [

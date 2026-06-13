@@ -3,7 +3,7 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import express from "express";
 import { Server } from "socket.io";
-import type { AckResult, Mentality, HalftimeLineup } from "../../shared/types.js";
+import type { AckResult, Mentality, AttackFocus, HalftimeLineup } from "../../shared/types.js";
 import {
   createRoom,
   joinRoom,
@@ -102,14 +102,17 @@ io.on("connection", (socket) => {
     broadcast(res.room.code);
   });
 
-  socket.on("setup", (data: { formationId: string; mentality: Mentality }) => {
-    const room = findRoomBySocket(socket.id);
-    if (!room) return;
-    const player = room.players.find((p) => p.socketId === socket.id);
-    if (!player) return;
-    setup(room, player.id, data.formationId, data.mentality);
-    broadcast(room.code);
-  });
+  socket.on(
+    "setup",
+    (data: { formationId: string; mentality: Mentality; attackFocus?: AttackFocus }) => {
+      const room = findRoomBySocket(socket.id);
+      if (!room) return;
+      const player = room.players.find((p) => p.socketId === socket.id);
+      if (!player) return;
+      setup(room, player.id, data.formationId, data.mentality, data.attackFocus);
+      broadcast(room.code);
+    },
+  );
 
   socket.on("ready", () => {
     const room = findRoomBySocket(socket.id);

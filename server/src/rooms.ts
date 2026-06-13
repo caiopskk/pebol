@@ -4,6 +4,7 @@ import type {
   PlayerPublic,
   GameMode,
   Mentality,
+  AttackFocus,
   Team,
   SquadPick,
   HalftimeLineup,
@@ -12,7 +13,7 @@ import type {
 import { TEAMS, getTeam } from "../../shared/data/teams.js";
 import { getFormation } from "../../shared/formations.js";
 import { randomManager } from "../../shared/data/managers.js";
-import { effectiveRating, openSlots, positionPenalty, simulateFirstHalf, simulateSecondHalf } from "../../shared/engine.js";
+import { effectiveRating, openSlots, simulateFirstHalf, simulateSecondHalf } from "../../shared/engine.js";
 
 const TOTAL_SLOTS = 11;
 
@@ -63,6 +64,7 @@ function newPlayer(name: string, socketId: string | null, isAI = false): Interna
     ready: false,
     formationId: null,
     mentality: null,
+    attackFocus: "equilibrado",
     picks: [],
     rerollsRemaining: 3,
     halftimeReady: isAI,
@@ -150,12 +152,19 @@ export function handleDisconnect(socketId: string): Room | undefined {
   return room;
 }
 
-export function setup(room: Room, playerId: string, formationId: string, mentality: Mentality) {
+export function setup(
+  room: Room,
+  playerId: string,
+  formationId: string,
+  mentality: Mentality,
+  attackFocus?: AttackFocus,
+) {
   const p = room.players.find((pl) => pl.id === playerId);
   if (!p || room.phase !== "lobby") return;
   if (!getFormation(formationId)) return;
   p.formationId = formationId;
   p.mentality = mentality;
+  if (attackFocus) p.attackFocus = attackFocus;
 }
 
 export function ready(room: Room, playerId: string) {
@@ -251,7 +260,14 @@ function advanceTurn(room: Room) {
 }
 
 function simInput(p: InternalPlayer) {
-  return { id: p.id, name: p.name, picks: p.picks, formationId: p.formationId!, mentality: p.mentality! };
+  return {
+    id: p.id,
+    name: p.name,
+    picks: p.picks,
+    formationId: p.formationId!,
+    mentality: p.mentality!,
+    attackFocus: p.attackFocus,
+  };
 }
 
 function finishDraft(room: Room) {
@@ -300,6 +316,7 @@ function applyHalftimeLineup(p: InternalPlayer, lineup: HalftimeLineup) {
   });
   p.formationId = lineup.formationId;
   p.mentality = lineup.mentality;
+  if (lineup.attackFocus) p.attackFocus = lineup.attackFocus;
   p.picks = newPicks;
 }
 
@@ -343,7 +360,7 @@ export function aiPick(room: Room): void {
   for (const pl of room.currentTeam.players) {
     for (const slotId of open) {
       const slot = formation.slots.find((s) => s.id === slotId)!;
-      const score = pl.rating - positionPenalty(pl.pos, slot.pos);
+      const score = effectiveRating(pl, slot.pos);
       if (!best || score > best.score) best = { slotId, name: pl.name, score };
     }
   }
@@ -385,6 +402,7 @@ export function toPublic(room: Room): RoomState {
     halftimeReady: p.halftimeReady,
     formationId: p.formationId,
     mentality: p.mentality,
+    attackFocus: p.attackFocus,
     picks: p.picks.map((pk) =>
       hide
         ? { ...pk, effectiveRating: 0, player: { ...pk.player, rating: 0 } }
