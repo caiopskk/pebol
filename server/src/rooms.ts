@@ -39,6 +39,13 @@ interface Room {
 
 const rooms = new Map<string, Room>();
 
+// Draft pool for the online 1v1 game. Defaults to the bundled clubs; the server
+// swaps it for the official clubs from the database once they're loaded.
+let teamPool: Team[] = TEAMS;
+export function setTeamPool(teams: Team[]): void {
+  teamPool = teams.length ? teams : TEAMS;
+}
+
 function genCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
@@ -162,9 +169,9 @@ export function ready(room: Room, playerId: string) {
 }
 
 function drawTeam(room: Room): Team {
-  const pool = TEAMS.filter((t) => !room.usedTeamIds.includes(t.id));
+  const pool = teamPool.filter((t) => !room.usedTeamIds.includes(t.id));
   // recycle if the pool runs out (22 picks can exceed the team count)
-  const src = pool.length ? pool : TEAMS;
+  const src = pool.length ? pool : teamPool;
   if (!pool.length) room.usedTeamIds = [];
   const team = src[Math.floor(Math.random() * src.length)];
   return team;

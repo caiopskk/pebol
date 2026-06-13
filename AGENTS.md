@@ -205,9 +205,11 @@ socket/sala). Código em `main.ts` (seção "World Cup campaign", `L.campaign`),
   (GK/DEF/MID/ATT); quem não encaixa em nenhuma vaga aberta fica apagado (`campaignSelectable`).
   `effectiveRating = rating` (cheio). Se um time sorteado não tiver ninguém compatível,
   sorteia outro.
-- **Adversários** (`wcOpponentTeam`): escala de over por rodada (`WC_LADDER`): grupos 70-80,
-  16-avos 79-83, oitavas 82-85, quartas 86-88, semi 89-92, e a **final** é o chefe autoral `WC_BOSS`
-  (Brasil 1970, over ~93). Rodadas 0-6 são geradas na faixa; a final é fixa.
+- **Adversários** (`wcOpponentTeam`): cada rodada (`WC_LADDER`) sorteia uma seleção histórica
+  de um conjunto de elencos autorais com escalação fixa (`WC_OPPONENT_TEAMS` + algumas de
+  `WC_DRAFT_TEAMS`). Eles **não** são gerados por sobrenomes/over aleatório; cada adversário
+  tem seus 11 jogadores originais. A final continua sendo o chefe autoral `WC_BOSS`
+  (Brasil 1970).
 - **Mentalidade com peso dobrado**: `applyMentality(..., weight=2)` — amplifica o desvio do
   neutro. Cria estratégia real (mentalidades defensivas reduzem empates/derrotas).
 - **Fluxo de fases** (`CampaignState.phase`): `setup → draft → preMatch → match →
@@ -217,7 +219,7 @@ socket/sala). Código em `main.ts` (seção "World Cup campaign", `L.campaign`),
   finais; campanha perfeita ~2-10% conforme a mentalidade. É pra ser difícil de propósito.
 
 Decisões de design tomadas (ajustáveis): posição por **setor** (não idêntica); partidas com
-**narração ao vivo** (com pular); adversários **gerados na faixa** + chefe real.
+**narração ao vivo** (com pular); adversários históricos com escalação fixa + chefe real.
 
 ---
 
@@ -250,6 +252,35 @@ Em produção é **porta única**: o Express serve o `dist/` e o Socket.io na me
 o client conecta na mesma origem. Em dev o client conecta direto em `:3001`.
 
 ---
+
+## 6.5 Banco de dados, autenticação e API
+
+Os times agora vivem num banco **libSQL/Turso** (SQLite-compatível). Em dev, sem env vars,
+cai num arquivo local `data/pebol.db`; em produção (Render) use as env vars.
+
+- `server/src/db.ts` — conexão, schema (`users`, `teams`, `players`), **seed** a partir dos
+  times hardcoded (clubes de `teams.ts` como `kind='club'`; seleções de `worldcup.ts` como
+  `kind='national'`) só se a tabela estiver vazia, e funções de CRUD. Times com
+  `owner_id IS NULL` são **oficiais** (só admin edita); com `owner_id` são do usuário.
+- `server/src/auth.ts` — signup/login com **bcryptjs + JWT**. Papéis `user`/`admin`. O
+  **primeiro** usuário registrado vira admin (e qualquer nome em `ADMIN_USERS`).
+- `server/src/api.ts` — rotas: `POST /api/auth/signup|login`, `GET /api/me`, e CRUD
+  `GET/POST/PUT/DELETE /api/teams[/:id]` com autorização (oficial→admin; do usuário→dono).
+  Registradas **antes** do fallback SPA (que exclui `/api` e `/socket.io`).
+- O draft **online 1v1** lê os clubes oficiais do banco (`rooms.ts` `setTeamPool`, recarregado
+  por `refreshTeamCache` no startup e quando um time oficial muda).
+
+**Env vars (produção / Render):**
+- `TURSO_DATABASE_URL` (ex: `libsql://...turso.io`) e `TURSO_AUTH_TOKEN` (token do `turso db tokens create`).
+- `JWT_SECRET` (segredo forte para assinar os tokens).
+- `ADMIN_USERS` (opcional, csv de usernames admin).
+
+**Render + SQLite:** o disco do Render é efêmero (zera no deploy/restart). Por isso usamos
+**Turso** (libSQL hospedado, persiste). Sem as env vars, o servidor usa o arquivo local
+(some no deploy — serve só pra dev).
+
+**Pendente (próximo passo):** fazer a campanha da Copa ler seleções `national` do banco
+quando houver customização via CRUD; hoje ela usa os elencos autorais do bundle no client.
 
 ## 7. Testar e verificar (sempre faça)
 

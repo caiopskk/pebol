@@ -1,4 +1,4 @@
-import type { Team, Player, Position } from "../types.js";
+import type { Team } from "../types.js";
 
 // ---------------- Draft pool: iconic World Cup national teams (since the 1950s) ----------------
 // You draft 11 legends from these. Ratings are estimates; legends rate high.
@@ -424,56 +424,308 @@ export const WC_BOSS: Team = {
   ],
 };
 
+// ---------------- Authored campaign opponents ----------------
+// Opponents use fixed historical lineups. This keeps the campaign from creating
+// random draft-style squads while still allowing variety between runs.
+export const WC_OPPONENT_TEAMS: Team[] = [
+  {
+    id: "wc-arabia-1994", name: "Arábia Saudita", season: "1994", league: "Copa do Mundo",
+    players: [
+      { name: "Al-Deayea", pos: "GK", rating: 77 },
+      { name: "Al-Jawad", pos: "RB", rating: 72 },
+      { name: "Al-Khilaiwi", pos: "CB", rating: 75 },
+      { name: "Al-Owairan", pos: "CB", rating: 74 },
+      { name: "Al-Ghesheyan", pos: "LB", rating: 73 },
+      { name: "Al-Muwallid", pos: "CDM", rating: 74 },
+      { name: "Fuad Amin", pos: "CM", rating: 76 },
+      { name: "Al-Jaber", pos: "CAM", rating: 78 },
+      { name: "Al-Thunayan", pos: "RW", rating: 78 },
+      { name: "Al-Bishi", pos: "ST", rating: 74 },
+      { name: "Al-Harbi", pos: "LW", rating: 73 },
+    ],
+  },
+  {
+    id: "wc-coreia-2002", name: "Coreia do Sul", season: "2002", league: "Copa do Mundo",
+    players: [
+      { name: "Lee Woon-jae", pos: "GK", rating: 77 },
+      { name: "Song Chong-gug", pos: "RB", rating: 76 },
+      { name: "Hong Myung-bo", pos: "CB", rating: 82 },
+      { name: "Choi Jin-cheul", pos: "CB", rating: 77 },
+      { name: "Lee Young-pyo", pos: "LB", rating: 79 },
+      { name: "Kim Nam-il", pos: "CDM", rating: 78 },
+      { name: "Yoo Sang-chul", pos: "CM", rating: 80 },
+      { name: "Park Ji-sung", pos: "CAM", rating: 82 },
+      { name: "Seol Ki-hyeon", pos: "RW", rating: 77 },
+      { name: "Ahn Jung-hwan", pos: "ST", rating: 80 },
+      { name: "Lee Chun-soo", pos: "LW", rating: 76 },
+    ],
+  },
+  {
+    id: "wc-costa-rica-2014", name: "Costa Rica", season: "2014", league: "Copa do Mundo",
+    players: [
+      { name: "Keylor Navas", pos: "GK", rating: 85 },
+      { name: "Gamboa", pos: "RB", rating: 77 },
+      { name: "González", pos: "CB", rating: 78 },
+      { name: "Umaña", pos: "CB", rating: 76 },
+      { name: "Díaz", pos: "LB", rating: 76 },
+      { name: "Borges", pos: "CDM", rating: 79 },
+      { name: "Tejeda", pos: "CM", rating: 76 },
+      { name: "Ruiz", pos: "CAM", rating: 81 },
+      { name: "Bolaños", pos: "RW", rating: 78 },
+      { name: "Campbell", pos: "ST", rating: 80 },
+      { name: "Ureña", pos: "LW", rating: 75 },
+    ],
+  },
+  {
+    id: "wc-senegal-2002", name: "Senegal", season: "2002", league: "Copa do Mundo",
+    players: [
+      { name: "Sylva", pos: "GK", rating: 76 },
+      { name: "Coly", pos: "RB", rating: 77 },
+      { name: "Ferdinand Coly", pos: "CB", rating: 76 },
+      { name: "Diop", pos: "CB", rating: 78 },
+      { name: "Daf", pos: "LB", rating: 75 },
+      { name: "A. Faye", pos: "CDM", rating: 77 },
+      { name: "Diao", pos: "CM", rating: 79 },
+      { name: "Fadiga", pos: "CAM", rating: 82 },
+      { name: "Diouf", pos: "RW", rating: 83 },
+      { name: "Camara", pos: "ST", rating: 80 },
+      { name: "Bouba Diop", pos: "CM", rating: 80 },
+    ],
+  },
+  {
+    id: "wc-gana-2010", name: "Gana", season: "2010", league: "Copa do Mundo",
+    players: [
+      { name: "Kingson", pos: "GK", rating: 78 },
+      { name: "Pantsil", pos: "RB", rating: 78 },
+      { name: "Mensah", pos: "CB", rating: 80 },
+      { name: "Vorsah", pos: "CB", rating: 78 },
+      { name: "Sarpei", pos: "LB", rating: 76 },
+      { name: "Annan", pos: "CDM", rating: 79 },
+      { name: "Boateng", pos: "CM", rating: 82 },
+      { name: "Muntari", pos: "CAM", rating: 81 },
+      { name: "Ayew", pos: "RW", rating: 80 },
+      { name: "Asamoah Gyan", pos: "ST", rating: 83 },
+      { name: "Inkoom", pos: "LW", rating: 76 },
+    ],
+  },
+  {
+    id: "wc-nigeria-1994", name: "Nigéria", season: "1994", league: "Copa do Mundo",
+    players: [
+      { name: "Rufai", pos: "GK", rating: 78 },
+      { name: "Eguavoen", pos: "RB", rating: 78 },
+      { name: "Uche", pos: "CB", rating: 79 },
+      { name: "Chidi Nwanu", pos: "CB", rating: 77 },
+      { name: "Emenalo", pos: "LB", rating: 76 },
+      { name: "Oliseh", pos: "CDM", rating: 84 },
+      { name: "Okocha", pos: "CM", rating: 86 },
+      { name: "Amokachi", pos: "CAM", rating: 82 },
+      { name: "Finidi", pos: "RW", rating: 83 },
+      { name: "Yekini", pos: "ST", rating: 85 },
+      { name: "Amunike", pos: "LW", rating: 82 },
+    ],
+  },
+  {
+    id: "wc-japao-2018", name: "Japão", season: "2018", league: "Copa do Mundo",
+    players: [
+      { name: "Kawashima", pos: "GK", rating: 76 },
+      { name: "Sakai", pos: "RB", rating: 78 },
+      { name: "Yoshida", pos: "CB", rating: 81 },
+      { name: "Shoji", pos: "CB", rating: 76 },
+      { name: "Nagatomo", pos: "LB", rating: 79 },
+      { name: "Hasebe", pos: "CDM", rating: 80 },
+      { name: "Shibasaki", pos: "CM", rating: 78 },
+      { name: "Kagawa", pos: "CAM", rating: 83 },
+      { name: "Haraguchi", pos: "RW", rating: 77 },
+      { name: "Osako", pos: "ST", rating: 78 },
+      { name: "Inui", pos: "LW", rating: 80 },
+    ],
+  },
+  {
+    id: "wc-mexico-1986", name: "México", season: "1986", league: "Copa do Mundo",
+    players: [
+      { name: "Larios", pos: "GK", rating: 79 },
+      { name: "Trejo", pos: "RB", rating: 76 },
+      { name: "Quirarte", pos: "CB", rating: 79 },
+      { name: "Servín", pos: "CB", rating: 77 },
+      { name: "Aguirre", pos: "LB", rating: 78 },
+      { name: "España", pos: "CDM", rating: 79 },
+      { name: "Negrete", pos: "CM", rating: 82 },
+      { name: "Boy", pos: "CAM", rating: 84 },
+      { name: "Muñoz", pos: "RW", rating: 78 },
+      { name: "Hugo Sánchez", pos: "ST", rating: 88 },
+      { name: "Flores", pos: "LW", rating: 79 },
+    ],
+  },
+  {
+    id: "wc-eua-2002", name: "Estados Unidos", season: "2002", league: "Copa do Mundo",
+    players: [
+      { name: "Friedel", pos: "GK", rating: 82 },
+      { name: "Hejduk", pos: "RB", rating: 76 },
+      { name: "Pope", pos: "CB", rating: 78 },
+      { name: "Berhalter", pos: "CB", rating: 76 },
+      { name: "Sanneh", pos: "LB", rating: 77 },
+      { name: "Mastroeni", pos: "CDM", rating: 76 },
+      { name: "Reyna", pos: "CM", rating: 82 },
+      { name: "O'Brien", pos: "CAM", rating: 79 },
+      { name: "Donovan", pos: "RW", rating: 81 },
+      { name: "McBride", pos: "ST", rating: 80 },
+      { name: "Beasley", pos: "LW", rating: 78 },
+    ],
+  },
+  {
+    id: "wc-suecia-1994", name: "Suécia", season: "1994", league: "Copa do Mundo",
+    players: [
+      { name: "Ravelli", pos: "GK", rating: 80 },
+      { name: "Nilsson", pos: "RB", rating: 78 },
+      { name: "Björklund", pos: "CB", rating: 79 },
+      { name: "Patrik Andersson", pos: "CB", rating: 82 },
+      { name: "Ljung", pos: "LB", rating: 76 },
+      { name: "Schwarz", pos: "CDM", rating: 79 },
+      { name: "Brolin", pos: "CM", rating: 84 },
+      { name: "Dahlin", pos: "CAM", rating: 82 },
+      { name: "Ingesson", pos: "RW", rating: 78 },
+      { name: "K. Andersson", pos: "ST", rating: 83 },
+      { name: "Larsson", pos: "LW", rating: 80 },
+    ],
+  },
+  {
+    id: "wc-colombia-2014", name: "Colômbia", season: "2014", league: "Copa do Mundo",
+    players: [
+      { name: "Ospina", pos: "GK", rating: 82 },
+      { name: "Zúñiga", pos: "RB", rating: 80 },
+      { name: "Yepes", pos: "CB", rating: 81 },
+      { name: "Zapata", pos: "CB", rating: 80 },
+      { name: "Armero", pos: "LB", rating: 79 },
+      { name: "Sánchez", pos: "CDM", rating: 81 },
+      { name: "Aguilar", pos: "CM", rating: 79 },
+      { name: "James Rodríguez", pos: "CAM", rating: 89 },
+      { name: "Cuadrado", pos: "RW", rating: 84 },
+      { name: "Teófilo Gutiérrez", pos: "ST", rating: 80 },
+      { name: "Ibarbo", pos: "LW", rating: 79 },
+    ],
+  },
+  {
+    id: "wc-uruguai-2010", name: "Uruguai", season: "2010", league: "Copa do Mundo",
+    players: [
+      { name: "Muslera", pos: "GK", rating: 82 },
+      { name: "Maxi Pereira", pos: "RB", rating: 80 },
+      { name: "Lugano", pos: "CB", rating: 84 },
+      { name: "Godín", pos: "CB", rating: 83 },
+      { name: "Fucile", pos: "LB", rating: 79 },
+      { name: "Arévalo Ríos", pos: "CDM", rating: 80 },
+      { name: "Pérez", pos: "CM", rating: 79 },
+      { name: "Forlán", pos: "CAM", rating: 89 },
+      { name: "Suárez", pos: "RW", rating: 86 },
+      { name: "Cavani", pos: "ST", rating: 84 },
+      { name: "Álvaro Pereira", pos: "LW", rating: 80 },
+    ],
+  },
+  {
+    id: "wc-franca-2006", name: "França", season: "2006", league: "Copa do Mundo",
+    players: [
+      { name: "Barthez", pos: "GK", rating: 84 },
+      { name: "Sagnol", pos: "RB", rating: 83 },
+      { name: "Thuram", pos: "CB", rating: 88 },
+      { name: "Gallas", pos: "CB", rating: 86 },
+      { name: "Abidal", pos: "LB", rating: 84 },
+      { name: "Makelele", pos: "CDM", rating: 88 },
+      { name: "Vieira", pos: "CM", rating: 89 },
+      { name: "Zidane", pos: "CAM", rating: 96 },
+      { name: "Ribéry", pos: "RW", rating: 84 },
+      { name: "Henry", pos: "ST", rating: 91 },
+      { name: "Malouda", pos: "LW", rating: 83 },
+    ],
+  },
+  {
+    id: "wc-inglaterra-1990", name: "Inglaterra", season: "1990", league: "Copa do Mundo",
+    players: [
+      { name: "Shilton", pos: "GK", rating: 84 },
+      { name: "Parker", pos: "RB", rating: 80 },
+      { name: "Butcher", pos: "CB", rating: 83 },
+      { name: "Walker", pos: "CB", rating: 82 },
+      { name: "Pearce", pos: "LB", rating: 84 },
+      { name: "Platt", pos: "CDM", rating: 82 },
+      { name: "Robson", pos: "CM", rating: 86 },
+      { name: "Gascoigne", pos: "CAM", rating: 88 },
+      { name: "Waddle", pos: "RW", rating: 84 },
+      { name: "Lineker", pos: "ST", rating: 88 },
+      { name: "Beardsley", pos: "LW", rating: 83 },
+    ],
+  },
+  {
+    id: "wc-espanha-2022", name: "Espanha", season: "2022", league: "Copa do Mundo",
+    players: [
+      { name: "Unai Simón", pos: "GK", rating: 84 },
+      { name: "Carvajal", pos: "RB", rating: 84 },
+      { name: "Rodri", pos: "CB", rating: 88 },
+      { name: "Laporte", pos: "CB", rating: 86 },
+      { name: "Jordi Alba", pos: "LB", rating: 85 },
+      { name: "Busquets", pos: "CDM", rating: 86 },
+      { name: "Pedri", pos: "CM", rating: 86 },
+      { name: "Gavi", pos: "CM", rating: 84 },
+      { name: "Asensio", pos: "RW", rating: 84 },
+      { name: "Morata", pos: "ST", rating: 84 },
+      { name: "Dani Olmo", pos: "LW", rating: 84 },
+    ],
+  },
+  {
+    id: "wc-argentina-1998", name: "Argentina", season: "1998", league: "Copa do Mundo",
+    players: [
+      { name: "Roa", pos: "GK", rating: 83 },
+      { name: "Zanetti", pos: "RB", rating: 87 },
+      { name: "Ayala", pos: "CB", rating: 87 },
+      { name: "Sensini", pos: "CB", rating: 84 },
+      { name: "Chamot", pos: "LB", rating: 82 },
+      { name: "Simeone", pos: "CDM", rating: 87 },
+      { name: "Verón", pos: "CM", rating: 88 },
+      { name: "Ortega", pos: "CAM", rating: 87 },
+      { name: "Claudio López", pos: "RW", rating: 85 },
+      { name: "Batistuta", pos: "ST", rating: 91 },
+      { name: "Gallardo", pos: "LW", rating: 84 },
+    ],
+  },
+];
+
 // ---------------- Opponent ladder (escalating difficulty) ----------------
 export interface LadderRound {
   label: string;          // shown in the progress bar / pre-match
   overRange: [number, number];
-  pool: string[];         // themed national-team names to draw from (for flavour)
+  opponentIds: string[];  // authored teams eligible for this campaign round
 }
 
 // 8 matches: 3 group-stage fixtures, then Round of 32 through the final.
-// The last one is the authored boss; the others are generated at the over band.
+// The last one is the authored boss; every other round draws from fixed squads.
 export const WC_LADDER: LadderRound[] = [
-  { label: "Fase de Grupos — Jogo 1", overRange: [70, 76], pool: ["Arábia Saudita 1994", "Coreia do Sul 2002", "Costa Rica 2014", "Senegal 2002"] },
-  { label: "Fase de Grupos — Jogo 2", overRange: [72, 78], pool: ["Camarões 1990", "Gana 2010", "Nigéria 1994", "Japão 2018"] },
-  { label: "Fase de Grupos — Jogo 3", overRange: [74, 80], pool: ["México 1986", "Estados Unidos 2002", "Marrocos 2022", "Croácia 2018"] },
-  { label: "16-avos de Final", overRange: [79, 83], pool: ["Bélgica 2018", "Suécia 1994", "Portugal 2006", "Colômbia 2014"] },
-  { label: "Oitavas de Final", overRange: [82, 85], pool: ["Holanda 2010", "Inglaterra 1990", "Uruguai 2010", "França 2006"] },
-  { label: "Quartas de Final", overRange: [86, 88], pool: ["Croácia 2018", "Espanha 2022", "Argentina 1998", "Brasil 1994"] },
-  { label: "Semifinal", overRange: [89, 92], pool: ["Espanha 2010", "Alemanha 1990", "França 1998", "Argentina 2022"] },
-  { label: "A Grande Final", overRange: [93, 96], pool: [WC_BOSS.name] },
+  { label: "Fase de Grupos — Jogo 1", overRange: [70, 76], opponentIds: ["wc-arabia-1994", "wc-coreia-2002", "wc-costa-rica-2014", "wc-senegal-2002"] },
+  { label: "Fase de Grupos — Jogo 2", overRange: [72, 78], opponentIds: ["wc-gana-2010", "wc-nigeria-1994", "wc-japao-2018", "wc-mexico-1986"] },
+  { label: "Fase de Grupos — Jogo 3", overRange: [74, 80], opponentIds: ["wc-eua-2002", "wc-marrocos-2022", "wc-croacia-2018", "wc-suecia-1994"] },
+  { label: "16-avos de Final", overRange: [79, 83], opponentIds: ["wc-belgica-2018", "wc-suecia-1994", "wc-portugal-2006", "wc-colombia-2014"] },
+  { label: "Oitavas de Final", overRange: [82, 85], opponentIds: ["wc-holanda-2010", "wc-inglaterra-1990", "wc-uruguai-2010", "wc-franca-2006"] },
+  { label: "Quartas de Final", overRange: [86, 88], opponentIds: ["wc-croacia-2018", "wc-espanha-2022", "wc-argentina-1998", "wc-brasil-1994"] },
+  { label: "Semifinal", overRange: [89, 92], opponentIds: ["wc-espanha-2010", "wc-alemanha-1990", "wc-franca-1998", "wc-argentina-2022"] },
+  { label: "A Grande Final", overRange: [93, 96], opponentIds: [WC_BOSS.id] },
 ];
 
-const SURNAMES = [
-  "Silva", "Pereira", "Costa", "Almeida", "Rocha", "Vidal", "Soto", "Ramírez", "Okafor",
-  "Mensah", "Diallo", "Traoré", "Suzuki", "Tanaka", "Kim", "Park", "Hassan", "Ali",
-  "Novak", "Petrov", "Larsson", "Hansen", "Müller", "Schmidt", "Rossi", "Bianchi",
-  "Mendoza", "Castro", "Nunes", "Oliveira", "Kovač", "Marić", "Bakić",
-];
+const WC_OPPONENT_BY_ID = new Map(
+  [...WC_DRAFT_TEAMS, ...WC_OPPONENT_TEAMS, WC_BOSS].map((team) => [team.id, team]),
+);
 
-function shuffle<T>(arr: T[], rng: () => number): T[] {
-  const a = [...arr];
-  for (let i = a.length - 1; i > 0; i--) {
-    const j = Math.floor(rng() * (i + 1));
-    [a[i], a[j]] = [a[j], a[i]];
-  }
-  return a;
+function cloneTeam(team: Team, league = team.league): Team {
+  return {
+    ...team,
+    league,
+    players: team.players.map((player) => ({ ...player })),
+    bench: team.bench?.map((player) => ({ ...player })),
+  };
 }
 
-// Positions in 4-3-3 slot order, matching getFormation("4-3-3").
-const OPP_POS: Position[] = ["GK", "RB", "CB", "CB", "LB", "CDM", "CM", "CAM", "LW", "ST", "RW"];
-
-/** Build the opponent national team for a given round (0-based). Round 6 is the boss. */
+/** Pick an authored national team for a campaign round (0-based). */
 export function wcOpponentTeam(round: number, rng: () => number): Team {
   const cfg = WC_LADDER[round];
-  if (round >= WC_LADDER.length - 1) return WC_BOSS;
-  const name = cfg.pool[Math.floor(rng() * cfg.pool.length)];
-  const [lo, hi] = cfg.overRange;
-  const names = shuffle(SURNAMES, rng);
-  const players: Player[] = OPP_POS.map((pos, i) => ({
-    name: names[i % names.length],
-    pos,
-    rating: lo + Math.floor(rng() * (hi - lo + 1)),
-  }));
-  return { id: `wc-opp-${round}`, name, season: "", league: cfg.label, players };
+  if (round >= WC_LADDER.length - 1) return cloneTeam(WC_BOSS, cfg.label);
+  const teams = cfg.opponentIds
+    .map((id) => WC_OPPONENT_BY_ID.get(id))
+    .filter((team): team is Team => Boolean(team));
+  const team = teams[Math.floor(rng() * teams.length)] ?? WC_BOSS;
+  return cloneTeam(team, cfg.label);
 }

@@ -19,7 +19,21 @@ import {
   toPublic,
   isAITurn,
   aiPick,
+  setTeamPool,
 } from "./rooms.js";
+import { registerApi } from "./api.js";
+import { initDb, getOfficialTeams } from "./db.js";
+
+// Load official clubs into the online draft pool, using the generic alias as the name
+// so the live game never shows the real (copyrighted) club names.
+async function refreshTeamCache(): Promise<void> {
+  try {
+    const clubs = await getOfficialTeams("club");
+    if (clubs.length) setTeamPool(clubs.map((t) => ({ ...t, name: t.alias || t.name })));
+  } catch (err) {
+    console.error("[db] failed to load teams:", err);
+  }
+}
 
 const app = express();
 const httpServer = createServer(app);
@@ -27,13 +41,27 @@ const io = new Server(httpServer, {
   cors: { origin: "*" },
 });
 
+app.use((req, res, next) => {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
+  res.setHeader("Access-Control-Allow-Headers", "Content-Type, Authorization");
+  if (req.method === "OPTIONS") {
+    res.sendStatus(204);
+    return;
+  }
+  next();
+});
+
 app.get("/health", (_req, res) => res.json({ ok: true }));
+
+// Auth + team CRUD API (must come before the SPA fallback).
+registerApi(app, () => void refreshTeamCache());
 
 // In production, serve the built client (pnpm build -> dist/) on the same port.
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const distDir = path.resolve(__dirname, "../../dist");
 app.use(express.static(distDir));
-app.get(/^(?!\/socket\.io).*/, (_req, res) => {
+app.get(/^(?!\/(socket\.io|api)).*/, (_req, res) => {
   res.sendFile(path.join(distDir, "index.html"));
 });
 
@@ -139,6 +167,15 @@ io.on("connection", (socket) => {
 });
 
 const PORT = Number(process.env.PORT) || 3001;
-httpServer.listen(PORT, () => {
-  console.log(`⚽ pebol server rodando em http://localhost:${PORT}`);
+
+async function start() {
+  await initDb();
+  await refreshTeamCache();
+  httpServer.listen(PORT, () => {
+    console.log(`⚽ pebol server rodando em http://localhost:${PORT}`);
+  });
+}
+start().catch((err) => {
+  console.error("Falha ao iniciar:", err);
+  process.exit(1);
 });

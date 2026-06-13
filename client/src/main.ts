@@ -32,6 +32,14 @@ import {
   WC_LADDER,
 } from "../../shared/data/worldcup.js";
 import {
+  api,
+  setToken,
+  getToken,
+  type AccountUser,
+  type AdminTeam,
+  type AchievementProgress,
+} from "./api.js";
+import {
   onRoomUpdate,
   onError,
   createRoom,
@@ -42,6 +50,7 @@ import {
   sendRerollTeam,
   sendHalftimeReady,
   sendRematch,
+  leaveCurrentRoom,
 } from "./net.js";
 
 const app = document.getElementById("app")!;
@@ -78,6 +87,13 @@ interface Local {
   intervalSubCount: number;
   // World Cup campaign (single-player, client-side, independent of the socket room)
   campaign: CampaignState | null;
+  // account + team admin (REST, separate from the socket game)
+  account: AccountUser | null;
+  accountScreen: "login" | "admin" | "achievements" | null;
+  adminTeams: AdminTeam[] | null;
+  editingTeam: AdminTeam | "new" | null;
+  achievements: AchievementProgress[] | null;
+  achievementAwardKeys: Set<string>;
 }
 
 type CampaignPhase =
@@ -140,6 +156,12 @@ const L: Local = {
   selectedSubIn: null,
   intervalSubCount: 0,
   campaign: null,
+  account: null,
+  accountScreen: null,
+  adminTeams: null,
+  editingTeam: null,
+  achievements: null,
+  achievementAwardKeys: new Set(),
 };
 
 onRoomUpdate((s) => {
@@ -171,6 +193,14 @@ function opponent(): PlayerPublic | undefined {
 // ---------------- Main render ----------------
 
 function render() {
+  // account / team admin owns the screen when open
+  if (L.accountScreen) {
+    if (L.accountScreen === "login") renderLogin();
+    else if (L.accountScreen === "admin") renderAdmin();
+    else renderAchievements();
+    renderToast();
+    return;
+  }
   // World Cup campaign is a self-contained, client-side flow that owns the screen
   if (L.campaign) {
     if (L.playing) {
@@ -280,14 +310,36 @@ function renderLiveStats(
 // ---------------- Home ----------------
 
 function renderHome() {
+  const acc = L.account;
+  const savedName = escapeHtml(acc?.username ?? "");
   app.innerHTML = `
     <div class="screen home">
+      <div class="home-account-row ${acc ? "signed" : "anonymous"}">
+        ${
+          acc
+            ? `<div class="home-account-card">
+                 <div class="ha-main">
+                   <span class="ha-kicker">Conta conectada</span>
+                   <strong>${escapeHtml(acc.username)}</strong>
+                   <span>${acc.role === "admin" ? "Administrador" : "Usuário"}</span>
+                 </div>
+               </div>
+               <div class="home-account-actions">
+                 <button id="ha-achievements" class="primary alt account-action">Conquistas</button>
+                 <button id="ha-admin" class="primary account-action">Gerenciar times</button>
+                 <button id="ha-logout" class="primary alt account-action">Sair</button>
+               </div>`
+            : `<div class="home-account-actions">
+                 <button id="ha-login" class="primary account-action">Entrar / Criar conta</button>
+               </div>`
+        }
+      </div>
       <div class="cards home-board">
         <div class="panel home-panel create-card">
           <div class="home-card-inner">
             <h2>Criar sala</h2>
             <label>Seu nome</label>
-            <input id="c-name" maxlength="20" placeholder="Insira seu nome" />
+            <input id="c-name" maxlength="20" placeholder="Insira seu nome" value="${savedName}" />
             <label>Modo de jogo</label>
             <div class="mode-pick">
               <button class="mode-btn active" data-mode="classico">
@@ -310,7 +362,7 @@ function renderHome() {
           <div class="home-card-inner">
             <h2>Entrar numa sala</h2>
             <label>Seu nome</label>
-            <input id="j-name" maxlength="20" placeholder="Insira seu nome" />
+            <input id="j-name" maxlength="20" placeholder="Insira seu nome" value="${savedName}" />
             <label>Código da sala</label>
             <input id="j-code" maxlength="4" placeholder="XXXX" style="text-transform:uppercase" />
             <button id="j-join" class="primary">Entrar</button>
@@ -377,6 +429,19 @@ function renderHome() {
   app.querySelector<HTMLButtonElement>("#c-worldcup")!.onclick = () =>
     startCampaign();
 
+  app
+    .querySelector<HTMLButtonElement>("#ha-login")
+    ?.addEventListener("click", openLogin);
+  app
+    .querySelector<HTMLButtonElement>("#ha-admin")
+    ?.addEventListener("click", () => void openAdmin());
+  app
+    .querySelector<HTMLButtonElement>("#ha-achievements")
+    ?.addEventListener("click", () => void openAchievements());
+  app
+    .querySelector<HTMLButtonElement>("#ha-logout")
+    ?.addEventListener("click", logout);
+
   app.querySelector<HTMLButtonElement>("#j-join")!.onclick = async () => {
     const name = (
       app.querySelector<HTMLInputElement>("#j-name")!.value || ""
@@ -391,6 +456,568 @@ function renderHome() {
       L.youId = res.youId;
     } else {
       showToast(res.error || "Erro ao entrar.");
+    }
+  };
+}
+
+// ---------------- Account + team admin (REST) ----------------
+
+const ALL_POS = [
+  "GK",
+  "RB",
+  "LB",
+  "CB",
+  "RWB",
+  "LWB",
+  "CDM",
+  "CM",
+  "CAM",
+  "RM",
+  "LM",
+  "RW",
+  "LW",
+  "CF",
+  "ST",
+];
+const ACHIEVEMENT_COPY: Record<
+  string,
+  { title: string; description: string; points: number }
+> = {
+  first_goal: { title: "Primeiro grito", description: "Marque seu primeiro gol em uma partida.", points: 10 },
+  first_win: { title: "Primeira vitória", description: "Vença uma partida em qualquer modo.", points: 20 },
+  clean_sheet: { title: "Muralha", description: "Vença uma partida sem sofrer gols.", points: 25 },
+  penalty_win: { title: "Sangue frio", description: "Vença uma decisão por pênaltis.", points: 30 },
+  hat_trick: { title: "Hat-trick", description: "Faça três gols com o mesmo jogador em uma partida.", points: 35 },
+  assist_master: { title: "Garçom da rodada", description: "Dê três assistências na mesma partida.", points: 30 },
+  strong_draft: { title: "Elenco pesado", description: "Monte um time com overall 85 ou mais.", points: 25 },
+  beat_machine: { title: "Sem bug no sistema", description: "Vença uma partida contra a máquina.", points: 20 },
+  pica_win: { title: "No escuro", description: "Vença uma partida no modo Pica.", points: 25 },
+  custom_team: { title: "Dono da prancheta", description: "Crie um time personalizado.", points: 20 },
+  json_import: { title: "Olheiro digital", description: "Importe times usando um arquivo JSON.", points: 25 },
+  group_escape: { title: "Passou no sufoco", description: "Classifique-se na fase de grupos da Copa do Mundo.", points: 30 },
+  world_champion: { title: "Campeão do mundo", description: "Vença a campanha da Copa do Mundo.", points: 100 },
+};
+
+interface AchievementNotice {
+  id: string;
+  title: string;
+  description: string;
+  points: number;
+}
+const achievementQueue: AchievementNotice[] = [];
+let achievementNoticeTimer: number | undefined;
+let achievementNoticeActive = false;
+
+function queueAchievementNotice(id: string) {
+  const meta = ACHIEVEMENT_COPY[id] ?? {
+    title: "Conquista desbloqueada",
+    description: "Uma nova conquista foi adicionada ao seu perfil.",
+    points: 0,
+  };
+  achievementQueue.push({ id, ...meta });
+  showNextAchievementNotice();
+}
+
+function showNextAchievementNotice() {
+  if (achievementNoticeActive) return;
+  const notice = achievementQueue.shift();
+  if (!notice) return;
+  achievementNoticeActive = true;
+  document.getElementById("achievement-pop")?.remove();
+  const el = document.createElement("div");
+  el.id = "achievement-pop";
+  el.className = "achievement-pop";
+  el.innerHTML = `
+    <div class="achievement-pop-icon">✓</div>
+    <div class="achievement-pop-copy">
+      <span>Conquista desbloqueada</span>
+      <strong>${escapeHtml(notice.title)}</strong>
+      <p>${escapeHtml(notice.description)}</p>
+    </div>
+    <em>${notice.points} pts</em>`;
+  document.body.appendChild(el);
+  clearTimeout(achievementNoticeTimer);
+  achievementNoticeTimer = window.setTimeout(() => {
+    el.classList.add("leaving");
+    window.setTimeout(() => {
+      el.remove();
+      achievementNoticeActive = false;
+      showNextAchievementNotice();
+    }, 280);
+  }, 4200);
+}
+
+async function restoreSession() {
+  if (!getToken()) return;
+  try {
+    const { user } = await api.me();
+    L.account = user;
+  } catch {
+    setToken(null);
+    L.account = null;
+  }
+  render();
+}
+
+function openLogin() {
+  L.accountScreen = "login";
+  render();
+}
+function closeAccount() {
+  L.accountScreen = null;
+  L.editingTeam = null;
+  render();
+}
+function goHome() {
+  L.state = null;
+  L.youId = null;
+  L.selectedPlayer = null;
+  L.playing = false;
+  L.matchPlayed = false;
+  L.campaign = null;
+  L.accountScreen = null;
+  L.editingTeam = null;
+  syncLiveUi = null;
+  leaveCurrentRoom();
+  render();
+}
+function logout() {
+  setToken(null);
+  L.account = null;
+  L.accountScreen = null;
+  L.adminTeams = null;
+  render();
+}
+async function openAchievements() {
+  if (!L.account) return openLogin();
+  L.accountScreen = "achievements";
+  L.achievements = null;
+  render();
+  await loadAchievements();
+}
+async function loadAchievements() {
+  try {
+    const { achievements } = await api.achievements();
+    L.achievements = achievements;
+  } catch (e) {
+    showToast((e as Error).message);
+    L.achievements = [];
+  }
+  if (L.accountScreen === "achievements") render();
+}
+async function openAdmin() {
+  L.accountScreen = "admin";
+  L.editingTeam = null;
+  L.adminTeams = null;
+  render();
+  await loadAdminTeams();
+}
+async function loadAdminTeams() {
+  try {
+    const { teams } = await api.listTeams();
+    L.adminTeams = teams;
+  } catch (e) {
+    showToast((e as Error).message);
+    L.adminTeams = [];
+  }
+  if (L.accountScreen === "admin" && !L.editingTeam) render();
+}
+
+async function awardAchievements(ids: string[], sourceKey: string) {
+  if (!L.account || !ids.length) return;
+  const unique = [...new Set(ids)];
+  const pending = unique.filter((id) => {
+    const key = `${sourceKey}:${id}`;
+    if (L.achievementAwardKeys.has(key)) return false;
+    L.achievementAwardKeys.add(key);
+    return true;
+  });
+  if (!pending.length) return;
+  for (const id of pending) {
+    try {
+      const r = await api.unlockAchievement(id);
+      if (r.unlocked) {
+        queueAchievementNotice(id);
+        if (L.achievements) {
+          const current = L.achievements.find((a) => a.id === id);
+          if (current && !current.unlockedAt) current.unlockedAt = Date.now();
+        }
+      }
+    } catch {
+      /* achievements should never interrupt the game flow */
+    }
+  }
+}
+
+function renderAchievements() {
+  const list = L.achievements;
+  const unlocked = list?.filter((a) => a.unlockedAt).length ?? 0;
+  const total = list?.length ?? 0;
+  const points = list
+    ?.filter((a) => a.unlockedAt)
+    .reduce((sum, a) => sum + a.points, 0) ?? 0;
+  app.innerHTML = `
+    <div class="screen admin-screen achievements-screen">
+      <div class="admin-toolbar">
+        <div class="admin-title">
+          <span class="cup-tag">Perfil</span>
+          <h1>Conquistas</h1>
+          <p>${escapeHtml(L.account?.username ?? "")} · ${unlocked}/${total} desbloqueadas · ${points} pts</p>
+        </div>
+        <div class="admin-actions">
+          <button id="ach-back" class="primary alt admin-action">Voltar</button>
+        </div>
+      </div>
+      ${
+        list === null
+          ? `<p class="cup-note">Carregando…</p>`
+          : `<div class="achievement-grid">
+              ${list
+                .map(
+                  (a) => `<article class="achievement-card ${a.unlockedAt ? "unlocked" : "locked"}">
+                    <div class="achievement-top">
+                      <span>${escapeHtml(a.category)}</span>
+                      <strong>${a.points} pts</strong>
+                    </div>
+                    <h2>${escapeHtml(a.title)}</h2>
+                    <p>${escapeHtml(a.description)}</p>
+                    <em>${a.unlockedAt ? `Desbloqueada em ${new Date(a.unlockedAt).toLocaleDateString("pt-BR")}` : "Bloqueada"}</em>
+                  </article>`,
+                )
+                .join("")}
+            </div>`
+      }
+    </div>`;
+  document.getElementById("ach-back")!.onclick = closeAccount;
+}
+
+function renderLogin() {
+  app.innerHTML = `
+    <div class="screen home">
+      <header class="brand"><img class="logo" src="/pebol_logo.png" alt="Pebol" /></header>
+      <div class="panel auth-panel">
+        <div class="auth-tabs">
+          <button class="auth-tab active" data-tab="login">Entrar</button>
+          <button class="auth-tab" data-tab="signup">Criar conta</button>
+        </div>
+        <label>Usuário</label><input id="au-user" maxlength="20" placeholder="seu usuário" />
+        <label>Senha</label><input id="au-pass" type="password" maxlength="40" placeholder="sua senha" />
+        <button id="au-submit" class="primary">Entrar</button>
+        <button id="au-back" class="ghost auth-back">Voltar ao jogo</button>
+      </div>
+    </div>`;
+  let mode: "login" | "signup" = "login";
+  app.querySelectorAll<HTMLButtonElement>(".auth-tab").forEach(
+    (b) =>
+      (b.onclick = () => {
+        mode = b.dataset.tab as "login" | "signup";
+        app
+          .querySelectorAll(".auth-tab")
+          .forEach((x) => x.classList.remove("active"));
+        b.classList.add("active");
+        document.getElementById("au-submit")!.textContent =
+          mode === "login" ? "Entrar" : "Criar conta";
+      }),
+  );
+  document.getElementById("au-back")!.onclick = closeAccount;
+  document.getElementById("au-submit")!.onclick = async () => {
+    const u = (
+      document.getElementById("au-user") as HTMLInputElement
+    ).value.trim();
+    const p = (document.getElementById("au-pass") as HTMLInputElement).value;
+    if (!u || !p) return showToast("Preencha usuário e senha.");
+    try {
+      const r =
+        mode === "login" ? await api.login(u, p) : await api.signup(u, p);
+      setToken(r.token);
+      L.account = r.user;
+      L.accountScreen = null;
+      showToast(`Olá, ${r.user.username}!`);
+      render();
+    } catch (e) {
+      showToast((e as Error).message);
+    }
+  };
+}
+
+function canEditTeam(t: AdminTeam): boolean {
+  if (!L.account) return false;
+  return t.ownerId ? t.ownerId === L.account.id : L.account.role === "admin";
+}
+
+function renderAdmin() {
+  if (L.editingTeam) return renderTeamForm();
+  const teams = L.adminTeams;
+  const isAdmin = L.account?.role === "admin";
+  app.innerHTML = `
+    <div class="screen admin-screen">
+      <div class="admin-toolbar">
+        <div class="admin-title">
+          <span class="cup-tag">Administração</span>
+          <h1>Gerenciar times</h1>
+          <p>${escapeHtml(L.account?.username ?? "")} · ${isAdmin ? "admin" : "usuário"}</p>
+        </div>
+        <div class="admin-actions">
+          <input id="adm-import-file" type="file" accept="application/json,.json" hidden />
+          <a class="primary alt admin-action download-action" href="/modelo_importacao_times.json" download>Baixar modelo</a>
+          <button id="adm-import" class="primary alt admin-action">Importar JSON</button>
+          <button id="adm-new" class="primary admin-action">Novo time</button>
+          <button id="adm-back" class="primary alt admin-action">Voltar</button>
+        </div>
+      </div>
+      ${
+        teams === null
+          ? `<p class="cup-note">Carregando…</p>`
+          : `<div class="admin-list">
+            ${teams
+              .map(
+                (t) => `<div class="admin-row">
+                  <div class="admin-row-main">
+                    <strong>${escapeHtml(t.name)}</strong>
+                    <span class="admin-row-sub">${t.kind === "national" ? "Seleção" : "Clube"}${t.league ? " · " + escapeHtml(t.league) : ""}${t.season ? " · " + escapeHtml(t.season) : ""}</span>
+                    <div class="admin-row-tags">
+                      <span>${t.players.length} titulares</span>
+                      <span>${t.bench?.length ?? 0} reservas</span>
+                      <span>${t.ownerId ? "seu time" : "oficial"}</span>
+                    </div>
+                  </div>
+                  ${
+                    canEditTeam(t)
+                      ? `<div class="admin-row-actions"><button class="primary alt row-action" data-edit="${t.id}">Editar</button><button class="row-action danger" data-del="${t.id}">Excluir</button></div>`
+                      : `<span class="admin-locked">somente leitura</span>`
+                  }
+                </div>`,
+              )
+              .join("")}
+          </div>`
+      }
+    </div>`;
+  document.getElementById("adm-back")!.onclick = closeAccount;
+  document.getElementById("adm-new")!.onclick = () => {
+    L.editingTeam = "new";
+    render();
+  };
+  document.getElementById("adm-import")!.onclick = () =>
+    (document.getElementById("adm-import-file") as HTMLInputElement).click();
+  (document.getElementById("adm-import-file") as HTMLInputElement).onchange = (
+    ev,
+  ) => void importTeamsFromFile(ev.currentTarget as HTMLInputElement);
+  app.querySelectorAll<HTMLButtonElement>("[data-edit]").forEach(
+    (b) =>
+      (b.onclick = () => {
+        L.editingTeam = teams!.find((t) => t.id === b.dataset.edit) ?? null;
+        render();
+      }),
+  );
+  app.querySelectorAll<HTMLButtonElement>("[data-del]").forEach(
+    (b) =>
+      (b.onclick = async () => {
+        const t = teams!.find((x) => x.id === b.dataset.del)!;
+        if (!confirm(`Excluir "${t.name}"?`)) return;
+        try {
+          await api.deleteTeam(t.id);
+          showToast("Time excluído.");
+          await loadAdminTeams();
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+      }),
+  );
+}
+
+function blankTeam(): AdminTeam {
+  return {
+    id: "",
+    name: "",
+    season: "",
+    league: "",
+    alias: "",
+    kind: "club",
+    ownerId: null,
+    players: Array.from({ length: 11 }, (_, i) => ({
+      name: "",
+      pos: ALL_POS[Math.min(i, 14)] as Player["pos"],
+      rating: 75,
+    })),
+    bench: [],
+  };
+}
+
+function playerRowHtml(p: Player, bench: boolean): string {
+  return `
+    <div class="pf-row">
+      <input class="pf-name" value="${escapeHtml(p.name)}" placeholder="Nome" maxlength="40" />
+      <select class="pf-pos">${ALL_POS.map((po) => `<option ${po === p.pos ? "selected" : ""}>${po}</option>`).join("")}</select>
+      <input class="pf-rt" type="number" min="40" max="99" value="${p.rating}" />
+      ${bench ? `<button class="ghost pf-del" title="Remover">×</button>` : ""}
+    </div>`;
+}
+
+function collectPlayers(container: HTMLElement): Player[] {
+  return [...container.querySelectorAll<HTMLElement>(".pf-row")].map((row) => ({
+    name: (row.querySelector(".pf-name") as HTMLInputElement).value.trim(),
+    pos: (row.querySelector(".pf-pos") as HTMLSelectElement)
+      .value as Player["pos"],
+    rating: Math.max(
+      40,
+      Math.min(
+        99,
+        Number((row.querySelector(".pf-rt") as HTMLInputElement).value) || 75,
+      ),
+    ),
+  }));
+}
+
+type TeamImport = Partial<AdminTeam> & { official?: boolean };
+
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return !!v && typeof v === "object" && !Array.isArray(v);
+}
+
+function normalizeImportedPlayer(v: unknown, teamName: string): Player {
+  if (!isRecord(v)) throw new Error(`Jogador inválido em ${teamName}.`);
+  const name = String(v.name ?? "").trim();
+  const pos = String(v.pos ?? "").toUpperCase();
+  const rating = Math.round(Number(v.rating));
+  if (!name) throw new Error(`Há jogador sem nome em ${teamName}.`);
+  if (!ALL_POS.includes(pos)) throw new Error(`Posição inválida em ${teamName}: ${pos}.`);
+  if (!Number.isFinite(rating) || rating < 40 || rating > 99)
+    throw new Error(`Rating inválido em ${teamName}: ${name}.`);
+  return { name, pos: pos as Player["pos"], rating };
+}
+
+function normalizeImportedTeam(v: unknown, isAdmin: boolean): TeamImport {
+  if (!isRecord(v)) throw new Error("Cada item importado precisa ser um objeto de time.");
+  const name = String(v.name ?? "").trim();
+  if (!name) throw new Error("Todo time importado precisa de name.");
+  const playersRaw = Array.isArray(v.players) ? v.players : [];
+  if (playersRaw.length !== 11)
+    throw new Error(`${name} precisa ter exatamente 11 titulares em players.`);
+  const benchRaw = Array.isArray(v.bench) ? v.bench : [];
+  return {
+    name,
+    season: String(v.season ?? "").trim(),
+    league: String(v.league ?? "").trim(),
+    alias: String(v.alias ?? "").trim(),
+    kind: v.kind === "national" ? "national" : "club",
+    official: isAdmin ? v.official !== false : false,
+    players: playersRaw.map((p) => normalizeImportedPlayer(p, name)),
+    bench: benchRaw.map((p) => normalizeImportedPlayer(p, name)),
+  };
+}
+
+function parseImportedTeams(raw: unknown, isAdmin: boolean): TeamImport[] {
+  const source =
+    Array.isArray(raw)
+      ? raw
+      : isRecord(raw) && Array.isArray(raw.teams)
+        ? raw.teams
+        : [raw];
+  return source.map((item) => normalizeImportedTeam(item, isAdmin));
+}
+
+async function importTeamsFromFile(input: HTMLInputElement) {
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  try {
+    const raw = JSON.parse(await file.text()) as unknown;
+    const teams = parseImportedTeams(raw, L.account?.role === "admin");
+    if (!teams.length) return showToast("Nenhum time encontrado no JSON.");
+    for (const team of teams) await api.createTeam(team);
+    void awardAchievements(["json_import", "custom_team"], `import:${file.name}:${file.size}:${Date.now()}`);
+    showToast(`${teams.length} time${teams.length > 1 ? "s" : ""} importado${teams.length > 1 ? "s" : ""}.`);
+    await loadAdminTeams();
+  } catch (e) {
+    showToast((e as Error).message || "JSON inválido.");
+  }
+}
+
+function renderTeamForm() {
+  const isAdmin = L.account?.role === "admin";
+  const isNew = L.editingTeam === "new";
+  const t: AdminTeam = isNew
+    ? blankTeam()
+    : structuredClone(L.editingTeam as AdminTeam);
+  app.innerHTML = `
+    <div class="screen admin-screen">
+      <div class="admin-toolbar">
+        <div class="admin-title">
+          <span class="cup-tag">${isNew ? "Novo registro" : "Edição"}</span>
+          <h1>${isNew ? "Novo time" : "Editar time"}</h1>
+          <p>Configure titulares, reservas e informações do elenco.</p>
+        </div>
+        <div class="admin-actions">
+          <button id="tf-cancel" class="primary alt admin-action">Cancelar</button>
+        </div>
+      </div>
+      <div class="panel team-form">
+        <div class="tf-grid">
+          <label>Nome${isAdmin ? "" : ""}<input id="tf-name" value="${escapeHtml(t.name)}" /></label>
+          ${isAdmin ? `<label>Apelido genérico (visto por não-admins)<input id="tf-alias" value="${escapeHtml(t.alias || "")}" placeholder="ex: Rubro-Negro Carioca" /></label>` : ""}
+          <label>Liga / País<input id="tf-league" value="${escapeHtml(t.league || "")}" /></label>
+          <label>Temporada<input id="tf-season" value="${escapeHtml(t.season || "")}" /></label>
+          ${isAdmin ? `<label>Tipo<select id="tf-kind"><option value="club" ${t.kind === "club" ? "selected" : ""}>Clube</option><option value="national" ${t.kind === "national" ? "selected" : ""}>Seleção</option></select></label>` : ""}
+          ${isAdmin ? `<label class="tf-check"><input type="checkbox" id="tf-official" ${t.ownerId ? "" : "checked"} ${isNew ? "" : "disabled"} /> Time oficial (entra no jogo)</label>` : ""}
+        </div>
+        <h3>Titulares (11)</h3>
+        <div id="tf-starters" class="pf-list">${t.players.map((p) => playerRowHtml(p, false)).join("")}</div>
+        <h3>Reservas</h3>
+        <div id="tf-bench" class="pf-list">${(t.bench ?? []).map((p) => playerRowHtml(p, true)).join("")}</div>
+        <button id="tf-addbench" class="primary alt form-inline-action">Adicionar reserva</button>
+        <div class="form-footer"><button id="tf-save" class="primary big">${isNew ? "Criar time" : "Salvar"}</button></div>
+      </div>
+    </div>`;
+
+  document.getElementById("tf-cancel")!.onclick = () => {
+    L.editingTeam = null;
+    render();
+  };
+  const bench = document.getElementById("tf-bench")!;
+  const bindBenchDel = () =>
+    bench
+      .querySelectorAll<HTMLButtonElement>(".pf-del")
+      .forEach((b) => (b.onclick = () => b.closest(".pf-row")!.remove()));
+  bindBenchDel();
+  document.getElementById("tf-addbench")!.onclick = () => {
+    bench.insertAdjacentHTML(
+      "beforeend",
+      playerRowHtml({ name: "", pos: "ST", rating: 75 }, true),
+    );
+    bindBenchDel();
+  };
+  document.getElementById("tf-save")!.onclick = async () => {
+    const val = (id: string) =>
+      (document.getElementById(id) as HTMLInputElement)?.value.trim() ?? "";
+    const players = collectPlayers(document.getElementById("tf-starters")!);
+    if (players.length !== 11 || players.some((p) => !p.name))
+      return showToast("Preencha os 11 titulares.");
+    const benchPlayers = collectPlayers(bench).filter((p) => p.name);
+    const payload: Partial<AdminTeam> & { official?: boolean } = {
+      name: val("tf-name"),
+      league: val("tf-league"),
+      season: val("tf-season"),
+      players,
+      bench: benchPlayers,
+    };
+    if (isAdmin) {
+      payload.alias = val("tf-alias");
+      payload.kind = (document.getElementById("tf-kind") as HTMLSelectElement)
+        .value as "club" | "national";
+      payload.official = (
+        document.getElementById("tf-official") as HTMLInputElement
+      )?.checked;
+    }
+    if (!payload.name) return showToast("Dê um nome ao time.");
+    try {
+      if (isNew) await api.createTeam(payload);
+      else await api.updateTeam(t.id, payload);
+      if (isNew) void awardAchievements(["custom_team"], `team:${Date.now()}`);
+      showToast("Time salvo.");
+      L.editingTeam = null;
+      await loadAdminTeams();
+    } catch (e) {
+      showToast((e as Error).message);
     }
   };
 }
@@ -829,7 +1456,7 @@ function renderKnockoutBracket(): string {
     <section class="cup-status">
       <div class="section-head compact">
         <h3>Chaveamento</h3>
-        <span>${escapeHtml(c.groupQualifiedLabel ?? "Mata-mata")}</span>
+        <span>Mata-mata</span>
       </div>
       <div class="cup-bracket">
         ${rounds
@@ -846,7 +1473,7 @@ function renderKnockoutBracket(): string {
             return `
             <div class="bracket-round ${state}">
               <span>${label}</span>
-              <strong>${idx < currentIdx ? "Seu time" : "Seu time"}</strong>
+              <strong>Seu time</strong>
               <em>${idx === currentIdx ? "vs " : ""}${escapeHtml(oppLabel)}</em>
             </div>`;
           })
@@ -985,7 +1612,7 @@ function renderCampaignPreMatch() {
           <div class="cup-vs-side">
             <div class="hero-crest opp">${initials(opp.name)}</div>
             <div class="hero-name">${escapeHtml(opp.name)}</div>
-            <div class="hero-tag">Over ${ladder.overRange[0]}-${ladder.overRange[1]}${isFinal ? "+" : ""}</div>
+            <div class="hero-tag">OVR ${teamAvg(opp).toFixed(0)} · elenco original</div>
           </div>
         </div>
         <p class="cup-note">${
@@ -1024,6 +1651,7 @@ function campaignAdvance() {
         rank <= 2 || (rank === 3 && bestThirdQualifies(youRow));
       c.groupQualifiedLabel = campaignQualificationLabel();
       if (c.groupQualified) {
+        void awardAchievements(["group_escape"], `cup:group:${r.youGoals}-${r.oppGoals}:${Date.now()}`);
         c.round = 3;
         setupKnockoutPath();
         campaignBeginRound();
@@ -1032,7 +1660,12 @@ function campaignAdvance() {
       }
     }
   } else if (r.outcome === "win") {
-    if (c.round === 7) c.phase = "victory";
+    const ids = r.penaltyScore ? ["penalty_win"] : [];
+    if (ids.length) void awardAchievements(ids, `cup:ko:${c.round}:${r.youGoals}-${r.oppGoals}:${Date.now()}`);
+    if (c.round === 7) {
+      void awardAchievements(["world_champion"], `cup:champion:${Date.now()}`);
+      c.phase = "victory";
+    }
     else {
       c.round++;
       campaignBeginRound();
@@ -1283,12 +1916,12 @@ function renderCampaignGameOver() {
         ${campaignProgress(completed)}
         <div class="lobby-actions">
           <button id="cup-retry" class="primary big">Tentar de novo</button>
-          <button id="cup-exit" class="ghost">Sair</button>
+          <button id="cup-home" class="primary alt big">Tela inicial</button>
         </div>
       </div>
     </div>`;
   document.getElementById("cup-retry")!.onclick = () => startCampaign();
-  document.getElementById("cup-exit")!.onclick = campaignExit;
+  document.getElementById("cup-home")!.onclick = goHome;
 }
 
 function renderCampaignVictory() {
@@ -1296,21 +1929,19 @@ function renderCampaignVictory() {
   app.innerHTML = `
     <div class="screen cup-screen cup-end">
       <div class="cup-end-card win">
-        <img class="cup-victory-trophy" src="/world_cup_trophy.png" alt="Troféu da Copa do Mundo" />
-        <span class="cup-tag">Campeão do Mundo</span>
-        <h1>CAMPEÃO DO MUNDO!</h1>
-        <p class="cup-end-msg">Você passou pelo grupo como ${escapeHtml(c.groupQualifiedLabel ?? "classificado")} e venceu todo o mata-mata.</p>
+        <img class="cup-victory-trophy" src="/world_cup_trophy.png" alt="Troféu da Copa do Mundo" />        <h1>CAMPEÃO DO MUNDO!</h1>
+        <p class="cup-end-msg">Classificado como ${escapeHtml(c.groupQualifiedLabel ?? "líder do grupo")} e campeão de todo o mata-mata. Campanha impecável!</p>
         ${renderCampaignJourneyLeaders()}
         ${renderKnockoutBracket()}
         ${campaignProgress(8)}
         <div class="lobby-actions">
           <button id="cup-retry" class="primary big">Jogar de novo</button>
-          <button id="cup-exit" class="ghost">Voltar ao início</button>
+          <button id="cup-home" class="primary alt big">Tela inicial</button>
         </div>
       </div>
     </div>`;
   document.getElementById("cup-retry")!.onclick = () => startCampaign();
-  document.getElementById("cup-exit")!.onclick = campaignExit;
+  document.getElementById("cup-home")!.onclick = goHome;
 }
 
 // ---------------- Lobby / Setup ----------------
@@ -2425,6 +3056,43 @@ function computeLeaders(r: MatchResult, youId: string) {
   return { scorer, assist, motm };
 }
 
+function awardRegularMatchAchievements() {
+  const s = L.state;
+  if (!s?.result || !L.youId) return;
+  const r = s.result;
+  if (!r.winnerId) return;
+  const you = me();
+  const opp = opponent();
+  if (!you || !opp) return;
+  const key = `match:${s.code}:${r.timeline.length}:${r.goals[you.id]}-${r.goals[opp.id]}:${r.winnerId}:${r.penaltyScore?.[you.id] ?? ""}-${r.penaltyScore?.[opp.id] ?? ""}`;
+  const ids: string[] = [];
+  const youWon = r.winnerId === you.id;
+  const playerGoals = new Map<string, number>();
+  const playerAssists = new Map<string, number>();
+  for (const ev of r.timeline) {
+    if (ev.type !== "goal") continue;
+    const pid = ev.side === "home" ? r.homeId : ev.side === "away" ? r.awayId : "";
+    if (pid !== you.id) continue;
+    if (ev.player) playerGoals.set(ev.player, (playerGoals.get(ev.player) ?? 0) + 1);
+    if (ev.assist) playerAssists.set(ev.assist, (playerAssists.get(ev.assist) ?? 0) + 1);
+  }
+  const yourGoals = r.goals[you.id] ?? 0;
+  const oppGoals = r.goals[opp.id] ?? 0;
+  if (yourGoals > 0) ids.push("first_goal");
+  if (youWon) ids.push("first_win");
+  if (youWon && oppGoals === 0) ids.push("clean_sheet");
+  if (youWon && r.penaltyScore) ids.push("penalty_win");
+  if ([...playerGoals.values()].some((n) => n >= 3)) ids.push("hat_trick");
+  if ([...playerAssists.values()].some((n) => n >= 3)) ids.push("assist_master");
+  const avg = you.picks.length
+    ? you.picks.reduce((sum, p) => sum + p.effectiveRating, 0) / you.picks.length
+    : 0;
+  if (avg >= 85) ids.push("strong_draft");
+  if (youWon && opp.isAI) ids.push("beat_machine");
+  if (youWon && s.mode === "pica") ids.push("pica_win");
+  void awardAchievements(ids, key);
+}
+
 function leaderCard(label: string, data: Leader | null): string {
   const ic = data
     ? `<div class="leader-ic ${data.side}">${initials(data.name)}</div>`
@@ -2519,6 +3187,7 @@ function renderSummary() {
   const r = s.result!;
   const you = me()!;
   const opp = opponent()!;
+  awardRegularMatchAchievements();
   const youWon = r.winnerId === you.id;
   const outcome = youWon ? "win" : "lose";
   const ys = r.strengths[you.id];
@@ -2572,12 +3241,14 @@ function renderSummary() {
 
       <div class="lobby-actions">
         <button id="rematch" class="primary big">Jogar de novo</button>
+        <button id="result-home" class="primary alt big">Tela inicial</button>
       </div>
     </div>
   `;
 
   app.querySelector<HTMLButtonElement>("#rematch")!.onclick = () =>
     sendRematch();
+  app.querySelector<HTMLButtonElement>("#result-home")!.onclick = goHome;
   app.querySelector<HTMLButtonElement>("#toggle-log")!.onclick = (ev) => {
     const full = document.getElementById("full-log")!;
     const btn = ev.currentTarget as HTMLButtonElement;
@@ -2616,3 +3287,4 @@ function escapeHtml(s: string): string {
 }
 
 render();
+void restoreSession();

@@ -598,24 +598,29 @@ function runShootout(home: SimSide, away: SimSide, rng: () => number) {
   const kicks: ShootoutKick[] = [];
   const tH = takerOrder(home);
   const tA = takerOrder(away);
-  let h = 0,
-    a = 0,
-    ih = 0,
-    ia = 0;
-  const kick = (side: Side, takers: string[], idx: number): boolean => {
-    const taker = takers[idx % takers.length] ?? "o cobrador";
+  let h = 0, a = 0; // goals
+  let kh = 0, ka = 0; // kicks taken
+  const take = (side: Side, takers: string[], n: number): boolean => {
+    const taker = takers[n % takers.length] ?? "o cobrador";
     const scored = rng() > 0.26;
     kicks.push({ side, scored, taker });
     return scored;
   };
-  for (let r = 0; r < 5; r++) {
-    if (kick("home", tH, ih++)) h++;
-    if (kick("away", tA, ia++)) a++;
+  // a team is already out of the best-of-5 if it can't catch up with its remaining kicks
+  const decidedInFive = () =>
+    kh <= 5 && ka <= 5 && (h > a + (5 - ka) || a > h + (5 - kh));
+
+  // best of 5, alternating, stop as soon as it's mathematically decided
+  while (kh < 5 || ka < 5) {
+    if (kh < 5) { if (take("home", tH, kh)) h++; kh++; if (decidedInFive()) return { kicks, h, a }; }
+    if (ka < 5) { if (take("away", tA, ka)) a++; ka++; if (decidedInFive()) return { kicks, h, a }; }
   }
+
+  // sudden death: one kick each per round, decided the moment they differ
   let guard = 0;
-  while (h === a && guard++ < 12) {
-    if (kick("home", tH, ih++)) h++;
-    if (kick("away", tA, ia++)) a++;
+  while (h === a && guard++ < 20) {
+    if (take("home", tH, kh++)) h++;
+    if (take("away", tA, ka++)) a++;
   }
   if (h === a) h++; // guarantee a winner
   return { kicks, h, a };

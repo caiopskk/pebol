@@ -41,3 +41,7 @@ export function sendHalftimeReady(lineup: HalftimeLineup) {
 export function sendRematch() {
   socket.emit("rematch");
 }
+export function leaveCurrentRoom() {
+  socket.disconnect();
+  socket.connect();
+}
