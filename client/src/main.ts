@@ -21,6 +21,7 @@ import {
 } from "../../shared/formations.js";
 import { MENTALITIES, mentalityEdge } from "../../shared/mentalities.js";
 import {
+  attackFocusReport,
   computeStrength,
   effectiveRating,
   playerPositions,
@@ -1204,6 +1205,28 @@ function attackFocusLabel(f: AttackFocus | undefined): string {
   return ATTACK_FOCUS_OPTIONS.find((x) => x.id === (f ?? "equilibrado"))?.name ?? "Equilibrado";
 }
 
+function renderAttackFocusBanner(
+  picks: SquadPick[],
+  focus: AttackFocus | undefined,
+): string {
+  if (picks.length < 5) return "";
+  const report = attackFocusReport(picks);
+  const current = focus ?? "equilibrado";
+  const wide = report.wide == null ? "--" : Math.round(report.wide);
+  const central = report.central == null ? "--" : Math.round(report.central);
+  const detail = `Lados ${wide} · Meio ${central} · OVR ${Math.round(report.overall)}`;
+  if (report.best === "equilibrado") {
+    return `<div class="tactic-banner good">Elenco equilibrado: qualquer foco funciona. ${detail}.</div>`;
+  }
+  if (current === report.best) {
+    return `<div class="tactic-banner good">Foco encaixado: seu elenco rende melhor ${escapeHtml(attackFocusLabel(report.best).toLowerCase())}. ${detail}.</div>`;
+  }
+  if (current !== "equilibrado") {
+    return `<div class="tactic-banner bad">Foco desalinhado: seu elenco pede ${escapeHtml(attackFocusLabel(report.best).toLowerCase())}. ${detail}.</div>`;
+  }
+  return `<div class="tactic-banner tip">Dica de foco: seu elenco parece melhor ${escapeHtml(attackFocusLabel(report.best).toLowerCase())}. ${detail}.</div>`;
+}
+
 function campaignProgress(won: number): string {
   const labels = ["G1", "G2", "G3", "32", "16", "QF", "SF", "F"];
   return `<div class="cup-progress">${labels
@@ -1234,7 +1257,7 @@ function renderCampaign() {
 function renderCampaignSetup() {
   const c = L.campaign!;
   app.innerHTML = `
-    <div class="screen cup-screen">
+    <div class="screen cup-screen cup-setup-screen">
       <div class="cup-head">
         <img class="cup-head-trophy" src="/world_cup_trophy.png" alt="" />
         <div>
@@ -1244,23 +1267,40 @@ function renderCampaignSetup() {
         </div>
         <button id="cup-exit" class="ghost">Sair</button>
       </div>
-      <div class="panel">
-        <h2>Escolha sua formação</h2>
-        <div class="formation-grid">
-          ${FORMATIONS.map((f) => `<button class="form-btn ${f.id === c.formationId ? "active" : ""}" data-form="${f.id}">${f.name}</button>`).join("")}
-        </div>
-        <div class="setup-cols">
-          <div class="mini-pitch-wrap">${renderPitch(getFormation(c.formationId)!, [], false)}</div>
-          <div class="mentality-col">
-            <h2>Mentalidade <span class="cup-warn">peso DOBRADO nesta copa</span></h2>
-            ${MENTALITIES.map((m) => `<button class="ment-btn ${m.id === c.mentality ? "active" : ""}" data-ment="${m.id}"><strong>${m.name}</strong><span>${m.desc}</span></button>`).join("")}
+      <div class="setup-board cup-setup-board">
+        <section class="setup-panel setup-formation">
+          <div class="setup-panel-head">
+            <h2>Formação</h2>
+            <span>${escapeHtml(getFormation(c.formationId)?.name ?? c.formationId)}</span>
           </div>
-        </div>
-        <h2>Foco de ataque</h2>
-        <div class="focus-grid">
-          ${ATTACK_FOCUS_OPTIONS.map((f) => `<button class="focus-btn ${f.id === c.attackFocus ? "active" : ""}" data-focus="${f.id}"><strong>${f.name}</strong><span>${f.desc}</span></button>`).join("")}
-        </div>
-        <div class="lobby-actions"><button id="cup-start" class="primary big">Começar a campanha</button></div>
+          <div class="formation-grid">
+            ${FORMATIONS.map((f) => `<button class="form-btn ${f.id === c.formationId ? "active" : ""}" data-form="${f.id}">${f.name}</button>`).join("")}
+          </div>
+          <div class="mini-pitch-wrap setup-pitch">${renderPitch(getFormation(c.formationId)!, [], false, false, true)}</div>
+        </section>
+
+        <section class="setup-panel setup-mentality mentality-col">
+          <div class="setup-panel-head">
+            <h2>Mentalidade</h2>
+            <span>Peso dobrado</span>
+          </div>
+          ${MENTALITIES.map((m) => `<button class="ment-btn ${m.id === c.mentality ? "active" : ""}" data-ment="${m.id}"><strong>${m.name}</strong><span>${m.desc}</span></button>`).join("")}
+        </section>
+
+        <section class="setup-panel setup-focus">
+          <div class="setup-panel-head">
+            <h2>Foco de ataque</h2>
+            <span>Preferência ofensiva</span>
+          </div>
+          <div class="focus-grid">
+            ${ATTACK_FOCUS_OPTIONS.map((f) => `<button class="focus-btn ${f.id === c.attackFocus ? "active" : ""}" data-focus="${f.id}"><strong>${f.name}</strong><span>${f.desc}</span></button>`).join("")}
+          </div>
+          <div class="cup-setup-note">
+            <strong>Campanha 48 seleções</strong>
+            <span>Monte o XI no draft, jogue a fase de grupos e avance para o mata-mata.</span>
+          </div>
+          <div class="lobby-actions"><button id="cup-start" class="primary big">Começar a campanha</button></div>
+        </section>
       </div>
     </div>`;
   document.getElementById("cup-exit")!.onclick = campaignExit;
@@ -1805,6 +1845,10 @@ function renderCampaignPreMatch() {
   const isGroup = c.round < 3;
   const isFinal = c.round === 7;
   const oppTactics = wcOpponentTactics(opp);
+  const oppPalette = teamPalette(opp.name);
+  const oppFlag = oppPalette.flagSvg
+    ? `<span class="cup-vs-flag">${oppPalette.flagSvg}</span>`
+    : `<div class="hero-crest opp">${initials(opp.name)}</div>`;
   const counterOf = (m: Mentality): Mentality | undefined =>
     MENTALITIES.find((x) => x.counters === m)?.id;
   const edge = mentalityEdge(c.mentality, oppTactics.mentality);
@@ -1818,54 +1862,63 @@ function renderCampaignPreMatch() {
           ? `<div class="tactic-banner tip">Dica: ${escapeHtml(mentalityLabel(goodCounter))} neutraliza ${escapeHtml(mentalityLabel(oppTactics.mentality))}.</div>`
           : "";
   app.innerHTML = `
-    <div class="screen cup-screen">
+    <div class="screen cup-screen cup-prematch-screen">
       <div class="cup-head">
         <div><span class="cup-tag">Copa do Mundo</span><h1>${escapeHtml(ladder.label)}</h1></div>
         <button id="cup-exit" class="ghost">Sair</button>
       </div>
       ${campaignProgress(c.round)}
-      ${renderCampaignStatus()}
-      <div class="panel cup-prematch">
-        <div class="cup-vs">
-          <div class="cup-vs-side">
-            <div class="hero-crest you">${initials("Seu Time")}</div>
-            <div class="hero-name">Seu time</div>
-            <div class="hero-tag">${c.formationId} · OVR ${campaignAvgNumber()} · ${escapeHtml(mentalityLabel(c.mentality))} · ${escapeHtml(attackFocusLabel(c.attackFocus))}</div>
-          </div>
-          <span class="cup-vs-x">VS</span>
-          <div class="cup-vs-side">
-            <div class="hero-crest opp">${initials(opp.name)}</div>
-            <div class="hero-name">${escapeHtml(opp.name)}</div>
-            <div class="hero-tag">OVR ${teamAvg(opp).toFixed(0)} · ${oppTactics.formationId} · ${escapeHtml(mentalityLabel(oppTactics.mentality))} · ${escapeHtml(attackFocusLabel(oppTactics.attackFocus))}</div>
-          </div>
+      <div class="cup-prematch-grid">
+        <div class="cup-prematch-side">
+          ${renderCampaignStatus()}
+          <p class="cup-note">${
+            isGroup
+              ? "Fase de grupos: os 2 primeiros passam; alguns terceiros também."
+              : isFinal
+                ? "Final: se empatar, a taça será decidida nos pênaltis."
+                : "Mata-mata em jogo único: empate leva para os pênaltis."
+          }</p>
         </div>
-        ${tacticBanner}
-        <div class="prematch-ment">
-          <span class="prematch-ment-label">Sua mentalidade (peso dobrado)</span>
-          <div class="prematch-ment-row">
-            ${MENTALITIES.map(
-              (m) =>
-                `<button class="ment-chip ${m.id === c.mentality ? "active" : ""}" data-ment="${m.id}" title="${escapeHtml(m.desc)}">${escapeHtml(m.name)}</button>`,
-            ).join("")}
+        <div class="panel cup-prematch">
+          <div class="cup-vs">
+            <div class="cup-vs-side">
+              <div class="hero-crest you">${initials("Seu Time")}</div>
+              <div class="hero-name">Seu time</div>
+              <div class="hero-tag">${c.formationId} · OVR ${campaignAvgNumber()} · ${escapeHtml(mentalityLabel(c.mentality))} · ${escapeHtml(attackFocusLabel(c.attackFocus))}</div>
+            </div>
+            <span class="cup-vs-x">VS</span>
+            <div class="cup-vs-side">
+              ${oppFlag}
+              <div class="hero-name">${escapeHtml(teamFullName(opp))}</div>
+              <div class="hero-tag">OVR ${teamAvg(opp).toFixed(0)} · ${oppTactics.formationId} · ${escapeHtml(mentalityLabel(oppTactics.mentality))} · ${escapeHtml(attackFocusLabel(oppTactics.attackFocus))}</div>
+            </div>
           </div>
-        </div>
-        <div class="prematch-ment">
-          <span class="prematch-ment-label">Foco de ataque</span>
-          <div class="prematch-ment-row">
-            ${ATTACK_FOCUS_OPTIONS.map(
-              (f) =>
-                `<button class="focus-chip ${f.id === c.attackFocus ? "active" : ""}" data-focus="${f.id}" title="${escapeHtml(f.desc)}">${escapeHtml(f.name)}</button>`,
-            ).join("")}
+          <div class="prematch-banners">
+            ${tacticBanner}
+            ${renderAttackFocusBanner(c.picks, c.attackFocus)}
           </div>
+          <div class="prematch-control-grid">
+            <div class="prematch-ment">
+              <span class="prematch-ment-label">Mentalidade (peso dobrado)</span>
+              <div class="prematch-ment-row">
+                ${MENTALITIES.map(
+                  (m) =>
+                    `<button class="ment-chip ${m.id === c.mentality ? "active" : ""}" data-ment="${m.id}" title="${escapeHtml(m.desc)}">${escapeHtml(m.name)}</button>`,
+                ).join("")}
+              </div>
+            </div>
+            <div class="prematch-ment">
+              <span class="prematch-ment-label">Foco de ataque</span>
+              <div class="prematch-ment-row">
+                ${ATTACK_FOCUS_OPTIONS.map(
+                  (f) =>
+                    `<button class="focus-chip ${f.id === c.attackFocus ? "active" : ""}" data-focus="${f.id}" title="${escapeHtml(f.desc)}">${escapeHtml(f.name)}</button>`,
+                ).join("")}
+              </div>
+            </div>
+          </div>
+          <div class="lobby-actions"><button id="cup-play" class="primary big">Entrar em campo</button></div>
         </div>
-        <p class="cup-note">${
-          isGroup
-            ? "Fase de grupos: pontos, saldo e gols marcados definem sua colocação. Os 2 primeiros passam; alguns terceiros também."
-            : isFinal
-              ? "A GRANDE FINAL — se empatar, a taça será decidida nos pênaltis."
-              : "Mata-mata em jogo único: empate leva a disputa para os pênaltis."
-        }</p>
-        <div class="lobby-actions"><button id="cup-play" class="primary big">Entrar em campo</button></div>
       </div>
     </div>`;
   document.getElementById("cup-exit")!.onclick = campaignExit;
@@ -2231,14 +2284,20 @@ function renderLobby() {
   const you = me();
   const opp = opponent();
   const youReady = you?.ready;
+  const vsAI = s.players.some((p) => p.isAI);
 
   app.innerHTML = `
     <div class="screen lobby">
       <div class="topbar">
-        <div class="room-code">Sala <strong>${s.code}</strong>
-          <button id="copy" class="ghost">copiar</button>
-        </div>
+        ${
+          vsAI
+            ? `<div class="room-code">Modo solo <strong>vs Máquina</strong></div>`
+            : `<div class="room-code">Sala <strong>${s.code}</strong>
+                <button id="copy" class="ghost">copiar</button>
+              </div>`
+        }
         <div class="mode-tag ${s.mode}">${s.mode === "pica" ? "Modo Pica" : "Modo Clássico"}</div>
+        <button id="leave-room" class="ghost">Sair</button>
       </div>
 
       <div class="players-status">
@@ -2246,20 +2305,28 @@ function renderLobby() {
         ${opp ? playerChip(opp, "Adversário") : `<div class="chip waiting">Aguardando adversário…</div>`}
       </div>
 
-      <h2>Escolha sua formação</h2>
-      <div class="formation-grid">
-        ${FORMATIONS.map(
-          (f) =>
-            `<button class="form-btn ${f.id === L.formationId ? "active" : ""}" data-form="${f.id}">${f.name}</button>`,
-        ).join("")}
-      </div>
+      <div class="setup-board">
+        <section class="setup-panel setup-formation">
+          <div class="setup-panel-head">
+            <h2>Formação</h2>
+            <span>${escapeHtml(getFormation(L.formationId)?.name ?? L.formationId)}</span>
+          </div>
+          <div class="formation-grid">
+            ${FORMATIONS.map(
+              (f) =>
+                `<button class="form-btn ${f.id === L.formationId ? "active" : ""}" data-form="${f.id}">${f.name}</button>`,
+            ).join("")}
+          </div>
+          <div class="mini-pitch-wrap setup-pitch">
+            ${renderPitch(getFormation(L.formationId)!, [], false, false, true)}
+          </div>
+        </section>
 
-      <div class="setup-cols">
-        <div class="mini-pitch-wrap">
-          ${renderPitch(getFormation(L.formationId)!, [], false)}
-        </div>
-        <div class="mentality-col">
-          <h2>Mentalidade</h2>
+        <section class="setup-panel setup-mentality mentality-col">
+          <div class="setup-panel-head">
+            <h2>Mentalidade</h2>
+            <span>Plano de jogo</span>
+          </div>
           ${MENTALITIES.map(
             (m) => `
             <button class="ment-btn ${m.id === L.mentality ? "active" : ""}" data-ment="${m.id}">
@@ -2267,32 +2334,38 @@ function renderLobby() {
               <span>${m.desc}</span>
             </button>`,
           ).join("")}
-        </div>
-      </div>
+        </section>
 
-      <h2>Foco de ataque</h2>
-      <div class="focus-grid">
-        ${ATTACK_FOCUS_OPTIONS.map(
-          (f) => `
-          <button class="focus-btn ${f.id === L.attackFocus ? "active" : ""}" data-focus="${f.id}">
-            <strong>${f.name}</strong>
-            <span>${f.desc}</span>
-          </button>`,
-        ).join("")}
-      </div>
+        <section class="setup-panel setup-focus">
+          <div class="setup-panel-head">
+            <h2>Foco de ataque</h2>
+            <span>Preferência ofensiva</span>
+          </div>
+          <div class="focus-grid">
+            ${ATTACK_FOCUS_OPTIONS.map(
+              (f) => `
+              <button class="focus-btn ${f.id === L.attackFocus ? "active" : ""}" data-focus="${f.id}">
+                <strong>${f.name}</strong>
+                <span>${f.desc}</span>
+              </button>`,
+            ).join("")}
+          </div>
 
-      <div class="lobby-actions">
-        <button id="ready" class="primary big ${youReady ? "done" : ""}" ${youReady ? "disabled" : ""}>
-          ${youReady ? "✓ Pronto! Aguardando…" : "Confirmar e ficar pronto"}
-        </button>
+          <div class="lobby-actions">
+            <button id="ready" class="primary big ${youReady ? "done" : ""}" ${youReady ? "disabled" : ""}>
+              ${youReady ? "✓ Pronto! Aguardando…" : "Confirmar e ficar pronto"}
+            </button>
+          </div>
+        </section>
       </div>
     </div>
   `;
 
-  app.querySelector<HTMLButtonElement>("#copy")!.onclick = () => {
+  app.querySelector<HTMLButtonElement>("#copy")?.addEventListener("click", () => {
     navigator.clipboard?.writeText(s.code);
     showToast("Código copiado!");
-  };
+  });
+  app.querySelector<HTMLButtonElement>("#leave-room")!.onclick = goHome;
 
   app.querySelectorAll<HTMLButtonElement>(".form-btn").forEach((btn) => {
     btn.onclick = () => {
@@ -2343,6 +2416,7 @@ function renderDraft() {
   const you = me()!;
   const opp = opponent();
   const yourTurn = s.activePlayerId === L.youId;
+  const vsAI = s.players.some((p) => p.isAI);
   const team = s.currentTeam;
   const yourForm = getFormation(you.formationId!)!;
   const renderPlayerItem = (
@@ -2364,22 +2438,31 @@ function renderDraft() {
   app.innerHTML = `
     <div class="screen draft">
       <div class="topbar">
-        <div class="room-code">Sala <strong>${s.code}</strong></div>
+        <div class="room-code">${
+          vsAI
+            ? `Modo solo <strong>vs Máquina</strong>`
+            : `Sala <strong>${s.code}</strong>`
+        }</div>
         <div class="round-info">Rodada <strong>${s.round + 1}</strong> / ${s.totalSlots}</div>
         <div class="turn-pill ${yourTurn ? "you" : "opp"}">
           ${yourTurn ? "Sua vez de escolher" : `Vez de ${escapeHtml(opp?.name ?? "adversário")}`}
         </div>
+        <button id="leave-room" class="ghost">Sair</button>
       </div>
 
-      <div class="draft-layout">
+      <div class="draft-layout classic-draft-layout">
         <!-- Seu time -->
-        <section class="board you-board ${yourTurn ? "active-turn" : ""}">
-          <h3>Seu time <span class="ovr">${avgLabel(you)}</span></h3>
-          ${renderPitch(yourForm, you.picks, yourTurn && !!L.selectedPlayer, true)}
+        <section class="board draft-board you-board ${yourTurn ? "active-turn" : ""}">
+          <div class="draft-board-head">
+            <h3>Seu time</h3>
+            ${teamStrengthCard(you)}
+          </div>
+          ${renderPitch(yourForm, you.picks, yourTurn && !!L.selectedPlayer, true, true)}
+          ${renderAttackFocusBanner(you.picks, you.attackFocus ?? L.attackFocus)}
         </section>
 
         <!-- Time sorteado -->
-        <section class="draw-panel ${yourTurn ? "your-turn" : ""}">
+        <section class="draw-panel classic-draw ${yourTurn ? "your-turn" : ""}">
           <div class="draw-head">
             <span class="draw-label">Time sorteado</span>
             <h2>${team ? escapeHtml(`${team.name} ${team.season}`) : "—"}</h2>
@@ -2407,13 +2490,18 @@ function renderDraft() {
         </section>
 
         <!-- Adversário -->
-        <section class="board opp-board ${!yourTurn ? "active-turn" : ""}">
-          <h3>${escapeHtml(opp?.name ?? "Adversário")} <span class="ovr">${opp ? avgLabel(opp) : ""}</span></h3>
+        <section class="board draft-board opp-board ${!yourTurn ? "active-turn" : ""}">
+          <div class="draft-board-head">
+            <h3>${escapeHtml(opp?.name ?? "Adversário")}</h3>
+            ${teamStrengthCard(opp)}
+          </div>
           ${opp && opp.formationId ? renderPitch(getFormation(opp.formationId)!, opp.picks, false, false, true) : ""}
         </section>
       </div>
     </div>
   `;
+
+  app.querySelector<HTMLButtonElement>("#leave-room")!.onclick = goHome;
 
   // select a player
   app
@@ -2444,12 +2532,22 @@ function renderDraft() {
   }
 }
 
-function avgLabel(p: PlayerPublic): string {
-  if (L.state?.hideRatings) return "OVR ??";
-  if (!p.picks.length) return "";
-  const avg =
-    p.picks.reduce((a, b) => a + b.effectiveRating, 0) / p.picks.length;
-  return `OVR ${Math.round(avg)}`;
+function teamStrengthCard(p: PlayerPublic | undefined): string {
+  if (!p) {
+    return `<div class="cup-draft-rating draft-rating"><strong>--</strong><span>Overall time<br>Ataque -- · Meio -- · Defesa --</span></div>`;
+  }
+  if (L.state?.hideRatings) {
+    return `<div class="cup-draft-rating draft-rating"><strong>??</strong><span>Overall oculto<br>Modo Pica ativo</span></div>`;
+  }
+  if (!p.picks.length || !p.formationId) {
+    return `<div class="cup-draft-rating draft-rating"><strong>--</strong><span>Overall time<br>Ataque -- · Meio -- · Defesa --</span></div>`;
+  }
+  const strength = computeStrength(p.picks, p.formationId);
+  return `
+    <div class="cup-draft-rating draft-rating">
+      <strong>${Math.round(strength.overall)}</strong>
+      <span>Overall time<br>Ataque ${Math.round(strength.attack)} · Meio ${Math.round(strength.midfield)} · Defesa ${Math.round(strength.defense)}</span>
+    </div>`;
 }
 
 // ---------------- Pitch ----------------
@@ -2721,10 +2819,10 @@ function renderLiveMatch() {
   const youPalette = teamPalette(you.name);
   const youBadge = youPalette.flagSvg
     ? `<span class="sb-badge flag">${youPalette.flagSvg}</span>`
-    : `<span class="sb-badge you">VC</span>`;
+    : `<span class="sb-badge you">${escapeHtml(initials(you.name))}</span>`;
   const oppBadge = oppPalette.flagSvg
     ? `<span class="sb-badge flag">${oppPalette.flagSvg}</span>`
-    : `<span class="sb-badge opp">ADV</span>`;
+    : `<span class="sb-badge opp">${escapeHtml(initials(opp.name))}</span>`;
 
   app.innerHTML = `
     <div class="screen live">
@@ -2774,37 +2872,48 @@ function renderLiveMatch() {
             <ul class="event-feed" id="feed"></ul>
           </div>
         </div>
-        <div class="halftime-panel" id="half-panel" hidden>
-          <div class="section-head">
-            <h3>Intervalo</h3>
-            <span id="sub-count">Substituições 0/5</span>
-          </div>
-          <div class="half-controls">
-            <label>Formação
-              <select id="half-form">
-                ${FORMATIONS.map((f) => `<option value="${f.id}" ${f.id === (you.formationId ?? L.formationId) ? "selected" : ""}>${f.name}</option>`).join("")}
-              </select>
-            </label>
-            <label>Estilo
-              <select id="half-ment">
-                ${MENTALITIES.map((m) => `<option value="${m.id}" ${m.id === (you.mentality ?? L.mentality) ? "selected" : ""}>${m.name}</option>`).join("")}
-              </select>
-            </label>
-            <label>Foco
-              <select id="half-focus">
-                ${ATTACK_FOCUS_OPTIONS.map((f) => `<option value="${f.id}" ${f.id === (you.attackFocus ?? L.attackFocus) ? "selected" : ""}>${f.name}</option>`).join("")}
-              </select>
-            </label>
-            <button id="half-continue" class="primary">Voltar para o jogo</button>
-          </div>
-          <div class="halftime-squad">
-            <div>
-              <div id="half-pitch" class="half-pitch">
-                ${renderPitch(getFormation(you.formationId ?? L.formationId)!, you.picks, false, false, true, true)}
+        <div class="halftime-modal" id="half-panel" hidden>
+          <div class="halftime-card">
+            <div class="section-head">
+              <div>
+                <span class="half-kicker">Intervalo</span>
+                <h3>Ajustes do time</h3>
               </div>
-              <p id="sub-status" class="sub-status">Clique em um jogador no campo e depois escolha um reserva.</p>
+              <span id="sub-count">Substituições 0/5</span>
             </div>
-            <ul id="reserve-list" class="reserve-list"></ul>
+            <div class="half-controls">
+              <label>Formação
+                <select id="half-form">
+                  ${FORMATIONS.map((f) => `<option value="${f.id}" ${f.id === (you.formationId ?? L.formationId) ? "selected" : ""}>${f.name}</option>`).join("")}
+                </select>
+              </label>
+              <label>Estilo
+                <select id="half-ment">
+                  ${MENTALITIES.map((m) => `<option value="${m.id}" ${m.id === (you.mentality ?? L.mentality) ? "selected" : ""}>${m.name}</option>`).join("")}
+                </select>
+              </label>
+              <label>Foco
+                <select id="half-focus">
+                  ${ATTACK_FOCUS_OPTIONS.map((f) => `<option value="${f.id}" ${f.id === (you.attackFocus ?? L.attackFocus) ? "selected" : ""}>${f.name}</option>`).join("")}
+                </select>
+              </label>
+              <button id="half-continue" class="primary">Voltar para o jogo</button>
+            </div>
+            <div id="half-focus-report">
+              ${renderAttackFocusBanner(you.picks, you.attackFocus ?? L.attackFocus)}
+            </div>
+            <div class="halftime-squad">
+              <div class="half-field-box">
+                <div id="half-pitch" class="half-pitch">
+                  ${renderPitch(getFormation(you.formationId ?? L.formationId)!, you.picks, false, false, true, true)}
+                </div>
+                <p id="sub-status" class="sub-status">Clique em um jogador no campo e depois escolha um reserva.</p>
+              </div>
+              <div class="half-reserve-box">
+                <span class="half-box-title">Reservas disponíveis</span>
+                <ul id="reserve-list" class="reserve-list"></ul>
+              </div>
+            </div>
           </div>
         </div>
       </div>
@@ -2823,6 +2932,7 @@ function renderLiveMatch() {
   const halfForm = document.getElementById("half-form") as HTMLSelectElement;
   const halfMent = document.getElementById("half-ment") as HTMLSelectElement;
   const halfFocus = document.getElementById("half-focus") as HTMLSelectElement;
+  const halfFocusReport = document.getElementById("half-focus-report") as HTMLDivElement;
   const halfContinue = document.getElementById(
     "half-continue",
   ) as HTMLButtonElement;
@@ -2935,6 +3045,7 @@ function renderLiveMatch() {
   }
 
   function refreshHalftimeSquad(status?: string) {
+    halfFocusReport.innerHTML = renderAttackFocusBanner(you.picks, halfFocus.value as AttackFocus);
     halfPitch.innerHTML = renderPitch(
       getFormation(you.formationId ?? L.formationId)!,
       you.picks,
@@ -3239,6 +3350,12 @@ function renderLiveMatch() {
       refreshHalftimeSquad(impact);
       syncHalftimeReadyUi();
     };
+    halfFocus.onchange = () => {
+      L.attackFocus = halfFocus.value as AttackFocus;
+      you.attackFocus = L.attackFocus;
+      refreshHalftimeSquad("Foco de ataque atualizado.");
+      syncHalftimeReadyUi();
+    };
     halfContinue.onclick = () => {
       if (you.halftimeReady) return;
       L.formationId = halfForm.value;
@@ -3316,7 +3433,7 @@ function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
   if (parts.length >= 2)
     return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  return name.slice(0, 2).toUpperCase();
+  return name.slice(0, 1).toUpperCase();
 }
 
 // Derive match leaders (top scorer, top assist, man of the match) from the timeline.

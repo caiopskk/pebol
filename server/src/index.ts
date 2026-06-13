@@ -3,7 +3,12 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import express from "express";
 import { Server } from "socket.io";
-import type { AckResult, Mentality, AttackFocus, HalftimeLineup } from "../../shared/types.js";
+import type {
+  AckResult,
+  Mentality,
+  AttackFocus,
+  HalftimeLineup,
+} from "../../shared/types.js";
 import {
   createRoom,
   joinRoom,
@@ -29,7 +34,8 @@ import { initDb, getOfficialTeams } from "./db.js";
 async function refreshTeamCache(): Promise<void> {
   try {
     const clubs = await getOfficialTeams("club");
-    if (clubs.length) setTeamPool(clubs.map((t) => ({ ...t, name: t.alias || t.name })));
+    if (clubs.length)
+      setTeamPool(clubs.map((t) => ({ ...t, name: t.alias || t.name })));
   } catch (err) {
     console.error("[db] failed to load teams:", err);
   }
@@ -84,32 +90,56 @@ function driveAI(code: string) {
 }
 
 io.on("connection", (socket) => {
-  socket.on("createRoom", (data: { name: string; mode: "classico" | "pica"; solo?: boolean }, cb: (r: AckResult) => void) => {
-    const { room, playerId } = createRoom(data.name, data.mode, socket.id, data.solo);
-    socket.join(room.code);
-    cb?.({ ok: true, code: room.code, youId: playerId });
-    broadcast(room.code);
-  });
+  socket.on(
+    "createRoom",
+    (
+      data: { name: string; mode: "classico" | "pica"; solo?: boolean },
+      cb: (r: AckResult) => void,
+    ) => {
+      const { room, playerId } = createRoom(
+        data.name,
+        data.mode,
+        socket.id,
+        data.solo,
+      );
+      socket.join(room.code);
+      cb?.({ ok: true, code: room.code, youId: playerId });
+      broadcast(room.code);
+    },
+  );
 
-  socket.on("joinRoom", (data: { code: string; name: string }, cb: (r: AckResult) => void) => {
-    const res = joinRoom(data.code, data.name, socket.id);
-    if ("error" in res) {
-      cb?.({ ok: false, error: res.error });
-      return;
-    }
-    socket.join(res.room.code);
-    cb?.({ ok: true, code: res.room.code, youId: res.playerId });
-    broadcast(res.room.code);
-  });
+  socket.on(
+    "joinRoom",
+    (data: { code: string; name: string }, cb: (r: AckResult) => void) => {
+      const res = joinRoom(data.code, data.name, socket.id);
+      if ("error" in res) {
+        cb?.({ ok: false, error: res.error });
+        return;
+      }
+      socket.join(res.room.code);
+      cb?.({ ok: true, code: res.room.code, youId: res.playerId });
+      broadcast(res.room.code);
+    },
+  );
 
   socket.on(
     "setup",
-    (data: { formationId: string; mentality: Mentality; attackFocus?: AttackFocus }) => {
+    (data: {
+      formationId: string;
+      mentality: Mentality;
+      attackFocus?: AttackFocus;
+    }) => {
       const room = findRoomBySocket(socket.id);
       if (!room) return;
       const player = room.players.find((p) => p.socketId === socket.id);
       if (!player) return;
-      setup(room, player.id, data.formationId, data.mentality, data.attackFocus);
+      setup(
+        room,
+        player.id,
+        data.formationId,
+        data.mentality,
+        data.attackFocus,
+      );
       broadcast(room.code);
     },
   );

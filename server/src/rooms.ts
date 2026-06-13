@@ -391,6 +391,9 @@ export function rematch(room: Room) {
 /** Build the public snapshot sent to clients (hides ratings in Pica mode). */
 export function toPublic(room: Room): RoomState {
   const hide = room.mode === "pica" && room.phase === "draft";
+  const hasAI = room.players.some((p) => p.isAI);
+  const rerollsEnabled =
+    isPvP(room) || (hasAI && room.mode === "classico");
 
   const players: PlayerPublic[] = room.players.map((p) => ({
     id: p.id,
@@ -431,7 +434,7 @@ export function toPublic(room: Room): RoomState {
     activePlayerId: room.activePlayerId,
     takenThisRound: room.takenThisRound,
     usedTeamIds: room.usedTeamIds,
-    pvpRerollsEnabled: room.players.some((p) => !p.isAI),
+    pvpRerollsEnabled: rerollsEnabled,
     hideRatings: hide,
     result: room.result,
   };
