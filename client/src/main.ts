@@ -464,6 +464,7 @@ function renderHome() {
               <button class="room-tab active" data-tab="create">Criar sala</button>
               <button class="room-tab" data-tab="join">Entrar numa sala</button>
             </div>
+            <div class="room-panes">
             <div class="room-pane" data-pane="create">
               <label>Seu nome</label>
               <input id="c-name" maxlength="20" placeholder="Insira seu nome" value="${savedName}" />
@@ -484,6 +485,7 @@ function renderHome() {
               <label>Código da sala</label>
               <input id="j-code" maxlength="4" placeholder="XXXX" style="text-transform:uppercase" />
               <button id="j-join" class="primary">Entrar</button>
+            </div>
             </div>
           </div>
         </div>

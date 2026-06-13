@@ -342,8 +342,15 @@ label {
 .room-tab:hover:not(.active) {
   color: var(--text);
 }
+.room-panes {
+  display: grid;
+}
+.room-panes > .room-pane {
+  grid-area: 1 / 1;
+}
 .room-pane.hidden {
-  display: none;
+  visibility: hidden;
+  pointer-events: none;
 }
 .home-logo-tile {
   grid-column: 2;
