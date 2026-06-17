@@ -85,6 +85,7 @@ function newPlayer(
     attackFocus: "equilibrado",
     picks: [],
     rerollsRemaining: rerolls,
+    preMatchReady: isAI,
     halftimeReady: isAI,
     socketId,
     isAI,
@@ -183,7 +184,9 @@ export function setup(
   attackFocus?: AttackFocus,
 ) {
   const p = room.players.find((pl) => pl.id === playerId);
-  if (!p || room.phase !== "lobby") return;
+  if (!p) return;
+  // tactics can be tweaked during lobby (formation) and during preMatch (ment/focus)
+  if (room.phase !== "lobby" && room.phase !== "preMatch") return;
   if (!getFormation(formationId)) return;
   p.formationId = formationId;
   p.mentality = mentality;
@@ -310,10 +313,17 @@ function simInput(p: InternalPlayer, room: Room) {
 }
 
 function finishDraft(room: Room) {
-  const [p1, p2] = room.players;
   room.players.forEach((p) => {
+    p.preMatchReady = p.isAI;
     p.halftimeReady = p.isAI;
   });
+  room.phase = "preMatch";
+  room.currentTeam = null;
+  room.activePlayerId = null;
+}
+
+function startMatch(room: Room) {
+  const [p1, p2] = room.players;
   // only the first half is simulated now; the second half waits for halftime lineups
   const fh = simulateFirstHalf(simInput(p1, room), simInput(p2, room));
   room.expelled = fh.expelled;
@@ -331,8 +341,17 @@ function finishDraft(room: Room) {
     summary: "",
   };
   room.phase = "result";
-  room.currentTeam = null;
-  room.activePlayerId = null;
+}
+
+export function readyPreMatch(room: Room, playerId: string) {
+  if (room.phase !== "preMatch") return;
+  const p = room.players.find((pl) => pl.id === playerId);
+  if (!p) return;
+  if (!p.formationId || !p.mentality) return;
+  p.preMatchReady = true;
+  if (room.players.every((pl) => pl.preMatchReady)) {
+    startMatch(room);
+  }
 }
 
 /** Rebuild a player's lineup from a halftime submission (formation, mentality, slots). */
@@ -437,6 +456,7 @@ export function rematch(room: Room) {
   for (const p of room.players) {
     p.picks = [];
     p.rerollsRemaining = rerollsForMode(room.mode);
+    p.preMatchReady = p.isAI;
     p.halftimeReady = p.isAI;
     // the AI comes back ready; the human confirms again
     p.ready = p.isAI;
@@ -457,6 +477,7 @@ export function toPublic(room: Room): RoomState {
     isAI: p.isAI,
     rerollsRemaining: p.rerollsRemaining,
     ready: p.ready,
+    preMatchReady: p.preMatchReady,
     halftimeReady: p.halftimeReady,
     formationId: p.formationId,
     mentality: p.mentality,

@@ -8,6 +8,7 @@ import {
   WC_OPPONENT_TEAMS,
 } from "../../shared/data/worldcup.js";
 import { CLUB_ALIASES } from "../../shared/data/aliases.js";
+import { ACHIEVEMENTS, type AchievementDefinition } from "../../shared/achievements.js";
 import { buildLevelProgress, type LevelProgress } from "../../shared/progression.js";
 import type { Team, Player, Position } from "../../shared/types.js";
 
@@ -33,14 +34,7 @@ export interface DbTeam extends Team {
   ownerId: string | null; // null = official team (only admins edit)
   alias: string; // copyright-safe generic name shown to non-admins (clubs)
 }
-export interface Achievement {
-  id: string;
-  title: string;
-  description: string;
-  category: string;
-  points: number;
-  sortOrder: number;
-}
+export type Achievement = AchievementDefinition;
 export interface AchievementProgress extends Achievement {
   unlockedAt: number | null;
 }
@@ -53,209 +47,6 @@ export interface LeaderboardEntry extends UserProgress {
   username: string;
   rank: number;
 }
-
-const ACHIEVEMENTS: Achievement[] = [
-  {
-    id: "first_goal",
-    title: "Primeiro grito",
-    description: "Marque seu primeiro gol em uma partida.",
-    category: "Partida",
-    points: 10,
-    sortOrder: 10,
-  },
-  {
-    id: "first_win",
-    title: "Primeira vitória",
-    description: "Vença uma partida em qualquer modo.",
-    category: "Partida",
-    points: 20,
-    sortOrder: 20,
-  },
-  {
-    id: "clean_sheet",
-    title: "Muralha",
-    description: "Vença uma partida sem sofrer gols.",
-    category: "Partida",
-    points: 25,
-    sortOrder: 30,
-  },
-  {
-    id: "penalty_win",
-    title: "Sangue frio",
-    description: "Vença uma decisão por pênaltis.",
-    category: "Partida",
-    points: 30,
-    sortOrder: 40,
-  },
-  {
-    id: "hat_trick",
-    title: "Hat-trick",
-    description: "Faça três gols com o mesmo jogador em uma partida.",
-    category: "Partida",
-    points: 35,
-    sortOrder: 50,
-  },
-  {
-    id: "assist_master",
-    title: "Garçom da rodada",
-    description: "Dê três assistências na mesma partida.",
-    category: "Partida",
-    points: 30,
-    sortOrder: 60,
-  },
-  {
-    id: "strong_draft",
-    title: "Elenco pesado",
-    description: "Monte um time com overall 85 ou mais.",
-    category: "Draft",
-    points: 25,
-    sortOrder: 70,
-  },
-  {
-    id: "beat_machine",
-    title: "Sem bug no sistema",
-    description: "Vença uma partida contra a máquina.",
-    category: "Draft",
-    points: 20,
-    sortOrder: 80,
-  },
-  {
-    id: "hardcore_win",
-    title: "No escuro",
-    description: "Vença uma partida no modo Hardcore.",
-    category: "Draft",
-    points: 25,
-    sortOrder: 90,
-  },
-  {
-    id: "custom_team",
-    title: "Dono da prancheta",
-    description: "Crie um time personalizado.",
-    category: "Gestão",
-    points: 20,
-    sortOrder: 100,
-  },
-  {
-    id: "json_import",
-    title: "Olheiro digital",
-    description: "Importe times usando um arquivo JSON.",
-    category: "Gestão",
-    points: 25,
-    sortOrder: 110,
-  },
-  {
-    id: "group_escape",
-    title: "Passou no sufoco",
-    description: "Classifique-se na fase de grupos da Copa do Mundo.",
-    category: "Copa",
-    points: 30,
-    sortOrder: 120,
-  },
-  {
-    id: "group_escape_hardcore",
-    title: "Classificado no escuro",
-    description: "Passe da fase de grupos da Copa do Mundo no modo Hardcore.",
-    category: "Copa",
-    points: 45,
-    sortOrder: 125,
-  },
-  {
-    id: "world_champion",
-    title: "Campeão do mundo",
-    description: "Vença a campanha da Copa do Mundo.",
-    category: "Copa",
-    points: 100,
-    sortOrder: 130,
-  },
-  {
-    id: "world_champion_hardcore",
-    title: "Lenda sem mapa",
-    description: "Vença a Copa do Mundo no modo Hardcore.",
-    category: "Copa",
-    points: 150,
-    sortOrder: 135,
-  },
-  {
-    id: "cup_first_win",
-    title: "Primeiro passo na Copa",
-    description: "Vença uma partida na campanha da Copa do Mundo.",
-    category: "Copa",
-    points: 25,
-    sortOrder: 140,
-  },
-  {
-    id: "round_32_clear",
-    title: "Sobreviveu ao funil",
-    description: "Passe pelos 16-avos de final da Copa do Mundo.",
-    category: "Copa",
-    points: 35,
-    sortOrder: 150,
-  },
-  {
-    id: "quarterfinalist",
-    title: "Entre os oito",
-    description: "Chegue às quartas de final da Copa do Mundo.",
-    category: "Copa",
-    points: 45,
-    sortOrder: 160,
-  },
-  {
-    id: "semifinalist",
-    title: "Quase lá",
-    description: "Chegue à semifinal da Copa do Mundo.",
-    category: "Copa",
-    points: 60,
-    sortOrder: 170,
-  },
-  {
-    id: "finalist",
-    title: "No jogo da taça",
-    description: "Chegue à final da Copa do Mundo.",
-    category: "Copa",
-    points: 75,
-    sortOrder: 180,
-  },
-  {
-    id: "perfect_group",
-    title: "Grupo perfeito",
-    description: "Vença os 3 jogos da fase de grupos da Copa do Mundo.",
-    category: "Copa",
-    points: 50,
-    sortOrder: 190,
-  },
-  {
-    id: "cup_hardcore_first_win",
-    title: "Vitória sem números",
-    description: "Vença uma partida da Copa do Mundo no modo Hardcore.",
-    category: "Copa Hardcore",
-    points: 40,
-    sortOrder: 200,
-  },
-  {
-    id: "big_win",
-    title: "Goleada moral",
-    description: "Vença uma partida por 3 ou mais gols de diferença.",
-    category: "Partida",
-    points: 40,
-    sortOrder: 210,
-  },
-  {
-    id: "comeback_win",
-    title: "Virada de roteiro",
-    description: "Vença uma partida depois de estar perdendo no intervalo.",
-    category: "Partida",
-    points: 45,
-    sortOrder: 220,
-  },
-  {
-    id: "red_card_win",
-    title: "Com um a menos",
-    description: "Vença uma partida após receber cartão vermelho.",
-    category: "Partida",
-    points: 45,
-    sortOrder: 230,
-  },
-];
 
 /** What a non-admin sees: official clubs get their generic alias; nationals and the
  *  user's own teams keep their real name. */
@@ -317,7 +108,14 @@ async function migrateDb(): Promise<void> {
 async function seedAchievements(): Promise<void> {
   for (const a of ACHIEVEMENTS) {
     await db.execute({
-      sql: `INSERT OR IGNORE INTO achievements (id,title,description,category,points,sort_order) VALUES (?,?,?,?,?,?)`,
+      sql: `INSERT INTO achievements (id,title,description,category,points,sort_order)
+            VALUES (?,?,?,?,?,?)
+            ON CONFLICT(id) DO UPDATE SET
+              title = excluded.title,
+              description = excluded.description,
+              category = excluded.category,
+              points = excluded.points,
+              sort_order = excluded.sort_order`,
       args: [a.id, a.title, a.description, a.category, a.points, a.sortOrder],
     });
   }
@@ -498,6 +296,30 @@ export async function getVisibleTeams(
     })
   ).rows as unknown as Record<string, unknown>[];
   return rowsToTeams(teamRows, playerRows);
+}
+
+/** Case-insensitive duplicate check scoped to the same owner (official or user). */
+export async function findTeamByNameSeason(
+  name: string,
+  season: string,
+  ownerId: string | null,
+): Promise<{ id: string; name: string; season: string } | null> {
+  const sql = ownerId
+    ? "SELECT id, name, season FROM teams WHERE LOWER(TRIM(name)) = ? AND TRIM(COALESCE(season,'')) = ? AND owner_id = ? LIMIT 1"
+    : "SELECT id, name, season FROM teams WHERE LOWER(TRIM(name)) = ? AND TRIM(COALESCE(season,'')) = ? AND owner_id IS NULL LIMIT 1";
+  const args = ownerId
+    ? [name.trim().toLowerCase(), (season ?? "").trim(), ownerId]
+    : [name.trim().toLowerCase(), (season ?? "").trim()];
+  const rows = (await db.execute({ sql, args })).rows as unknown as Record<
+    string,
+    unknown
+  >[];
+  if (!rows.length) return null;
+  return {
+    id: String(rows[0].id),
+    name: String(rows[0].name),
+    season: String(rows[0].season ?? ""),
+  };
 }
 
 export async function getTeamById(id: string): Promise<DbTeam | null> {

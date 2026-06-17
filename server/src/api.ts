@@ -7,6 +7,7 @@ import {
   createTeam,
   updateTeam,
   deleteTeam,
+  findTeamByNameSeason,
   getAchievementProgress,
   unlockAchievement,
   grantExperience,
@@ -107,7 +108,13 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
     if (err) return res.status(400).json({ error: err });
     const u = req.authUser!;
     const official = !!body.official && u.role === "admin";
-    const t = await createTeam(body, body.kind === "national" ? "national" : "club", official ? null : u.id);
+    const ownerId = official ? null : u.id;
+    const dup = await findTeamByNameSeason(body.name, body.season ?? "", ownerId);
+    if (dup) {
+      const label = dup.season ? `${dup.name} ${dup.season}` : dup.name;
+      return res.status(409).json({ error: `Já existe um time com esse nome (${label}).` });
+    }
+    const t = await createTeam(body, body.kind === "national" ? "national" : "club", ownerId);
     if (!t.ownerId) onOfficialChange();
     res.json({ team: t });
   });
@@ -118,6 +125,12 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
     if (!canEdit(existing, req.authUser!)) return res.status(403).json({ error: "Você não pode editar este time." });
     const err = validateTeam(req.body);
     if (err) return res.status(400).json({ error: err });
+    const body = req.body as TeamInput;
+    const dup = await findTeamByNameSeason(body.name, body.season ?? "", existing.ownerId);
+    if (dup && dup.id !== existing.id) {
+      const label = dup.season ? `${dup.name} ${dup.season}` : dup.name;
+      return res.status(409).json({ error: `Já existe outro time com esse nome (${label}).` });
+    }
     const t = await updateTeam(req.params.id, req.body);
     if (!existing.ownerId) onOfficialChange();
     res.json({ team: t });

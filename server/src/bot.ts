@@ -24,6 +24,12 @@ s.on("connect", () => {
 s.on("errorMsg", (m: string) => console.log(`[${name}] err:`, m));
 
 s.on("roomUpdate", (st: RoomState) => {
+  if (st.phase === "preMatch") {
+    const meP = st.players.find((p) => p.id === myId);
+    if (meP && !meP.preMatchReady) {
+      setTimeout(() => s.emit("preMatchReady"), 300);
+    }
+  }
   if (st.phase === "draft" && st.activePlayerId === myId) {
     const meP = st.players.find((p) => p.id === myId)!;
     const team = st.currentTeam!;

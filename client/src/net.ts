@@ -34,6 +34,9 @@ export function sendSetup(
 export function sendReady() {
   socket.emit("ready");
 }
+export function sendPreMatchReady() {
+  socket.emit("preMatchReady");
+}
 export function sendPick(slotId: string, playerName: string) {
   socket.emit("pick", { slotId, playerName });
 }

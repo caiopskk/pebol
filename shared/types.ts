@@ -75,7 +75,7 @@ export interface SquadPick {
 
 // ---- Room state synced with the client ----
 
-export type Phase = "lobby" | "setup" | "draft" | "result";
+export type Phase = "lobby" | "setup" | "draft" | "preMatch" | "result";
 
 export interface PlayerPublic {
   id: string;
@@ -84,6 +84,7 @@ export interface PlayerPublic {
   isAI?: boolean;
   rerollsRemaining?: number;
   ready: boolean;
+  preMatchReady?: boolean;
   halftimeReady?: boolean;
   formationId: string | null;
   mentality: Mentality | null;

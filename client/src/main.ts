@@ -1,4 +1,8 @@
 import "./styles.css";
+import { createElement, Fragment, type ReactElement, type ReactNode } from "react";
+import { flushSync } from "react-dom";
+import { createRoot, type Root } from "react-dom/client";
+import { MotionConfig } from "framer-motion";
 import type {
   RoomState,
   PlayerPublic,
@@ -30,7 +34,6 @@ import {
   wcOpponentTactics,
 } from "../../shared/engine.js";
 import { getTeam } from "../../shared/data/teams.js";
-import { teamPalette } from "./colors.js";
 import {
   WC_DRAFT_TEAMS,
   wcOpponentTeam,
@@ -47,6 +50,7 @@ import {
   type LeaderboardEntry,
   type UserProgress,
 } from "./api.js";
+import { ACHIEVEMENT_COPY } from "../../shared/achievements.js";
 import { HARDCORE_UNLOCK_LEVEL } from "../../shared/progression.js";
 import {
   onRoomUpdate,
@@ -55,55 +59,91 @@ import {
   joinRoom,
   sendSetup,
   sendReady,
+  sendPreMatchReady,
   sendPick,
   sendRerollTeam,
   sendHalftimeReady,
   sendRematch,
   leaveCurrentRoom,
 } from "./net.js";
+import { Home } from "./components/Home.js";
+import { Login } from "./components/Login.js";
+import { Achievements } from "./components/Achievements.js";
+import { AdminTeams } from "./components/AdminTeams.js";
+import { Lobby } from "./components/Lobby.js";
+import { CampaignSetup } from "./components/CampaignSetup.js";
+import { Draft } from "./components/Draft.js";
+import { PreMatchClassic } from "./components/PreMatchClassic.js";
+import { TacticBannerList, type BannerSpec } from "./components/TacticBanner.js";
+import type { PitchSlot } from "./components/Pitch.js";
+import { Overlays, overlays } from "./components/Overlays.js";
+import { liveStore, halftimeStore } from "./lib/liveStore.js";
+import type {
+  HalftimeOptions,
+  HalftimeCallbacks,
+} from "./components/LiveStage.js";
+import type {
+  CampaignStatusData,
+  BracketRoundData,
+  TeamStrengthData,
+  CampaignStrengthData,
+  CampaignSquadRow,
+} from "./components/CupStatus.js";
+import { LiveMatchShell } from "./components/LiveMatchShell.js";
+import {
+  ResultSummary,
+  type LeaderCardData,
+  type LogEventItem,
+  type StrengthRow,
+} from "./components/ResultSummary.js";
+import { ATTACK_FOCUS_OPTIONS } from "./components/SetupBoard.js";
+import { CampaignDraft, type CampaignDraftPlayer } from "./components/CampaignDraft.js";
+import { CampaignPreMatch } from "./components/CampaignPreMatch.js";
+import { CampaignMatchShell } from "./components/CampaignMatchShell.js";
+import {
+  CampaignGameOver,
+  CampaignVictory,
+  type CampaignJourneyLeader,
+} from "./components/CampaignEnd.js";
+import { TeamForm } from "./components/TeamForm.js";
 
 const app = document.getElementById("app")!;
+const overlaysRoot = createRoot(document.getElementById("overlays")!);
+overlaysRoot.render(createElement(Overlays));
+let reactRoot: Root | null = null;
 let syncLiveUi: (() => void) | null = null;
 let cupDraftScrollTop = 0;
 const MATCH_SPEED_KEY = "pebol:match-speed";
 let writeLockCount = 0;
 
-function ensureWriteLockOverlay(): HTMLElement {
-  let el = document.getElementById("write-lock");
-  if (el) return el;
-  el = document.createElement("div");
-  el.id = "write-lock";
-  el.className = "write-lock";
-  el.setAttribute("role", "status");
-  el.setAttribute("aria-live", "polite");
-  el.setAttribute("aria-hidden", "true");
-  el.innerHTML = `
-    <div class="write-lock-card">
-      <span class="write-spinner" aria-hidden="true"></span>
-      <div>
-        <strong>Sincronizando</strong>
-      </div>
-    </div>`;
-  document.body.appendChild(el);
-  return el;
-}
-
-function setWriteLockVisible(visible: boolean) {
-  const el = ensureWriteLockOverlay();
-  el.classList.toggle("active", visible);
-  el.setAttribute("aria-hidden", visible ? "false" : "true");
-}
-
 setWriteRequestLock({
   begin: () => {
     writeLockCount += 1;
-    setWriteLockVisible(true);
+    overlays.setWriteLock(true);
   },
   end: () => {
     writeLockCount = Math.max(0, writeLockCount - 1);
-    if (!writeLockCount) setWriteLockVisible(false);
+    if (!writeLockCount) overlays.setWriteLock(false);
   },
 });
+
+function renderReact(node: ReactElement) {
+  if (!reactRoot) reactRoot = createRoot(app);
+  // MotionConfig is a context provider (no DOM wrapper), so the IDs/classes the
+  // imperative live-match logic queries are unchanged. reducedMotion="user"
+  // makes every screen honor prefers-reduced-motion.
+  flushSync(() =>
+    reactRoot!.render(
+      createElement(MotionConfig, { reducedMotion: "user" }, node),
+    ),
+  );
+}
+
+function clearReactRoot() {
+  if (!reactRoot) return;
+  reactRoot.unmount();
+  reactRoot = null;
+}
 
 function readSavedMatchSpeed(): number {
   const saved = Number(localStorage.getItem(MATCH_SPEED_KEY));
@@ -124,7 +164,6 @@ interface Local {
   formationId: string;
   mentality: Mentality;
   attackFocus: AttackFocus;
-  toast: string | null;
   // live match playback
   matchPlayed: boolean;
   matchSpeed: number; // 1, 1.5, 2
@@ -168,11 +207,6 @@ interface CupGroupRow {
   ga: number;
   points: number;
 }
-interface LiveStatLine {
-  goals: number;
-  assists: number;
-  side: "you" | "opp";
-}
 interface CampaignState {
   phase: CampaignPhase;
   mode: CampaignMode;
@@ -205,7 +239,6 @@ const L: Local = {
   formationId: "4-3-3",
   mentality: "equilibrada",
   attackFocus: "equilibrado",
-  toast: null,
   matchPlayed: false,
   matchSpeed: readSavedMatchSpeed(),
   playing: false,
@@ -237,12 +270,10 @@ onError((msg) => {
 
 let toastTimer: number | undefined;
 function showToast(msg: string) {
-  L.toast = msg;
-  render();
+  overlays.setToast(msg);
   clearTimeout(toastTimer);
   toastTimer = window.setTimeout(() => {
-    L.toast = null;
-    render();
+    overlays.setToast(null);
   }, 2600);
 }
 
@@ -261,17 +292,12 @@ function render() {
     if (L.accountScreen === "login") renderLogin();
     else if (L.accountScreen === "admin") renderAdmin();
     else renderAchievements();
-    renderToast();
     return;
   }
   // World Cup campaign is a self-contained, client-side flow that owns the screen
   if (L.campaign) {
-    if (L.playing) {
-      renderToast();
-      return;
-    }
+    if (L.playing) return;
     renderCampaign();
-    renderToast();
     return;
   }
 
@@ -289,7 +315,6 @@ function render() {
   // during live playback, don't re-render (preserve the animation)
   if (L.playing) {
     syncLiveUi?.();
-    renderToast();
     return;
   }
 
@@ -303,6 +328,9 @@ function render() {
       case "draft":
         renderDraft();
         break;
+      case "preMatch":
+        renderPreMatchClassic();
+        break;
       case "result":
         renderResult();
         break;
@@ -310,299 +338,64 @@ function render() {
         renderLobby();
     }
   }
-  renderToast();
 }
 
-function renderToast() {
-  const existing = document.getElementById("toast");
-  if (existing) existing.remove();
-  if (!L.toast) return;
-  const t = document.createElement("div");
-  t.id = "toast";
-  t.className = "toast";
-  t.textContent = L.toast;
-  document.body.appendChild(t);
-}
-
-function bumpStat(
-  stats: Map<string, LiveStatLine>,
-  name: string | undefined,
-  side: "you" | "opp",
-  field: "goals" | "assists",
-) {
-  if (!name) return;
-  const current = stats.get(name) ?? { goals: 0, assists: 0, side };
-  current[field]++;
-  current.side = side;
-  stats.set(name, current);
-}
-
-function renderLiveStats(
-  target: HTMLElement,
-  stats: Map<string, LiveStatLine>,
-) {
-  const sortStats = (entries: [string, LiveStatLine][]) =>
-    entries
-      .filter(([, s]) => s.goals || s.assists)
-      .sort(
-        (a, b) =>
-          b[1].goals - a[1].goals ||
-          b[1].assists - a[1].assists ||
-          a[0].localeCompare(b[0]),
-      )
-      .slice(0, 5);
-  const you = sortStats(
-    [...stats.entries()].filter(([, s]) => s.side === "you"),
-  );
-  const opp = sortStats(
-    [...stats.entries()].filter(([, s]) => s.side === "opp"),
-  );
-  const column = (side: "you" | "opp", entries: [string, LiveStatLine][]) => `
-    <div class="live-stat-col ${side}">
-      <div class="live-stat-col-head">${side === "you" ? "Seu time" : "Adversário"}</div>
-      ${
-        entries.length
-          ? `<div class="live-stat-list">${entries
-              .map(
-                ([name, s]) => `
-                <div class="live-stat-row ${s.side}">
-                  <strong>${escapeHtml(name)}</strong>
-                  <span>${s.goals}G ${s.assists}A</span>
-                </div>`,
-              )
-              .join("")}</div>`
-          : `<div class="live-stat-empty">Aguardando o primeiro gol.</div>`
-      }
-    </div>`;
-  target.innerHTML = `
-    <div class="live-stat-head">
-      <span>Participações em gol</span>
-      <small>Gols / Assist.</small>
-    </div>
-    <div class="live-stat-cols">
-      ${column("you", you)}
-      ${column("opp", opp)}
-    </div>`;
-}
 
 // ---------------- Home ----------------
 
-const LEADERBOARD_SLOTS = 10;
-
-function renderLeaderboard(): string {
-  const list = L.leaderboard ?? [];
-  const loading = L.leaderboard === null;
-  const rows = Array.from({ length: LEADERBOARD_SLOTS }, (_, i) => {
-    const rank = i + 1;
-    const p = list[i];
-    if (p) {
-      return `
-        <li class="rank-${p.rank} ${p.rank <= 3 ? "podium" : ""} ${L.account?.id === p.userId ? "you" : ""}">
-          <span class="rank">#${p.rank}</span>
-          <strong>${escapeHtml(p.username)}</strong>
-          <em>${escapeHtml(p.title)}</em>
-          <span class="level">Nv. ${p.level}</span>
-          <span class="xp">${p.xp} XP</span>
-        </li>`;
-    }
-    return `
-      <li class="placeholder">
-        <span class="rank">#${rank}</span>
-        <strong>${loading ? "…" : "Vago"}</strong>
-        <em>Aguardando jogador</em>
-        <span class="level">Nv. —</span>
-        <span class="xp">— XP</span>
-      </li>`;
-  }).join("");
-  return `
-    <section class="panel leaderboard-panel">
-      <div class="leaderboard-head">
-        <div>
-          <span class="cup-tag">Ranking</span>
-          <h2>Leaderboard por nível</h2>
-        </div>
-      </div>
-      <ol class="leaderboard-list">${rows}</ol>
-    </section>`;
-}
-
 function renderHome() {
-  const acc = L.account;
-  const progress = L.accountProgress;
-  const hardcoreUnlocked = canUseHardcore();
-  const hardcoreLockText = acc
+  const hardcoreLockText = L.account
     ? `Desbloqueia no nível ${HARDCORE_UNLOCK_LEVEL}`
     : "Entre para desbloquear no nível 5";
-  const savedName = escapeHtml(acc?.username ?? "");
-  app.innerHTML = `
-    <div class="screen home">
-      <div class="home-account-row ${acc ? "signed" : "anonymous"}">
-        ${
-          acc
-            ? `<div class="home-account-card">
-                 <div class="ha-main">
-                   <span class="ha-kicker">Conta conectada</span>
-                   <strong>${escapeHtml(acc.username)}</strong>
-                   <span>${acc.role === "admin" ? "Administrador" : "Usuário"} · Nível ${progress?.level ?? 1} · ${escapeHtml(progress?.title ?? "Aspirante")}</span>
-                 </div>
-               </div>
-               <div class="home-account-actions">
-                 <button id="ha-achievements" class="primary alt account-action">Progresso</button>
-                 <button id="ha-admin" class="primary account-action">Gerenciar times</button>
-                 <button id="ha-logout" class="primary alt account-action">Sair</button>
-               </div>`
-            : `<div class="home-account-actions">
-                 <button id="ha-login" class="primary account-action">Entrar / Criar conta</button>
-               </div>`
-        }
-      </div>
-      <div class="cards home-board">
-        <div class="panel home-panel room-card">
-          <div class="home-card-inner">
-            <div class="room-tabs">
-              <button class="room-tab active" data-tab="create">Criar sala</button>
-              <button class="room-tab" data-tab="join">Entrar numa sala</button>
-            </div>
-            <div class="room-panes">
-            <div class="room-pane" data-pane="create">
-              <label>Seu nome</label>
-              <input id="c-name" maxlength="20" placeholder="Insira seu nome" value="${savedName}" />
-              <label>Modo de jogo</label>
-              <div class="mode-pick">
-                <button class="mode-btn active" data-mode="classico">
-                  <strong>Clássico</strong><span>Ratings visíveis</span>
-                </button>
-                <button class="mode-btn ${hardcoreUnlocked ? "" : "locked"}" data-mode="hardcore" ${hardcoreUnlocked ? "" : "disabled"} title="${escapeHtml(hardcoreUnlocked ? "Ratings ocultos" : hardcoreLockText)}">
-                  <strong>Hardcore</strong><span>${hardcoreUnlocked ? "Ratings ocultos" : hardcoreLockText}</span>
-                </button>
-              </div>
-              <button id="c-create" class="primary">Criar sala (online)</button>
-            </div>
-            <div class="room-pane hidden" data-pane="join">
-              <label>Seu nome</label>
-              <input id="j-name" maxlength="20" placeholder="Insira seu nome" value="${savedName}" />
-              <label>Código da sala</label>
-              <input id="j-code" maxlength="4" placeholder="XXXX" style="text-transform:uppercase" />
-              <button id="j-join" class="primary">Entrar</button>
-            </div>
-            </div>
-          </div>
-        </div>
 
-        <div class="home-logo-tile">
-          <img class="logo" src="/pebol_logo.png" alt="Pebol" />
-          <p>Monte seu time no draft e desafie um amigo 1v1 ou jogue contra a máquina.</p>
-        </div>
-
-        ${renderLeaderboard()}
-
-        <div class="panel solo-panel">
-          <div class="solo-actions">
-            <button id="c-solo" class="primary alt solo-action">Jogar sozinho (vs Máquina)</button>
-            <button id="career-mode" class="primary alt solo-action">Modo carreira</button>
-            <button id="league-mode" class="primary alt solo-action">Modo liga</button>
-          </div>
-        </div>
-
-        <aside class="panel cup-panel">
-          <img class="cup-panel-trophy" src="/world_cup_trophy.png" alt="Troféu da Copa do Mundo" />
-          <span class="cup-tag">Modo solo</span>
-          <h2>Copa do Mundo</h2>
-          <p>Monte uma seleção no draft, dispute a fase de grupos e avance pelo chaveamento de 32 times até a final.</p>
-          <ul class="cup-feature-list">
-            <li>48 seleções</li>
-            <li>Grupo + mata-mata</li>
-            <li>Campanha offline</li>
-          </ul>
-          <button id="c-worldcup" class="primary cup-panel-action">Jogar campanha</button>
-        </aside>
-
-      </div>
-    </div>
-  `;
-
-  app.querySelectorAll<HTMLButtonElement>(".room-tab").forEach((tab) => {
-    tab.onclick = () => {
-      const which = tab.dataset.tab;
-      app
-        .querySelectorAll(".room-tab")
-        .forEach((t) => t.classList.toggle("active", t === tab));
-      app
-        .querySelectorAll<HTMLElement>(".room-pane")
-        .forEach((pane) =>
-          pane.classList.toggle("hidden", pane.dataset.pane !== which),
-        );
-    };
-  });
-
-  let mode: GameMode = "classico";
-  app.querySelectorAll<HTMLButtonElement>(".mode-btn").forEach((btn) => {
-    btn.onclick = () => {
-      app
-        .querySelectorAll(".mode-btn")
-        .forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-      mode = btn.dataset.mode as GameMode;
-    };
-  });
-
-  const doCreate = async (solo: boolean) => {
-    const typedName = (
-      app.querySelector<HTMLInputElement>("#c-name")!.value || ""
-    ).trim();
-    const name = solo ? typedName || "Você" : typedName;
+  const onCreateRoom = async (
+    typedName: string,
+    mode: GameMode,
+    solo: boolean,
+  ) => {
+    const typedNameTrimmed = typedName.trim();
+    const name = solo ? typedNameTrimmed || "Você" : typedNameTrimmed;
     if (!name) return showToast("Digite seu nome.");
     if (mode === "hardcore" && !canUseHardcore())
       return showToast(
         `Modo Hardcore desbloqueia no nível ${HARDCORE_UNLOCK_LEVEL}.`,
       );
     const res = await createRoom(name, mode, solo);
-    if (res.ok && res.youId) {
-      L.youId = res.youId;
-    } else {
-      showToast(res.error || "Erro ao criar sala.");
-    }
+    if (res.ok && res.youId) L.youId = res.youId;
+    else showToast(res.error || "Erro ao criar sala.");
   };
-  app.querySelector<HTMLButtonElement>("#c-create")!.onclick = () =>
-    doCreate(false);
-  app.querySelector<HTMLButtonElement>("#c-solo")!.onclick = () =>
-    doCreate(true);
-  app.querySelector<HTMLButtonElement>("#career-mode")!.onclick = () =>
-    showToast("Modo carreira estará disponível em breve.");
-  app.querySelector<HTMLButtonElement>("#league-mode")!.onclick = () =>
-    showToast("Modo liga estará disponível em breve.");
-  app.querySelector<HTMLButtonElement>("#c-worldcup")!.onclick = () =>
-    startCampaign();
 
-  app
-    .querySelector<HTMLButtonElement>("#ha-login")
-    ?.addEventListener("click", openLogin);
-  app
-    .querySelector<HTMLButtonElement>("#ha-admin")
-    ?.addEventListener("click", () => void openAdmin());
-  app
-    .querySelector<HTMLButtonElement>("#ha-achievements")
-    ?.addEventListener("click", () => void openAchievements());
-  app
-    .querySelector<HTMLButtonElement>("#ha-logout")
-    ?.addEventListener("click", logout);
-
-  app.querySelector<HTMLButtonElement>("#j-join")!.onclick = async () => {
-    const name = (
-      app.querySelector<HTMLInputElement>("#j-name")!.value || ""
-    ).trim();
-    const code = (app.querySelector<HTMLInputElement>("#j-code")!.value || "")
-      .trim()
-      .toUpperCase();
+  const onJoinRoom = async (typedName: string, typedCode: string) => {
+    const name = typedName.trim();
+    const code = typedCode.trim().toUpperCase();
     if (!name) return showToast("Digite seu nome.");
     if (code.length !== 4) return showToast("Código inválido.");
     const res = await joinRoom(code, name);
-    if (res.ok && res.youId) {
-      L.youId = res.youId;
-    } else {
-      showToast(res.error || "Erro ao entrar.");
-    }
+    if (res.ok && res.youId) L.youId = res.youId;
+    else showToast(res.error || "Erro ao entrar.");
   };
+
+  renderReact(
+    createElement(Home, {
+      account: L.account,
+      progress: L.accountProgress,
+      leaderboard: L.leaderboard,
+      savedName: L.account?.username ?? "",
+      hardcoreUnlocked: canUseHardcore(),
+      hardcoreLockText,
+      onCreateRoom,
+      onJoinRoom,
+      onOpenLogin: openLogin,
+      onOpenAdmin: () => void openAdmin(),
+      onOpenAchievements: () => void openAchievements(),
+      onLogout: logout,
+      onWorldCup: startCampaign,
+      onSoon: (mode) =>
+        showToast(
+          `Modo ${mode === "carreira" ? "carreira" : "liga"} estará disponível em breve.`,
+        ),
+    }),
+  );
 }
 
 // ---------------- Account + team admin (REST) ----------------
@@ -647,137 +440,6 @@ function parseAltPositionsInput(
     .filter((pos, idx, arr) => pos !== main && arr.indexOf(pos) === idx);
   return alt.length ? alt : undefined;
 }
-const ACHIEVEMENT_COPY: Record<
-  string,
-  { title: string; description: string; points: number }
-> = {
-  first_goal: {
-    title: "Primeiro grito",
-    description: "Marque seu primeiro gol em uma partida.",
-    points: 10,
-  },
-  first_win: {
-    title: "Primeira vitória",
-    description: "Vença uma partida em qualquer modo.",
-    points: 20,
-  },
-  clean_sheet: {
-    title: "Muralha",
-    description: "Vença uma partida sem sofrer gols.",
-    points: 25,
-  },
-  penalty_win: {
-    title: "Sangue frio",
-    description: "Vença uma decisão por pênaltis.",
-    points: 30,
-  },
-  hat_trick: {
-    title: "Hat-trick",
-    description: "Faça três gols com o mesmo jogador em uma partida.",
-    points: 35,
-  },
-  assist_master: {
-    title: "Garçom da rodada",
-    description: "Dê três assistências na mesma partida.",
-    points: 30,
-  },
-  strong_draft: {
-    title: "Elenco pesado",
-    description: "Monte um time com overall 85 ou mais.",
-    points: 25,
-  },
-  beat_machine: {
-    title: "Sem bug no sistema",
-    description: "Vença uma partida contra a máquina.",
-    points: 20,
-  },
-  hardcore_win: {
-    title: "No escuro",
-    description: "Vença uma partida no modo Hardcore.",
-    points: 25,
-  },
-  custom_team: {
-    title: "Dono da prancheta",
-    description: "Crie um time personalizado.",
-    points: 20,
-  },
-  json_import: {
-    title: "Olheiro digital",
-    description: "Importe times usando um arquivo JSON.",
-    points: 25,
-  },
-  group_escape: {
-    title: "Passou no sufoco",
-    description: "Classifique-se na fase de grupos da Copa do Mundo.",
-    points: 30,
-  },
-  world_champion: {
-    title: "Campeão do mundo",
-    description: "Vença a campanha da Copa do Mundo.",
-    points: 100,
-  },
-  group_escape_hardcore: {
-    title: "Classificado no escuro",
-    description: "Passe da fase de grupos da Copa do Mundo no modo Hardcore.",
-    points: 45,
-  },
-  world_champion_hardcore: {
-    title: "Lenda sem mapa",
-    description: "Vença a Copa do Mundo no modo Hardcore.",
-    points: 150,
-  },
-  cup_first_win: {
-    title: "Primeiro passo na Copa",
-    description: "Vença uma partida na campanha da Copa do Mundo.",
-    points: 25,
-  },
-  round_32_clear: {
-    title: "Sobreviveu ao funil",
-    description: "Passe pelos 16-avos de final da Copa do Mundo.",
-    points: 35,
-  },
-  quarterfinalist: {
-    title: "Entre os oito",
-    description: "Chegue às quartas de final da Copa do Mundo.",
-    points: 45,
-  },
-  semifinalist: {
-    title: "Quase lá",
-    description: "Chegue à semifinal da Copa do Mundo.",
-    points: 60,
-  },
-  finalist: {
-    title: "No jogo da taça",
-    description: "Chegue à final da Copa do Mundo.",
-    points: 75,
-  },
-  perfect_group: {
-    title: "Grupo perfeito",
-    description: "Vença os 3 jogos da fase de grupos da Copa do Mundo.",
-    points: 50,
-  },
-  cup_hardcore_first_win: {
-    title: "Vitória sem números",
-    description: "Vença uma partida da Copa do Mundo no modo Hardcore.",
-    points: 40,
-  },
-  big_win: {
-    title: "Goleada moral",
-    description: "Vença uma partida por 3 ou mais gols de diferença.",
-    points: 40,
-  },
-  comeback_win: {
-    title: "Virada de roteiro",
-    description: "Vença uma partida depois de estar perdendo no intervalo.",
-    points: 45,
-  },
-  red_card_win: {
-    title: "Com um a menos",
-    description: "Vença uma partida após receber cartão vermelho.",
-    points: 45,
-  },
-};
-
 interface AchievementNotice {
   id: string;
   title: string;
@@ -810,27 +472,12 @@ function showNextAchievementNotice() {
   const notice = achievementQueue.shift();
   if (!notice) return;
   achievementNoticeActive = true;
-  document.getElementById("achievement-pop")?.remove();
-  const el = document.createElement("div");
-  el.id = "achievement-pop";
-  el.className = "achievement-pop";
-  el.innerHTML = `
-    <div class="achievement-pop-icon">✓</div>
-    <div class="achievement-pop-copy">
-      <span>Conquista desbloqueada</span>
-      <strong>${escapeHtml(notice.title)}</strong>
-      <p>${escapeHtml(notice.description)}</p>
-    </div>
-    <em>${notice.points} XP</em>`;
-  document.body.appendChild(el);
+  overlays.setAchievement(notice);
   clearTimeout(achievementNoticeTimer);
   achievementNoticeTimer = window.setTimeout(() => {
-    el.classList.add("leaving");
-    window.setTimeout(() => {
-      el.remove();
-      achievementNoticeActive = false;
-      showNextAchievementNotice();
-    }, 280);
+    overlays.setAchievement(null);
+    achievementNoticeActive = false;
+    showNextAchievementNotice();
   }, 4200);
 }
 
@@ -839,27 +486,19 @@ function queueXpNotice(notice: XpNotice) {
   showNextXpNotice();
 }
 
+let xpNoticeActive = false;
+let xpNoticeTimer: number | undefined;
 function showNextXpNotice() {
-  if (document.getElementById("xp-pop")) return;
+  if (xpNoticeActive) return;
   const notice = xpQueue.shift();
   if (!notice) return;
-  const el = document.createElement("div");
-  el.id = "xp-pop";
-  el.className = "achievement-pop xp-pop";
-  el.innerHTML = `
-    <div class="achievement-pop-icon">XP</div>
-    <div class="achievement-pop-copy">
-      <span>Experiência</span>
-      <strong>+${notice.amount} XP</strong>
-      <p>${escapeHtml(notice.reason)} · Nível ${notice.level} — ${escapeHtml(notice.title)}</p>
-    </div>`;
-  document.body.appendChild(el);
-  window.setTimeout(() => {
-    el.classList.add("leaving");
-    window.setTimeout(() => {
-      el.remove();
-      showNextXpNotice();
-    }, 280);
+  xpNoticeActive = true;
+  overlays.setXp(notice);
+  clearTimeout(xpNoticeTimer);
+  xpNoticeTimer = window.setTimeout(() => {
+    overlays.setXp(null);
+    xpNoticeActive = false;
+    showNextXpNotice();
   }, 3200);
 }
 
@@ -1026,113 +665,39 @@ async function awardAchievements(ids: string[], sourceKey: string) {
 }
 
 function renderAchievements() {
-  const list = L.achievements;
-  const progress = L.accountProgress;
-  const unlocked = list?.filter((a) => a.unlockedAt).length ?? 0;
-  const total = list?.length ?? 0;
-  const points =
-    list?.filter((a) => a.unlockedAt).reduce((sum, a) => sum + a.points, 0) ??
-    0;
-  app.innerHTML = `
-    <div class="screen admin-screen achievements-screen">
-      <div class="admin-toolbar">
-        <div class="admin-title">
-          <span class="cup-tag">Perfil</span>
-          <h1>Nível ${progress?.level ?? 1} · ${escapeHtml(progress?.title ?? "Aspirante")}</h1>
-          <p>${escapeHtml(L.account?.username ?? "")} · ${unlocked}/${total} conquistas · ${progress?.xp ?? points} XP</p>
-        </div>
-        <div class="admin-actions">
-          <button id="ach-back" class="primary alt admin-action">Voltar</button>
-        </div>
-      </div>
-      ${
-        progress
-          ? `<section class="level-panel">
-              <div class="level-head">
-                <strong>${progress.currentLevelXp}/${progress.nextLevelXp} XP para o próximo nível</strong>
-                <span>${progress.nextTitle ? `Próximo título: ${escapeHtml(progress.nextTitle)} no nível ${progress.nextTitleLevel}` : "Título máximo alcançado"}</span>
-              </div>
-              <div class="level-bar"><span style="width:${Math.min(100, (progress.currentLevelXp / progress.nextLevelXp) * 100)}%"></span></div>
-              <div class="level-split">
-                <span>Conquistas: ${progress.achievementXp} XP</span>
-                <span>Partidas e fases: ${progress.activityXp} XP</span>
-              </div>
-            </section>`
-          : ""
-      }
-      ${
-        list === null
-          ? `<p class="cup-note">Carregando…</p>`
-          : `<div class="achievement-grid">
-              ${list
-                .map(
-                  (
-                    a,
-                  ) => `<article class="achievement-card ${a.unlockedAt ? "unlocked" : "locked"}">
-                    <div class="achievement-top">
-                      <span>${escapeHtml(a.category)}</span>
-                      <strong>${a.points} XP</strong>
-                    </div>
-                    <h2>${escapeHtml(a.title)}</h2>
-                    <p>${escapeHtml(a.description)}</p>
-                    <em>${a.unlockedAt ? `Desbloqueada em ${new Date(a.unlockedAt).toLocaleDateString("pt-BR")}` : "Bloqueada"}</em>
-                  </article>`,
-                )
-                .join("")}
-            </div>`
-      }
-    </div>`;
-  document.getElementById("ach-back")!.onclick = closeAccount;
+  renderReact(
+    createElement(Achievements, {
+      account: L.account,
+      achievements: L.achievements,
+      progress: L.accountProgress,
+      onBack: closeAccount,
+    }),
+  );
 }
 
 function renderLogin() {
-  app.innerHTML = `
-    <div class="screen home">
-      <header class="brand"><img class="logo" src="/pebol_logo.png" alt="Pebol" /></header>
-      <div class="panel auth-panel">
-        <div class="auth-tabs">
-          <button class="auth-tab active" data-tab="login">Entrar</button>
-          <button class="auth-tab" data-tab="signup">Criar conta</button>
-        </div>
-        <label>Usuário</label><input id="au-user" maxlength="20" placeholder="pebol_pro" />
-        <label>Senha</label><input id="au-pass" type="password" maxlength="40" placeholder="***********" />
-        <button id="au-submit" class="primary">Entrar</button>
-        <button id="au-back" class="ghost auth-back">Voltar ao jogo</button>
-      </div>
-    </div>`;
-  let mode: "login" | "signup" = "login";
-  app.querySelectorAll<HTMLButtonElement>(".auth-tab").forEach(
-    (b) =>
-      (b.onclick = () => {
-        mode = b.dataset.tab as "login" | "signup";
-        app
-          .querySelectorAll(".auth-tab")
-          .forEach((x) => x.classList.remove("active"));
-        b.classList.add("active");
-        document.getElementById("au-submit")!.textContent =
-          mode === "login" ? "Entrar" : "Criar conta";
-      }),
+  renderReact(
+    createElement(Login, {
+      onBack: closeAccount,
+      onSubmit: async (mode, username, password) => {
+        const u = username.trim();
+        const p = password;
+        if (!u || !p) return showToast("Preencha usuário e senha.");
+        try {
+          const r =
+            mode === "login" ? await api.login(u, p) : await api.signup(u, p);
+          setToken(r.token);
+          L.account = r.user;
+          await loadProgress(false);
+          L.accountScreen = null;
+          showToast(`Olá, ${r.user.username}!`);
+          render();
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+      },
+    }),
   );
-  document.getElementById("au-back")!.onclick = closeAccount;
-  document.getElementById("au-submit")!.onclick = async () => {
-    const u = (
-      document.getElementById("au-user") as HTMLInputElement
-    ).value.trim();
-    const p = (document.getElementById("au-pass") as HTMLInputElement).value;
-    if (!u || !p) return showToast("Preencha usuário e senha.");
-    try {
-      const r =
-        mode === "login" ? await api.login(u, p) : await api.signup(u, p);
-      setToken(r.token);
-      L.account = r.user;
-      await loadProgress(false);
-      L.accountScreen = null;
-      showToast(`Olá, ${r.user.username}!`);
-      render();
-    } catch (e) {
-      showToast((e as Error).message);
-    }
-  };
 }
 
 function canEditTeam(t: AdminTeam): boolean {
@@ -1140,8 +705,6 @@ function canEditTeam(t: AdminTeam): boolean {
   return t.ownerId ? t.ownerId === L.account.id : L.account.role === "admin";
 }
 
-let adminTeamSearchTimer: number | undefined;
-let adminPlayerSearchTimer: number | undefined;
 
 function searchKey(v: string): string {
   return v
@@ -1151,132 +714,40 @@ function searchKey(v: string): string {
     .trim();
 }
 
-function teamSearchText(t: AdminTeam): string {
-  return searchKey(
-    [
-      t.name,
-      t.alias,
-      t.season,
-      t.league,
-      t.kind === "national" ? "seleção national" : "clube club",
-      t.ownerId ? "seu time" : "oficial",
-      ...t.players.map((p) => p.name),
-      ...(t.bench ?? []).map((p) => p.name),
-    ].join(" "),
-  );
-}
-
 function renderAdmin() {
   if (L.editingTeam) return renderTeamForm();
-  const teams = L.adminTeams;
-  const isAdmin = L.account?.role === "admin";
-  const teamQuery = searchKey(L.adminTeamSearch);
-  const filteredTeams = teams?.filter((t) =>
-    teamQuery ? teamSearchText(t).includes(teamQuery) : true,
-  );
-  app.innerHTML = `
-    <div class="screen admin-screen">
-      <div class="admin-toolbar">
-        <div class="admin-title">
-          <span class="cup-tag">Administração</span>
-          <h1>Gerenciar times</h1>
-          <p>${escapeHtml(L.account?.username ?? "")} · ${isAdmin ? "admin" : "usuário"}</p>
-        </div>
-        <div class="admin-actions">
-          <input id="adm-import-file" type="file" accept="application/json,.json" hidden />
-          <a class="primary alt admin-action download-action" href="/import_teams_model.json" download>Baixar modelo</a>
-          <button id="adm-import" class="primary alt admin-action">Importar JSON</button>
-          <button id="adm-new" class="primary admin-action">Novo time</button>
-          <button id="adm-back" class="primary alt admin-action">Voltar</button>
-        </div>
-      </div>
-      <div class="admin-search">
-        <label>Pesquisar times
-          <input id="adm-team-search" value="${escapeHtml(L.adminTeamSearch)}" placeholder="Digite nome, liga, temporada ou jogador" autocomplete="off" />
-        </label>
-        <span>${teams ? `${filteredTeams?.length ?? 0} de ${teams.length} times` : "Carregando times"}</span>
-      </div>
-      ${
-        teams === null
-          ? `<p class="cup-note">Carregando…</p>`
-          : filteredTeams?.length
-            ? `<div class="admin-list">
-            ${filteredTeams
-              .map(
-                (t) => `<div class="admin-row">
-                  <div class="admin-row-main">
-                    <strong>${escapeHtml(t.name)}</strong>
-                    <span class="admin-row-sub">${t.kind === "national" ? "Seleção" : "Clube"}${t.league ? " · " + escapeHtml(t.league) : ""}${t.season ? " · " + escapeHtml(t.season) : ""}</span>
-                    <div class="admin-row-tags">
-                      <span>${t.players.length} titulares</span>
-                      <span>${t.bench?.length ?? 0} reservas</span>
-                      <span>${t.ownerId ? "seu time" : "oficial"}</span>
-                    </div>
-                  </div>
-                  ${
-                    canEditTeam(t)
-                      ? `<div class="admin-row-actions"><button class="primary alt row-action" data-edit="${t.id}">Editar</button><button class="row-action danger" data-del="${t.id}">Excluir</button></div>`
-                      : `<span class="admin-locked">somente leitura</span>`
-                  }
-                </div>`,
-              )
-              .join("")}
-          </div>`
-            : `<p class="cup-note">Nenhum time encontrado para essa busca.</p>`
-      }
-    </div>`;
-  document.getElementById("adm-back")!.onclick = closeAccount;
-  const teamSearch = document.getElementById(
-    "adm-team-search",
-  ) as HTMLInputElement;
-  teamSearch.oninput = () => {
-    const value = teamSearch.value;
-    const cursor = teamSearch.selectionStart ?? value.length;
-    clearTimeout(adminTeamSearchTimer);
-    adminTeamSearchTimer = window.setTimeout(() => {
-      L.adminTeamSearch = value;
-      render();
-      window.requestAnimationFrame(() => {
-        const next = document.getElementById(
-          "adm-team-search",
-        ) as HTMLInputElement | null;
-        if (!next) return;
-        next.focus();
-        next.setSelectionRange(cursor, cursor);
-      });
-    }, 220);
-  };
-  document.getElementById("adm-new")!.onclick = () => {
-    L.adminPlayerSearch = "";
-    L.editingTeam = "new";
-    render();
-  };
-  document.getElementById("adm-import")!.onclick = () =>
-    (document.getElementById("adm-import-file") as HTMLInputElement).click();
-  (document.getElementById("adm-import-file") as HTMLInputElement).onchange = (
-    ev,
-  ) => void importTeamsFromFile(ev.currentTarget as HTMLInputElement);
-  app.querySelectorAll<HTMLButtonElement>("[data-edit]").forEach(
-    (b) =>
-      (b.onclick = () => {
+  renderReact(
+    createElement(AdminTeams, {
+      account: L.account,
+      teams: L.adminTeams,
+      initialSearch: L.adminTeamSearch,
+      canEditTeam,
+      onSearchCommit: (value) => {
+        L.adminTeamSearch = value;
+      },
+      onImportFile: (input) => void importTeamsFromFile(input),
+      onNewTeam: () => {
         L.adminPlayerSearch = "";
-        L.editingTeam = teams!.find((t) => t.id === b.dataset.edit) ?? null;
+        L.editingTeam = "new";
         render();
-      }),
-  );
-  app.querySelectorAll<HTMLButtonElement>("[data-del]").forEach(
-    (b) =>
-      (b.onclick = async () => {
-        const t = teams!.find((x) => x.id === b.dataset.del)!;
-        if (!confirm(`Excluir "${t.name}"?`)) return;
+      },
+      onEditTeam: (team) => {
+        L.adminPlayerSearch = "";
+        L.editingTeam = team;
+        render();
+      },
+      onDeleteTeam: async (team) => {
+        if (!confirm(`Excluir "${team.name}"?`)) return;
         try {
-          await api.deleteTeam(t.id);
+          await api.deleteTeam(team.id);
           showToast("Time excluído.");
           await loadAdminTeams();
         } catch (e) {
           showToast((e as Error).message);
         }
-      }),
+      },
+      onBack: closeAccount,
+    }),
   );
 }
 
@@ -1296,83 +767,6 @@ function blankTeam(): AdminTeam {
     })),
     bench: [],
   };
-}
-
-function playerRowHtml(p: Player, bench: boolean): string {
-  return `
-    <div class="pf-row">
-      <input class="pf-name" value="${escapeHtml(p.name)}" placeholder="Nome" maxlength="40" />
-      <select class="pf-pos">${ALL_POS.map((po) => `<option ${po === p.pos ? "selected" : ""}>${po}</option>`).join("")}</select>
-      <input class="pf-alt" value="${escapeHtml((p.altPositions ?? []).join(", "))}" placeholder="Alt. ex: LW, ST" maxlength="40" />
-      <input class="pf-rt" type="number" min="40" max="99" value="${p.rating}" />
-      ${bench ? `<button class="ghost pf-del" title="Remover">×</button>` : ""}
-    </div>`;
-}
-
-function rowPlayerSearchText(row: HTMLElement): string {
-  const value = (selector: string) =>
-    (
-      row.querySelector<HTMLInputElement | HTMLSelectElement>(selector)
-        ?.value ?? ""
-    ).trim();
-  return searchKey(
-    [
-      value(".pf-name"),
-      value(".pf-pos"),
-      value(".pf-alt"),
-      value(".pf-rt"),
-    ].join(" "),
-  );
-}
-
-function applyPlayerSearch(query: string) {
-  const key = searchKey(query);
-  const groups = [
-    {
-      list: document.getElementById("tf-starters"),
-      empty: document.getElementById("tf-starters-empty"),
-    },
-    {
-      list: document.getElementById("tf-bench"),
-      empty: document.getElementById("tf-bench-empty"),
-    },
-  ];
-  for (const group of groups) {
-    const rows = [
-      ...(group.list?.querySelectorAll<HTMLElement>(".pf-row") ?? []),
-    ];
-    let visible = 0;
-    for (const row of rows) {
-      const match = !key || rowPlayerSearchText(row).includes(key);
-      row.hidden = !match;
-      if (match) visible += 1;
-    }
-    if (group.empty) {
-      group.empty.hidden = !key || visible > 0;
-    }
-  }
-}
-
-function collectPlayers(container: HTMLElement): Player[] {
-  return [...container.querySelectorAll<HTMLElement>(".pf-row")].map((row) => {
-    const pos = (row.querySelector(".pf-pos") as HTMLSelectElement)
-      .value as Player["pos"];
-    return {
-      name: (row.querySelector(".pf-name") as HTMLInputElement).value.trim(),
-      pos,
-      altPositions: parseAltPositionsInput(
-        (row.querySelector(".pf-alt") as HTMLInputElement).value,
-        pos,
-      ),
-      rating: Math.max(
-        40,
-        Math.min(
-          99,
-          Number((row.querySelector(".pf-rt") as HTMLInputElement).value) || 75,
-        ),
-      ),
-    };
-  });
 }
 
 type TeamImport = Partial<AdminTeam> & { official?: boolean };
@@ -1448,14 +842,31 @@ async function importTeamsFromFile(input: HTMLInputElement) {
     const raw = JSON.parse(await file.text()) as unknown;
     const teams = parseImportedTeams(raw, L.account?.role === "admin");
     if (!teams.length) return showToast("Nenhum time encontrado no JSON.");
-    for (const team of teams) await api.createTeam(team);
-    void awardAchievements(
-      ["json_import", "custom_team"],
-      `import:${file.name}:${file.size}:${Date.now()}`,
-    );
-    showToast(
-      `${teams.length} time${teams.length > 1 ? "s" : ""} importado${teams.length > 1 ? "s" : ""}.`,
-    );
+    let created = 0;
+    let skipped = 0;
+    const errors: string[] = [];
+    for (const team of teams) {
+      try {
+        await api.createTeam(team);
+        created++;
+      } catch (e) {
+        const msg = (e as Error).message || "";
+        if (/já existe/i.test(msg)) skipped++;
+        else errors.push(`${team.name}: ${msg}`);
+      }
+    }
+    if (created) {
+      void awardAchievements(
+        ["json_import", "custom_team"],
+        `import:${file.name}:${file.size}:${Date.now()}`,
+      );
+    }
+    const parts: string[] = [];
+    if (created) parts.push(`${created} importado${created > 1 ? "s" : ""}`);
+    if (skipped) parts.push(`${skipped} duplicado${skipped > 1 ? "s" : ""} ignorado${skipped > 1 ? "s" : ""}`);
+    if (errors.length) parts.push(`${errors.length} com erro`);
+    showToast(parts.join(" · ") || "Nenhum time importado.");
+    if (errors.length) console.warn("Falhas na importação:", errors);
     await loadAdminTeams();
   } catch (e) {
     showToast((e as Error).message || "JSON inválido.");
@@ -1468,112 +879,49 @@ function renderTeamForm() {
   const t: AdminTeam = isNew
     ? blankTeam()
     : structuredClone(L.editingTeam as AdminTeam);
-  app.innerHTML = `
-    <div class="screen admin-screen">
-      <div class="admin-toolbar">
-        <div class="admin-title">
-          <span class="cup-tag">${isNew ? "Novo registro" : "Edição"}</span>
-          <h1>${isNew ? "Novo time" : "Editar time"}</h1>
-          <p>Configure titulares, reservas e informações do elenco.</p>
-        </div>
-        <div class="admin-actions">
-          <button id="tf-cancel" class="primary alt admin-action">Cancelar</button>
-        </div>
-      </div>
-      <div class="panel team-form">
-        <div class="tf-grid">
-          <label>Nome${isAdmin ? "" : ""}<input id="tf-name" value="${escapeHtml(t.name)}" /></label>
-          ${isAdmin ? `<label>Apelido genérico (visto por não-admins)<input id="tf-alias" value="${escapeHtml(t.alias || "")}" placeholder="ex: Rubro-Negro Carioca" /></label>` : ""}
-          <label>Liga / País<input id="tf-league" value="${escapeHtml(t.league || "")}" /></label>
-          <label>Temporada<input id="tf-season" value="${escapeHtml(t.season || "")}" /></label>
-          ${isAdmin ? `<label>Tipo<select id="tf-kind"><option value="club" ${t.kind === "club" ? "selected" : ""}>Clube</option><option value="national" ${t.kind === "national" ? "selected" : ""}>Seleção</option></select></label>` : ""}
-          ${isAdmin ? `<label class="tf-check"><input type="checkbox" id="tf-official" ${t.ownerId ? "" : "checked"} ${isNew ? "" : "disabled"} /> Time oficial (entra no jogo)</label>` : ""}
-        </div>
-        <div class="admin-search player-search">
-          <label>Pesquisar jogadores
-            <input id="tf-player-search" value="${escapeHtml(L.adminPlayerSearch)}" placeholder="Digite nome, posição ou overall" autocomplete="off" />
-          </label>
-          <span>Filtra titulares e reservas sem salvar alterações.</span>
-        </div>
-        <h3>Titulares (11)</h3>
-        <div id="tf-starters" class="pf-list">${t.players.map((p) => playerRowHtml(p, false)).join("")}</div>
-        <p id="tf-starters-empty" class="pf-empty" hidden>Nenhum titular encontrado.</p>
-        <h3>Reservas</h3>
-        <div id="tf-bench" class="pf-list">${(t.bench ?? []).map((p) => playerRowHtml(p, true)).join("")}</div>
-        <p id="tf-bench-empty" class="pf-empty" hidden>Nenhum reserva encontrado.</p>
-        <button id="tf-addbench" class="primary alt form-inline-action">Adicionar reserva</button>
-        <div class="form-footer"><button id="tf-save" class="primary big">${isNew ? "Criar time" : "Salvar"}</button></div>
-      </div>
-    </div>`;
-
-  document.getElementById("tf-cancel")!.onclick = () => {
-    L.editingTeam = null;
-    render();
-  };
-  const bench = document.getElementById("tf-bench")!;
-  const playerSearch = document.getElementById(
-    "tf-player-search",
-  ) as HTMLInputElement;
-  playerSearch.oninput = () => {
-    const value = playerSearch.value;
-    clearTimeout(adminPlayerSearchTimer);
-    adminPlayerSearchTimer = window.setTimeout(() => {
-      L.adminPlayerSearch = value;
-      applyPlayerSearch(value);
-    }, 180);
-  };
-  const bindBenchDel = () =>
-    bench.querySelectorAll<HTMLButtonElement>(".pf-del").forEach(
-      (b) =>
-        (b.onclick = () => {
-          b.closest(".pf-row")!.remove();
-          applyPlayerSearch(playerSearch.value);
-        }),
-    );
-  bindBenchDel();
-  document.getElementById("tf-addbench")!.onclick = () => {
-    bench.insertAdjacentHTML(
-      "beforeend",
-      playerRowHtml({ name: "", pos: "ST", rating: 75 }, true),
-    );
-    bindBenchDel();
-    applyPlayerSearch(playerSearch.value);
-  };
-  applyPlayerSearch(L.adminPlayerSearch);
-  document.getElementById("tf-save")!.onclick = async () => {
-    const val = (id: string) =>
-      (document.getElementById(id) as HTMLInputElement)?.value.trim() ?? "";
-    const players = collectPlayers(document.getElementById("tf-starters")!);
-    if (players.length !== 11 || players.some((p) => !p.name))
-      return showToast("Preencha os 11 titulares.");
-    const benchPlayers = collectPlayers(bench).filter((p) => p.name);
-    const payload: Partial<AdminTeam> & { official?: boolean } = {
-      name: val("tf-name"),
-      league: val("tf-league"),
-      season: val("tf-season"),
-      players,
-      bench: benchPlayers,
-    };
-    if (isAdmin) {
-      payload.alias = val("tf-alias");
-      payload.kind = (document.getElementById("tf-kind") as HTMLSelectElement)
-        .value as "club" | "national";
-      payload.official = (
-        document.getElementById("tf-official") as HTMLInputElement
-      )?.checked;
-    }
-    if (!payload.name) return showToast("Dê um nome ao time.");
-    try {
-      if (isNew) await api.createTeam(payload);
-      else await api.updateTeam(t.id, payload);
-      if (isNew) void awardAchievements(["custom_team"], `team:${Date.now()}`);
-      showToast("Time salvo.");
-      L.editingTeam = null;
-      await loadAdminTeams();
-    } catch (e) {
-      showToast((e as Error).message);
-    }
-  };
+  renderReact(
+    createElement(TeamForm, {
+      isNew,
+      isAdmin,
+      initialName: t.name,
+      initialAlias: t.alias || "",
+      initialLeague: t.league || "",
+      initialSeason: t.season || "",
+      initialKind: t.kind === "national" ? "national" : "club",
+      initialOfficial: !t.ownerId,
+      initialPlayers: t.players,
+      initialBench: t.bench ?? [],
+      initialPlayerSearch: L.adminPlayerSearch,
+      positions: ALL_POS as Player["pos"][],
+      onCancel: () => {
+        L.editingTeam = null;
+        render();
+      },
+      onSearchChange: (value) => {
+        L.adminPlayerSearch = value;
+      },
+      onSave: async (payload) => {
+        if (payload.players.length !== 11 || payload.players.some((p) => !p.name)) {
+          showToast("Preencha os 11 titulares.");
+          return;
+        }
+        if (!payload.name) {
+          showToast("Dê um nome ao time.");
+          return;
+        }
+        try {
+          if (isNew) await api.createTeam(payload);
+          else await api.updateTeam(t.id, payload);
+          if (isNew) void awardAchievements(["custom_team"], `team:${Date.now()}`);
+          showToast("Time salvo.");
+          L.editingTeam = null;
+          await loadAdminTeams();
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+      },
+    }),
+  );
 }
 
 // ---------------- World Cup campaign (single-player gauntlet) ----------------
@@ -1612,31 +960,13 @@ function startCampaign() {
 function campaignExit() {
   L.campaign = null;
   L.playing = false;
+  lastCampaignPhase = null;
   render();
 }
 
 function mentalityLabel(m: Mentality): string {
   return MENTALITIES.find((x) => x.id === m)?.name ?? m;
 }
-
-const ATTACK_FOCUS_OPTIONS: { id: AttackFocus; name: string; desc: string }[] =
-  [
-    {
-      id: "equilibrado",
-      name: "Equilibrado",
-      desc: "Ataque distribuído, sem ênfase.",
-    },
-    {
-      id: "lados",
-      name: "Pelos lados",
-      desc: "Joga aberto: usa pontas e laterais. Forte se eles forem bons.",
-    },
-    {
-      id: "meio",
-      name: "Pelo meio",
-      desc: "Joga por dentro: usa o miolo (meias e atacantes). Forte se o miolo for bom.",
-    },
-  ];
 
 function attackFocusLabel(f: AttackFocus | undefined): string {
   return (
@@ -1645,40 +975,39 @@ function attackFocusLabel(f: AttackFocus | undefined): string {
   );
 }
 
-function renderAttackFocusBanner(
+function attackFocusBannerSpec(
   picks: SquadPick[],
   focus: AttackFocus | undefined,
-): string {
-  if (picks.length < 5) return "";
+): BannerSpec | null {
+  if (picks.length < 5) return null;
   const report = attackFocusReport(picks);
   const current = focus ?? "equilibrado";
   const wide = report.wide == null ? "--" : Math.round(report.wide);
   const central = report.central == null ? "--" : Math.round(report.central);
   const detail = `Lados ${wide} · Meio ${central} · OVR ${Math.round(report.overall)}`;
   if (report.best === "equilibrado") {
-    return `<div class="tactic-banner good">Elenco equilibrado: qualquer foco funciona. ${detail}.</div>`;
+    return { kind: "good", text: `Elenco equilibrado: qualquer foco funciona. ${detail}.` };
   }
+  const bestLabel = attackFocusLabel(report.best).toLowerCase();
   if (current === report.best) {
-    return `<div class="tactic-banner good">Foco encaixado: seu elenco rende melhor ${escapeHtml(attackFocusLabel(report.best).toLowerCase())}. ${detail}.</div>`;
+    return { kind: "good", text: `Foco encaixado: seu elenco rende melhor ${bestLabel}. ${detail}.` };
   }
   if (current !== "equilibrado") {
-    return `<div class="tactic-banner bad">Foco desalinhado: seu elenco pede ${escapeHtml(attackFocusLabel(report.best).toLowerCase())}. ${detail}.</div>`;
+    return { kind: "bad", text: `Foco desalinhado: seu elenco pede ${bestLabel}. ${detail}.` };
   }
-  return `<div class="tactic-banner tip">Dica de foco: seu elenco parece melhor ${escapeHtml(attackFocusLabel(report.best).toLowerCase())}. ${detail}.</div>`;
+  return { kind: "tip", text: `Dica de foco: seu elenco parece melhor ${bestLabel}. ${detail}.` };
 }
 
-function campaignProgress(won: number): string {
-  const labels = ["G1", "G2", "G3", "32", "16", "QF", "SF", "F"];
-  return `<div class="cup-progress">${labels
-    .map(
-      (label, i) =>
-        `<span class="cup-cell ${i < won ? "done" : ""} ${i === won ? "next" : ""}">${i < won ? "✓" : label}</span>`,
-    )
-    .join("")}</div>`;
-}
-
+let lastCampaignPhase: string | null = null;
 function renderCampaign() {
-  switch (L.campaign!.phase) {
+  const phase = L.campaign!.phase;
+  // only clear React on phase transitions; re-renders within the same phase
+  // must reconcile so framer-motion mount animations don't replay (flicker)
+  if (lastCampaignPhase !== phase) {
+    clearReactRoot();
+    lastCampaignPhase = phase;
+  }
+  switch (phase) {
     case "setup":
       return renderCampaignSetup();
     case "draft":
@@ -1697,123 +1026,49 @@ function renderCampaign() {
 function renderCampaignSetup() {
   const c = L.campaign!;
   const hardcoreUnlocked = canUseHardcore();
-  const modeOptions: { id: CampaignMode; name: string; desc: string }[] = [
-    {
-      id: "normal",
-      name: "Normal",
-      desc: "Ratings visíveis e dicas de encaixe tático.",
-    },
-    {
-      id: "hardcore",
-      name: "Hardcore",
-      desc: hardcoreUnlocked
-        ? "Sem ratings e sem dicas durante a campanha."
-        : `Desbloqueia no nível ${HARDCORE_UNLOCK_LEVEL}.`,
-    },
-  ];
-  app.innerHTML = `
-    <div class="screen cup-screen cup-setup-screen">
-      <div class="cup-head">
-        <img class="cup-head-trophy" src="/world_cup_trophy.png" alt="" />
-        <div>
-          <span class="cup-tag">Modo Copa do Mundo</span>
-          <h1>Copa do Mundo 48 Seleções</h1>
-          <p>Monte sua seleção, dispute 3 jogos de grupo e tente passar para o mata-mata de 32 times até a final.</p>
-        </div>
-        <button id="cup-exit" class="ghost">Sair</button>
-      </div>
-      <div class="setup-board cup-setup-board">
-        <section class="setup-panel setup-formation">
-          <div class="setup-panel-head">
-            <h2>Formação</h2>
-            <span>${escapeHtml(getFormation(c.formationId)?.name ?? c.formationId)}</span>
-          </div>
-          <div class="formation-grid">
-            ${FORMATIONS.map((f) => `<button class="form-btn ${f.id === c.formationId ? "active" : ""}" data-form="${f.id}">${f.name}</button>`).join("")}
-          </div>
-          <div class="mini-pitch-wrap setup-pitch">${renderPitch(getFormation(c.formationId)!, [], false, false, true)}</div>
-        </section>
-
-        <section class="setup-panel setup-mentality mentality-col">
-          <div class="setup-panel-head">
-            <h2>Mentalidade</h2>
-            <span>Peso dobrado</span>
-          </div>
-          ${MENTALITIES.map((m) => `<button class="ment-btn ${m.id === c.mentality ? "active" : ""}" data-ment="${m.id}"><strong>${m.name}</strong><span>${m.desc}</span></button>`).join("")}
-        </section>
-
-        <section class="setup-panel setup-focus">
-          <div class="setup-panel-head">
-            <h2>Foco de ataque</h2>
-            <span>Preferência ofensiva</span>
-          </div>
-          <div class="focus-grid">
-            ${ATTACK_FOCUS_OPTIONS.map((f) => `<button class="focus-btn ${f.id === c.attackFocus ? "active" : ""}" data-focus="${f.id}"><strong>${f.name}</strong><span>${f.desc}</span></button>`).join("")}
-          </div>
-          <div class="cup-setup-note">
-            <strong>Campanha 48 seleções</strong>
-            <span>Monte o XI no draft, jogue a fase de grupos e avance para o mata-mata.</span>
-          </div>
-          <div class="cup-mode-box">
-            <div class="setup-panel-head compact">
-              <h2>Modo da campanha</h2>
-              <span>${c.mode === "hardcore" ? "Hardcore" : "Normal"}</span>
-            </div>
-            <div class="cup-mode-grid">
-              ${modeOptions
-                .map((m) => {
-                  const locked = m.id === "hardcore" && !hardcoreUnlocked;
-                  return `<button class="cup-mode-btn ${m.id === c.mode ? "active" : ""} ${locked ? "locked" : ""}" data-cup-mode="${m.id}" ${locked ? "disabled" : ""}><strong>${m.name}</strong><span>${m.desc}</span></button>`;
-                })
-                .join("")}
-            </div>
-          </div>
-          <div class="lobby-actions"><button id="cup-start" class="primary big">Começar a campanha</button></div>
-        </section>
-      </div>
-    </div>`;
-  document.getElementById("cup-exit")!.onclick = campaignExit;
-  app.querySelectorAll<HTMLButtonElement>(".form-btn").forEach(
-    (b) =>
-      (b.onclick = () => {
-        c.formationId = b.dataset.form!;
+  const formation = getFormation(c.formationId)!;
+  renderReact(
+    createElement(CampaignSetup, {
+      formation,
+      formationId: c.formationId,
+      mentality: c.mentality,
+      attackFocus: c.attackFocus,
+      mode: c.mode,
+      hardcoreUnlocked,
+      hardcoreUnlockLevel: HARDCORE_UNLOCK_LEVEL,
+      pitchSlots: buildPitchSlots(formation, [], { showPos: true }),
+      onExit: campaignExit,
+      onFormationChange: (formationId: string) => {
+        c.formationId = formationId;
         render();
-      }),
-  );
-  app.querySelectorAll<HTMLButtonElement>(".ment-btn").forEach(
-    (b) =>
-      (b.onclick = () => {
-        c.mentality = b.dataset.ment as Mentality;
+      },
+      onMentalityChange: (mentality: Mentality) => {
+        c.mentality = mentality;
         render();
-      }),
-  );
-  app.querySelectorAll<HTMLButtonElement>(".focus-btn").forEach(
-    (b) =>
-      (b.onclick = () => {
-        c.attackFocus = b.dataset.focus as AttackFocus;
+      },
+      onAttackFocusChange: (focus: AttackFocus) => {
+        c.attackFocus = focus;
         render();
-      }),
-  );
-  app.querySelectorAll<HTMLButtonElement>(".cup-mode-btn").forEach(
-    (b) =>
-      (b.onclick = () => {
-        if (b.dataset.cupMode === "hardcore" && !canUseHardcore()) {
+      },
+      onModeChange: (mode: CampaignMode) => {
+        if (mode === "hardcore" && !canUseHardcore()) {
           showToast(
             `Copa Hardcore desbloqueia no nível ${HARDCORE_UNLOCK_LEVEL}.`,
           );
           return;
         }
-        c.mode = b.dataset.cupMode as CampaignMode;
+        c.mode = mode;
         render();
-      }),
+      },
+      onStart: () => {
+        // Reroll allowance follows the chosen mode: Normal = 5, Hardcore = 3.
+        c.rerollsRemaining = c.mode === "hardcore" ? 3 : 5;
+        c.phase = "draft";
+        campaignDrawTeam();
+        render();
+      },
+    }),
   );
-  document.getElementById("cup-start")!.onclick = () => {
-    // Reroll allowance follows the chosen mode: Normal = 5, Hardcore = 3.
-    c.rerollsRemaining = c.mode === "hardcore" ? 3 : 5;
-    c.phase = "draft";
-    campaignDrawTeam();
-    render();
-  };
 }
 
 function campaignOpenSlots() {
@@ -1874,10 +1129,9 @@ function campaignPlace(slotId: string, player: Player) {
   });
   c.usedTeamIds.push(c.currentTeam!.id);
   c.selectedPlayer = null;
-  if (c.picks.length >= 11) {
-    c.round = 0;
-    campaignBeginRound();
-  } else {
+  // when the XI is complete, wait on the draft screen for the user to confirm
+  // (the "Continuar" button) instead of jumping straight to the pre-match
+  if (c.picks.length < 11) {
     campaignDrawTeam();
   }
   render();
@@ -1898,41 +1152,39 @@ function campaignAvgNumber(): number {
   );
 }
 
-function campaignStrengthSummary(): string {
-  const c = L.campaign!;
-  if (c.mode === "hardcore") {
-    return `<div class="cup-draft-rating hidden-rating"><strong>??</strong><span>Ratings ocultos<br>Modo Hardcore</span></div>`;
-  }
-  if (!c.picks.length) {
-    return `<div class="cup-draft-rating"><strong>--</strong><span>Ataque -- · Meio -- · Defesa --</span></div>`;
-  }
-  const s = computeStrength(c.picks, c.formationId);
-  return `
-    <div class="cup-draft-rating">
-      <strong>${Math.round(s.overall)}</strong>
-      <span>Ataque ${Math.round(s.attack)} · Meio ${Math.round(s.midfield)} · Defesa ${Math.round(s.defense)}</span>
-    </div>`;
+function awardStrongDraft(avg: number, sourceKey: string) {
+  if (avg >= 85) void awardAchievements(["strong_draft"], sourceKey);
 }
 
-function renderCampaignSquadRows(): string {
+function campaignStrengthData(): CampaignStrengthData {
   const c = L.campaign!;
-  const hideRatings = c.mode === "hardcore";
+  if (c.mode === "hardcore") return { state: "hidden" };
+  if (!c.picks.length) return { state: "empty" };
+  const s = computeStrength(c.picks, c.formationId);
+  return {
+    state: "ok",
+    overall: s.overall,
+    attack: s.attack,
+    midfield: s.midfield,
+    defense: s.defense,
+  };
+}
+
+function campaignSquadRowsData(): CampaignSquadRow[] {
+  const c = L.campaign!;
+  const hideRating = c.mode === "hardcore";
   const f = getFormation(c.formationId)!;
   const bySlot = new Map(c.picks.map((p) => [p.slotId, p]));
-  return `
-    <ol class="cup-squad-list">
-      ${f.slots
-        .map((slot) => {
-          const pick = bySlot.get(slot.id);
-          return `
-          <li class="${pick ? "filled" : "empty"}">
-            <span>${posLabel(slot.pos)}</span>
-            <strong>${pick ? escapeHtml(pick.player.name) : "--"}</strong>
-            <em>${pick ? (hideRatings ? "??" : pick.effectiveRating) : "--"}</em>
-          </li>`;
-        })
-        .join("")}
-    </ol>`;
+  return f.slots.map((slot) => {
+    const pick = bySlot.get(slot.id);
+    return {
+      slotId: slot.id,
+      pos: posLabel(slot.pos),
+      name: pick?.player.name ?? null,
+      rating: pick ? pick.effectiveRating : null,
+      hideRating,
+    };
+  });
 }
 
 function addCampaignJourneyStats(r: GauntletResult) {
@@ -1956,14 +1208,45 @@ function campaignTopStat(source: Record<string, number>) {
   );
 }
 
-function renderCampaignJourneyLeaders(): string {
-  const scorer = campaignTopStat(L.campaign!.campaignGoals);
-  const assist = campaignTopStat(L.campaign!.campaignAssists);
-  return `
-    <div class="leaders cup-journey-leaders">
-      ${leaderCard("Artilheiro da campanha", scorer ? { name: scorer[0], val: `${scorer[1]} gol${scorer[1] > 1 ? "s" : ""}`, side: "you" } : null)}
-      ${leaderCard("Garçom da campanha", assist ? { name: assist[0], val: `${assist[1]} assistência${assist[1] > 1 ? "s" : ""}`, side: "you" } : null)}
-    </div>`;
+function campaignJourneyLeadersData(): CampaignJourneyLeader[] {
+  const c = L.campaign!;
+  const scorer = campaignTopStat(c.campaignGoals);
+  const assist = campaignTopStat(c.campaignAssists);
+  return [
+    {
+      label: "Artilheiro da campanha",
+      name: scorer ? scorer[0] : null,
+      val: scorer
+        ? `${scorer[1]} gol${scorer[1] > 1 ? "s" : ""}`
+        : "Sem destaque",
+    },
+    {
+      label: "Garçom da campanha",
+      name: assist ? assist[0] : null,
+      val: assist
+        ? `${assist[1]} assistência${assist[1] > 1 ? "s" : ""}`
+        : "Sem destaque",
+    },
+  ];
+}
+
+function knockoutBracketData(): BracketRoundData[] {
+  const c = L.campaign!;
+  const rounds = ["16-avos", "Oitavas", "Quartas", "Semi", "Final"];
+  const currentIdx =
+    c.phase === "victory" ? rounds.length : Math.max(0, c.round - 3);
+  return rounds.map((label, idx) => {
+    const opp = c.knockoutPath[idx];
+    const state: BracketRoundData["state"] =
+      idx < currentIdx ? "done" : idx === currentIdx ? "next" : "";
+    const oppLabel =
+      idx === currentIdx && opp
+        ? `${opp.name}${opp.season ? ` ${opp.season}` : ""}`
+        : idx < currentIdx
+          ? "fase concluída"
+          : "adversário oculto";
+    return { label, state, oppLabel, showVs: idx === currentIdx };
+  });
 }
 
 function groupRow(team: Pick<Team, "id" | "name" | "season">): CupGroupRow {
@@ -2094,86 +1377,50 @@ function campaignStageLabel(round = L.campaign!.round): string {
   return WC_LADDER[round]?.label ?? "Copa do Mundo";
 }
 
-function renderGroupTable(): string {
+function campaignStatusData(): CampaignStatusData {
   const c = L.campaign!;
-  if (!c.groupTable.length) return "";
-  const rank = campaignRank();
-  const status =
-    c.groupQualified === null
-      ? `${rank}º no grupo neste momento`
-      : c.groupQualified
-        ? `Classificado: ${c.groupQualifiedLabel}`
-        : `Eliminado: ${c.groupQualifiedLabel}`;
-  return `
-    <section class="cup-status">
-      <div class="section-head compact">
-        <h3>Grupo A</h3>
-        <span>${escapeHtml(status)}</span>
-      </div>
-      <table class="cup-table">
-        <thead><tr><th>#</th><th>Time</th><th>J</th><th>Pts</th><th>SG</th><th>GP</th></tr></thead>
-        <tbody>
-          ${groupTableSorted()
-            .map(
-              (row, idx) => `
-            <tr class="${row.id === "you" ? "you" : ""}">
-              <td>${idx + 1}</td>
-              <td>${escapeHtml(row.name)}</td>
-              <td>${row.played}</td>
-              <td>${row.points}</td>
-              <td>${groupGoalDiff(row) >= 0 ? "+" : ""}${groupGoalDiff(row)}</td>
-              <td>${row.gf}</td>
-            </tr>
-          `,
-            )
-            .join("")}
-        </tbody>
-      </table>
-    </section>`;
-}
-
-function renderKnockoutBracket(): string {
-  const c = L.campaign!;
-  if (!c.knockoutPath.length) return "";
+  if (!c.groupTable.length) return { kind: "empty" };
+  const inGroup = c.round < 3 || c.groupQualified === false;
+  if (inGroup) {
+    const rank = campaignRank();
+    const status =
+      c.groupQualified === null
+        ? `${rank}º no grupo neste momento`
+        : c.groupQualified
+          ? `Classificado: ${c.groupQualifiedLabel}`
+          : `Eliminado: ${c.groupQualifiedLabel}`;
+    return {
+      kind: "group",
+      table: {
+        status,
+        rows: groupTableSorted().map((row) => ({
+          id: row.id,
+          name: row.name,
+          played: row.played,
+          points: row.points,
+          goalDiff: groupGoalDiff(row),
+          gf: row.gf,
+        })),
+      },
+    };
+  }
+  if (!c.knockoutPath.length) return { kind: "empty" };
   const rounds = ["16-avos", "Oitavas", "Quartas", "Semi", "Final"];
   const currentIdx =
     c.phase === "victory" ? rounds.length : Math.max(0, c.round - 3);
-  return `
-    <section class="cup-status">
-      <div class="section-head compact">
-        <h3>Chaveamento</h3>
-        <span>Mata-mata</span>
-      </div>
-      <div class="cup-bracket">
-        ${rounds
-          .map((label, idx) => {
-            const opp = c.knockoutPath[idx];
-            const state =
-              idx < currentIdx ? "done" : idx === currentIdx ? "next" : "";
-            const oppLabel =
-              idx === currentIdx && opp
-                ? `${opp.name}${opp.season ? ` ${opp.season}` : ""}`
-                : idx < currentIdx
-                  ? "fase concluída"
-                  : "adversário oculto";
-            return `
-            <div class="bracket-round ${state}">
-              <span>${label}</span>
-              <strong>Seu time</strong>
-              <em>${idx === currentIdx ? "vs " : ""}${escapeHtml(oppLabel)}</em>
-            </div>`;
-          })
-          .join("")}
-      </div>
-    </section>`;
-}
-
-function renderCampaignStatus(): string {
-  const c = L.campaign!;
-  if (!c.groupTable.length) return "";
-  return c.round < 3 || c.groupQualified === false
-    ? renderGroupTable()
-    : renderKnockoutBracket();
+  const bracket: BracketRoundData[] = rounds.map((label, idx) => {
+    const opp = c.knockoutPath[idx];
+    const state: BracketRoundData["state"] =
+      idx < currentIdx ? "done" : idx === currentIdx ? "next" : "";
+    const oppLabel =
+      idx === currentIdx && opp
+        ? `${opp.name}${opp.season ? ` ${opp.season}` : ""}`
+        : idx < currentIdx
+          ? "fase concluída"
+          : "adversário oculto";
+    return { label, state, oppLabel, showVs: idx === currentIdx };
+  });
+  return { kind: "knockout", bracket };
 }
 
 function renderCampaignDraft() {
@@ -2185,125 +1432,112 @@ function renderCampaignDraft() {
   const player = c.selectedPlayer
     ? team.players.find((p) => p.name === c.selectedPlayer)
     : null;
-  app.innerHTML = `
-    <div class="screen cup-screen cup-draft-screen">
-      <div class="topbar">
-        <div class="room-code">Copa do Mundo — Draft ${hideRatings ? "Hardcore" : ""}</div>
-        <div class="round-info">Jogador <strong>${c.picks.length + 1}</strong> / 11</div>
-        <button id="cup-exit" class="ghost" style="margin-left:auto">Sair</button>
-      </div>
-      <div class="cup-draft-layout">
-        <section class="draw-panel cup-draft-source">
-          <div class="draw-head">
-            <span class="draw-label">Saiu no sorteio</span>
-            <h2>${escapeHtml(team.name)} ${team.season}</h2>
-            <span class="draw-league">${escapeHtml(team.league)}</span>
-            <button id="cup-reroll-team" class="ghost reroll" ${c.rerollsRemaining <= 0 ? "disabled" : ""}>
-              Atualizar seleção (${c.rerollsRemaining})
-            </button>
-          </div>
-          <ul class="player-list">
-            ${team.players
-              .map((pl) => {
-                const can = selectable.has(pl.name);
-                const sel = c.selectedPlayer === pl.name;
-                return `<li class="pl-item ${can ? "clickable" : "taken"} ${sel ? "selected" : ""}" data-player="${escapeHtml(pl.name)}">
-                <span class="pl-pos pos-${groupOf(pl.pos).toLowerCase()}" title="${escapeHtml(playerPosText(pl))}">${escapeHtml(playerPosText(pl))}</span>
-                <span class="pl-name">${escapeHtml(pl.name)}</span>
-                <span class="pl-rt ${hideRatings ? "hidden" : ""}">${hideRatings ? "??" : pl.rating}</span></li>`;
-              })
-              .join("")}
-          </ul>
-          <p class="draft-hint">${
-            c.selectedPlayer
-              ? `Clique numa <strong>vaga compatível</strong> (mesmo setor) para escalar <strong>${escapeHtml(c.selectedPlayer)}</strong>.`
-              : c.selectedPickSlotId
-                ? `Clique numa <strong>vaga vazia</strong> do mesmo setor para mover o jogador, ou clique nele de novo para cancelar.`
-                : hideRatings
-                  ? "Escolha jogadores que encaixem no setor aberto. No Hardcore, os ratings ficam ocultos até o fim da campanha."
-                  : "Escolha jogadores que encaixem no setor aberto. Posição exata mantém o over cheio; adaptações próximas perdem um pouco."
-          }</p>
-        </section>
-
-        <section class="board you-board cup-draft-pitch">
-          <h3>Seu time</h3>
-          ${renderPitch(f, c.picks, !!c.selectedPlayer || !!c.selectedPickSlotId, true)}
-        </section>
-
-        <section class="board cup-draft-summary">
-          <div class="cup-summary-head">
-            <span>Overall time</span>
-            ${campaignStrengthSummary()}
-          </div>
-          ${renderCampaignSquadRows()}
-          ${campaignProgress(0)}
-          <p class="cup-note">Monte os 11 e entre na fase de grupos. Depois dela, o chaveamento começa nos 16-avos.</p>
-        </section>
-      </div>
-    </div>`;
-  document.getElementById("cup-exit")!.onclick = campaignExit;
-  document.getElementById("cup-reroll-team")!.onclick = () =>
-    campaignRerollTeam();
-  const playerListEl = app.querySelector<HTMLUListElement>(".player-list");
-  if (playerListEl) {
-    playerListEl.scrollTop = cupDraftScrollTop;
-    playerListEl.addEventListener("scroll", () => {
-      cupDraftScrollTop = playerListEl.scrollTop;
-    });
-  }
-  app.querySelectorAll<HTMLLIElement>(".pl-item.clickable").forEach(
-    (li) =>
-      (li.onclick = () => {
-        c.selectedPlayer = li.dataset.player!;
-        c.selectedPickSlotId = null;
-        render();
-      }),
-  );
+  const players: CampaignDraftPlayer[] = team.players.map((pl) => ({
+    name: pl.name,
+    pos: pl.pos,
+    posText: playerPosText(pl),
+    rating: pl.rating,
+    clickable: selectable.has(pl.name),
+    selected: c.selectedPlayer === pl.name,
+  }));
+  const complete = c.picks.length >= 11;
+  const hint: ReactNode = complete
+    ? createElement(
+        Fragment,
+        null,
+        "Elenco completo! Clique em ",
+        createElement("strong", null, "Continuar"),
+        " para entrar em campo.",
+      )
+    : c.selectedPlayer
+    ? createElement(
+        Fragment,
+        null,
+        "Clique numa ",
+        createElement("strong", null, "vaga compatível"),
+        " (mesmo setor) para escalar ",
+        createElement("strong", null, c.selectedPlayer),
+        ".",
+      )
+    : c.selectedPickSlotId
+      ? createElement(
+          Fragment,
+          null,
+          "Clique numa ",
+          createElement("strong", null, "vaga vazia"),
+          " do mesmo setor para mover o jogador, ou clique nele de novo para cancelar.",
+        )
+      : hideRatings
+        ? "Escolha jogadores que encaixem no setor aberto. No Hardcore, os ratings ficam ocultos até o fim da campanha."
+        : "Escolha jogadores que encaixem no setor aberto. Posição exata mantém o over cheio; adaptações próximas perdem um pouco.";
+  const strength = campaignStrengthData();
+  const squadRows = campaignSquadRowsData();
 
   const selectedPick = c.selectedPickSlotId
     ? c.picks.find((p) => p.slotId === c.selectedPickSlotId)
     : null;
   const moveSource = selectedPick?.player ?? null;
   const activePlayer = player ?? moveSource;
-
-  app
-    .querySelectorAll<HTMLElement>(".you-board .slot.filled")
-    .forEach((slotEl) => {
-      const slotId = slotEl.dataset.slot!;
-      if (c.selectedPickSlotId === slotId) slotEl.classList.add("selected-sub");
-      slotEl.onclick = (ev) => {
-        ev.stopPropagation();
-        if (c.selectedPlayer) {
-          // user was drafting a new player but clicked a filled slot — switch to relocate
-          c.selectedPlayer = null;
-        }
-        c.selectedPickSlotId = c.selectedPickSlotId === slotId ? null : slotId;
-        render();
-      };
-    });
-
+  const openSlotIds = new Set<string>();
   if (activePlayer) {
-    app
-      .querySelectorAll<HTMLElement>(".you-board .slot.empty")
-      .forEach((slotEl) => {
-        const slotId = slotEl.dataset.slot!;
-        const slot = f.slots.find((s) => s.id === slotId)!;
-        const slotGroup = groupOf(slot.pos);
-        const fits = playerPositions(activePlayer).some(
-          (pos) => groupOf(pos) === slotGroup,
-        );
-        if (fits) {
-          slotEl.classList.add("open");
-          slotEl.onclick = (ev) => {
-            ev.stopPropagation();
-            if (moveSource) campaignRelocate(c.selectedPickSlotId!, slotId);
-            else campaignPlace(slotId, activePlayer);
-          };
-        } else {
-          slotEl.classList.remove("open");
-        }
-      });
+    const playerGroups = playerPositions(activePlayer).map(groupOf);
+    for (const slot of f.slots) {
+      if (c.picks.some((p) => p.slotId === slot.id)) continue;
+      if (playerGroups.includes(groupOf(slot.pos))) openSlotIds.add(slot.id);
+    }
   }
+  const pitchSlots = buildPitchSlots(f, c.picks, {
+    openSlotIds,
+    selectedSubId: c.selectedPickSlotId,
+  });
+
+  renderReact(
+    createElement(CampaignDraft, {
+      pickNumber: Math.min(c.picks.length + 1, 11),
+      hideRatings,
+      sourceName: team.name,
+      sourceSeason: team.season,
+      sourceLeague: team.league,
+      rerollsRemaining: c.rerollsRemaining,
+      players,
+      hint,
+      pitchSlots,
+      strength,
+      squadRows,
+      progressRound: 0,
+      noteText: "Monte os 11 e entre na fase de grupos. Depois dela, o chaveamento começa nos 16-avos.",
+      complete,
+      initialScrollTop: cupDraftScrollTop,
+      onScrollPersist: (top) => {
+        cupDraftScrollTop = top;
+      },
+      onExit: campaignExit,
+      onReroll: () => campaignRerollTeam(),
+      onSelectPlayer: (name) => {
+        c.selectedPlayer = name;
+        c.selectedPickSlotId = null;
+        render();
+      },
+      onContinue: () => {
+        const avg = campaignAvgNumber();
+        awardStrongDraft(avg, `cup:draft:${c.runId}:${avg}`);
+        c.round = 0;
+        campaignBeginRound();
+        render();
+      },
+      onSlotClick: (slotId, filled) => {
+        if (filled) {
+          if (c.selectedPlayer) c.selectedPlayer = null;
+          c.selectedPickSlotId = c.selectedPickSlotId === slotId ? null : slotId;
+          render();
+          return;
+        }
+        if (!openSlotIds.has(slotId) || !activePlayer) return;
+        if (moveSource) campaignRelocate(c.selectedPickSlotId!, slotId);
+        else campaignPlace(slotId, activePlayer);
+      },
+    }),
+  );
 }
 
 function campaignRelocate(fromSlotId: string, toSlotId: string) {
@@ -2338,103 +1572,95 @@ function renderCampaignPreMatch() {
   const ladder = WC_LADDER[c.round];
   const opp = c.currentOpp!;
   const hideRatings = c.mode === "hardcore";
-  const isGroup = c.round < 3;
-  const isFinal = c.round === 7;
   const oppTactics = wcOpponentTactics(opp);
-  const oppPalette = teamPalette(opp.name);
-  const oppFlag = oppPalette.flagSvg
-    ? `<span class="cup-vs-flag">${oppPalette.flagSvg}</span>`
-    : `<div class="hero-crest opp">${initials(opp.name)}</div>`;
   const counterOf = (m: Mentality): Mentality | undefined =>
     MENTALITIES.find((x) => x.counters === m)?.id;
   const edge = mentalityEdge(c.mentality, oppTactics.mentality);
   const goodCounter = counterOf(oppTactics.mentality);
-  const tacticBanner =
-    edge === "a"
-      ? `<div class="tactic-banner good">Vantagem tática: seu estilo neutraliza ${escapeHtml(mentalityLabel(oppTactics.mentality))}.</div>`
-      : edge === "b"
-        ? `<div class="tactic-banner bad">Cuidado: ${escapeHtml(mentalityLabel(oppTactics.mentality))} neutraliza seu estilo.${goodCounter ? ` Considere ${escapeHtml(mentalityLabel(goodCounter))}.` : ""}</div>`
-        : goodCounter
-          ? `<div class="tactic-banner tip">Dica: ${escapeHtml(mentalityLabel(goodCounter))} neutraliza ${escapeHtml(mentalityLabel(oppTactics.mentality))}.</div>`
-          : "";
-  app.innerHTML = `
-    <div class="screen cup-screen cup-prematch-screen">
-      <div class="cup-head">
-        <div><span class="cup-tag">Copa do Mundo</span><h1>${escapeHtml(ladder.label)}</h1></div>
-        <button id="cup-exit" class="ghost">Sair</button>
-      </div>
-      ${campaignProgress(c.round)}
-      <div class="cup-prematch-grid">
-        <div class="cup-prematch-side">
-          ${renderCampaignStatus()}
-          <p class="cup-note">${
-            isGroup
-              ? "Fase de grupos: os 2 primeiros passam; alguns terceiros também."
-              : isFinal
-                ? "Final: se empatar, a taça será decidida nos pênaltis."
-                : "Mata-mata em jogo único: empate leva para os pênaltis."
-          }</p>
-        </div>
-        <div class="panel cup-prematch">
-          <div class="cup-vs">
-            <div class="cup-vs-side">
-              <div class="hero-crest you">${initials("Seu Time")}</div>
-              <div class="hero-name">Seu time</div>
-              <div class="hero-tag">${c.formationId} · ${hideRatings ? "OVR ??" : `OVR ${campaignAvgNumber()}`} · ${escapeHtml(mentalityLabel(c.mentality))} · ${escapeHtml(attackFocusLabel(c.attackFocus))}</div>
-            </div>
-            <span class="cup-vs-x">VS</span>
-            <div class="cup-vs-side">
-              ${oppFlag}
-              <div class="hero-name">${escapeHtml(teamFullName(opp))}</div>
-              <div class="hero-tag">${hideRatings ? "OVR ??" : `OVR ${teamAvg(opp).toFixed(0)}`} · ${oppTactics.formationId} · ${escapeHtml(mentalityLabel(oppTactics.mentality))} · ${escapeHtml(attackFocusLabel(oppTactics.attackFocus))}</div>
-            </div>
-          </div>
-          <div class="prematch-banners">
-            ${hideRatings ? `<div class="tactic-banner hardcore">Modo Hardcore: ratings e dicas táticas estão ocultos.</div>` : `${tacticBanner}${renderAttackFocusBanner(c.picks, c.attackFocus)}`}
-          </div>
-          <div class="prematch-control-grid">
-            <div class="prematch-ment">
-              <span class="prematch-ment-label">Mentalidade (peso dobrado)</span>
-              <div class="prematch-ment-row">
-                ${MENTALITIES.map(
-                  (m) =>
-                    `<button class="ment-chip ${m.id === c.mentality ? "active" : ""}" data-ment="${m.id}" title="${escapeHtml(m.desc)}">${escapeHtml(m.name)}</button>`,
-                ).join("")}
-              </div>
-            </div>
-            <div class="prematch-ment">
-              <span class="prematch-ment-label">Foco de ataque</span>
-              <div class="prematch-ment-row">
-                ${ATTACK_FOCUS_OPTIONS.map(
-                  (f) =>
-                    `<button class="focus-chip ${f.id === c.attackFocus ? "active" : ""}" data-focus="${f.id}" title="${escapeHtml(f.desc)}">${escapeHtml(f.name)}</button>`,
-                ).join("")}
-              </div>
-            </div>
-          </div>
-          <div class="lobby-actions"><button id="cup-play" class="primary big">Entrar em campo</button></div>
-        </div>
-      </div>
-    </div>`;
-  document.getElementById("cup-exit")!.onclick = campaignExit;
-  app.querySelectorAll<HTMLButtonElement>(".ment-chip").forEach(
-    (b) =>
-      (b.onclick = () => {
-        c.mentality = b.dataset.ment as Mentality;
+  const banners: BannerSpec[] = [];
+  if (hideRatings) {
+    banners.push({ kind: "hardcore", text: "Modo Hardcore: ratings e dicas táticas estão ocultos." });
+  } else {
+    if (edge === "a") {
+      banners.push({ kind: "good", text: `Vantagem tática: seu estilo neutraliza ${mentalityLabel(oppTactics.mentality)}.` });
+    } else if (edge === "b") {
+      banners.push({
+        kind: "bad",
+        text: `Cuidado: ${mentalityLabel(oppTactics.mentality)} neutraliza seu estilo.${goodCounter ? ` Considere ${mentalityLabel(goodCounter)}.` : ""}`,
+      });
+    } else if (goodCounter) {
+      banners.push({ kind: "tip", text: `Dica: ${mentalityLabel(goodCounter)} neutraliza ${mentalityLabel(oppTactics.mentality)}.` });
+    }
+    const focusSpec = attackFocusBannerSpec(c.picks, c.attackFocus);
+    if (focusSpec) banners.push(focusSpec);
+  }
+  renderReact(
+    createElement(CampaignPreMatch, {
+      ladderLabel: ladder.label,
+      progressRound: c.round,
+      status: campaignStatusData(),
+      banners,
+      youFormation: c.formationId,
+      youOvrText: hideRatings ? "OVR ??" : `OVR ${campaignAvgNumber()}`,
+      youMentalityLabel: mentalityLabel(c.mentality),
+      youFocusLabel: attackFocusLabel(c.attackFocus),
+      oppName: teamFullName(opp),
+      oppFlagName: opp.name,
+      oppInitials: initials(opp.name),
+      oppOvrText: hideRatings ? "OVR ??" : `OVR ${teamAvg(opp).toFixed(0)}`,
+      oppFormation: oppTactics.formationId,
+      oppMentalityLabel: mentalityLabel(oppTactics.mentality),
+      oppFocusLabel: attackFocusLabel(oppTactics.attackFocus),
+      mentality: c.mentality,
+      attackFocus: c.attackFocus,
+      onExit: campaignExit,
+      onSelectMentality: (m) => {
+        c.mentality = m;
         render();
-      }),
-  );
-  app.querySelectorAll<HTMLButtonElement>(".focus-chip").forEach(
-    (b) =>
-      (b.onclick = () => {
-        c.attackFocus = b.dataset.focus as AttackFocus;
+      },
+      onSelectFocus: (f) => {
+        c.attackFocus = f;
         render();
-      }),
+      },
+      onPlay: () => {
+        c.phase = "match";
+        render();
+      },
+    }),
   );
-  document.getElementById("cup-play")!.onclick = () => {
-    c.phase = "match";
-    render();
-  };
+}
+
+function campaignMatchAchievementIds(r: GauntletResult): string[] {
+  const ids: string[] = [];
+  const playerGoals = new Map<string, number>();
+  const playerAssists = new Map<string, number>();
+  let youHalfGoals = 0;
+  let oppHalfGoals = 0;
+  let youRedCard = false;
+  for (const ev of r.timeline) {
+    if (ev.type === "card" && ev.card === "red" && ev.side === "home")
+      youRedCard = true;
+    if (ev.type !== "goal") continue;
+    if (ev.minute <= 45) {
+      if (ev.side === "home") youHalfGoals++;
+      else if (ev.side === "away") oppHalfGoals++;
+    }
+    if (ev.side !== "home") continue;
+    if (ev.player)
+      playerGoals.set(ev.player, (playerGoals.get(ev.player) ?? 0) + 1);
+    if (ev.assist)
+      playerAssists.set(ev.assist, (playerAssists.get(ev.assist) ?? 0) + 1);
+  }
+  const totalAssists = [...playerAssists.values()].reduce((sum, n) => sum + n, 0);
+  if (r.youGoals > 0) ids.push("first_goal");
+  if (r.outcome === "win") ids.push("first_win");
+  if (r.outcome === "win" && r.oppGoals === 0) ids.push("clean_sheet");
+  if ([...playerGoals.values()].some((n) => n >= 3)) ids.push("hat_trick");
+  if (totalAssists >= 3) ids.push("assist_master");
+  if (r.outcome === "win" && r.youGoals - r.oppGoals >= 3) ids.push("big_win");
+  if (r.outcome === "win" && youHalfGoals < oppHalfGoals) ids.push("comeback_win");
+  if (r.outcome === "win" && youRedCard) ids.push("red_card_win");
+  return ids;
 }
 
 function campaignAdvance() {
@@ -2447,7 +1673,7 @@ function campaignAdvance() {
     r.outcome === "win" ? "Jogo da Copa vencido" : "Jogo da Copa concluído",
     `xp:${roundKey}:match`,
   );
-  const matchIds: string[] = [];
+  const matchIds = campaignMatchAchievementIds(r);
   if (r.outcome === "win") matchIds.push("cup_first_win");
   if (r.outcome === "win" && c.mode === "hardcore")
     matchIds.push("cup_hardcore_first_win");
@@ -2543,76 +1769,25 @@ function renderCampaignMatch() {
   const r = simulateGauntletMatch(youSim, oppSim, c.round >= 3);
   c.lastResult = r;
   L.playing = true;
-  const oppPalette = teamPalette(oppTeam.name);
-  const oppBadge = oppPalette.flagSvg
-    ? `<span class="sb-badge flag">${oppPalette.flagSvg}</span>`
-    : `<span class="sb-badge opp">ADV</span>`;
+  const skipRef: { current: (() => void) | null } = { current: null };
+  liveStore.reset();
 
-  app.innerHTML = `
-    <div class="screen live cup-match">
-      <div class="live-stage">
-        <div class="live-layout">
-          <div class="live-left">
-            <div class="ballfield">
-              ${ballFieldSvg()}
-              <div class="bf-ball" id="bf-ball">${soccerBallSvg()}</div>
-            </div>
-          </div>
-          <div class="live-center">
-            <div class="live-sub"><span class="sb-leg" id="half-label">1º Tempo</span><span class="agg-mini">${escapeHtml(WC_LADDER[c.round].label)}</span></div>
-            <div class="scoreboard">
-              <div class="sb-team"><span class="sb-badge you">VC</span><span class="sb-name">Seu time</span></div>
-              <div class="sb-center"><div class="sb-score"><span id="sc-l">0</span><span class="sb-sep">:</span><span id="sc-r">0</span></div><div class="sb-clock"><span id="clk">0</span>'</div></div>
-              <div class="sb-team right"><span class="sb-name">${escapeHtml(teamFullName(oppTeam))}</span>${oppBadge}</div>
-            </div>
-            <div class="live-leaders" id="live-leaders"></div>
-            <div class="goal-overlay" id="goal-ov"><div class="goal-word">GOL!</div><div class="goal-scorer" id="goal-scorer"></div></div>
-            <div class="shootout-panel" id="shootout-panel" hidden>
-              <div class="shootout-head">
-                <span>Disputa de pênaltis</span>
-                <strong id="pen-score">0 x 0</strong>
-              </div>
-              <div class="shootout-lanes">
-                <div>
-                  <h4>Seu time</h4>
-                  <ul id="pen-you"></ul>
-                </div>
-                <div>
-                  <h4>${escapeHtml(teamFullName(oppTeam))}</h4>
-                  <ul id="pen-opp"></ul>
-                </div>
-              </div>
-            </div>
-          </div>
-          <div class="live-right">
-            <div class="speed-row">
-              <span class="spd-label">Velocidade</span>
-              ${[1, 1.5, 2].map((v) => `<button class="spd ${v === L.matchSpeed ? "active" : ""}" data-spd="${v}">${v}x</button>`).join("")}
-              <button id="skip" class="ghost skip">Pular</button>
-            </div>
-            <ul class="event-feed" id="feed"></ul>
-          </div>
-        </div>
-      </div>
-    </div>`;
+  renderReact(
+    createElement(CampaignMatchShell, {
+      ladderLabel: WC_LADDER[c.round].label,
+      oppName: teamFullName(oppTeam),
+      oppFlagName: oppTeam.name,
+      oppInitials: "ADV",
+      speedOptions: [1, 1.5, 2],
+      activeSpeed: L.matchSpeed,
+      showPause: true,
+      onSpeedChange: setMatchSpeed,
+      onTogglePause: (p) => setPaused(p),
+      onSkip: () => skipRef.current?.(),
+    }),
+  );
 
-  const $ = (id: string) => document.getElementById(id)!;
-  const scL = $("sc-l"),
-    scR = $("sc-r"),
-    clk = $("clk"),
-    halfLabel = $("half-label"),
-    feed = $("feed");
-  const goalOv = $("goal-ov"),
-    goalScorer = $("goal-scorer");
-  const ball = $("bf-ball") as HTMLDivElement;
-  const liveLeaders = $("live-leaders");
-  const shootoutPanel = $("shootout-panel");
-  const penScore = $("pen-score");
-  const penYou = $("pen-you");
-  const penOpp = $("pen-opp");
   const goals = { you: 0, opp: 0 };
-  const liveStats = new Map<string, LiveStatLine>();
-  renderLiveStats(liveLeaders, liveStats);
   let minute = 0,
     evIdx = 0,
     timer: number | undefined,
@@ -2620,34 +1795,30 @@ function renderCampaignMatch() {
 
   const pidOf = (side: MatchEvent["side"]) =>
     side === "home" ? "you" : side === "away" ? "opp" : null;
-  function updateScore() {
-    scL.textContent = String(goals.you);
-    scR.textContent = String(goals.opp);
-  }
   function moveBall(ev: MatchEvent, dur: number) {
     if (ev.bx === undefined) return;
-    ball.style.transitionDuration = `${Math.max(180, Math.min(1300, dur * 0.85))}ms`;
-    ball.style.left = `${((ev.bx - 0.5) / 105) * 100}%`;
-    ball.style.top = `${((ev.by! - 0.5) / 68) * 100}%`;
-    ball.classList.toggle("goal", ev.type === "goal");
+    liveStore.setBall({
+      transitionMs: Math.max(180, Math.min(1300, dur * 0.85)),
+      left: ((ev.bx - 0.5) / 105) * 100,
+      top: ((ev.by! - 0.5) / 68) * 100,
+      goal: ev.type === "goal",
+    });
   }
   function addFeed(ev: MatchEvent) {
-    const li = document.createElement("li");
-    const cardCls =
-      ev.type === "card" ? (ev.card === "red" ? " red" : " yellow") : "";
-    li.className = `ev ${ev.type}${cardCls}`;
-    const pos =
-      ev.bx !== undefined
-        ? `<span class="ev-pos">${ev.bx}-${ev.by}</span>`
-        : "";
-    li.innerHTML = `<span class="ev-min">${Math.min(ev.minute, 90)}'</span><span class="ev-tx">${escapeHtml(ev.text)}</span>${pos}`;
-    feed.prepend(li);
+    const cardKind = ev.type === "card" ? (ev.card === "red" ? "red" : "yellow") : undefined;
+    const pos = ev.bx !== undefined ? `${ev.bx}-${ev.by}` : null;
+    liveStore.prependFeed({
+      type: ev.type,
+      minute: ev.minute,
+      text: ev.text,
+      pos,
+      cardKind,
+    });
   }
   function goalAnim(scorer?: string) {
-    goalScorer.textContent = scorer ?? "";
-    goalOv.classList.add("show");
+    liveStore.showGoal(scorer ?? "");
     clearTimeout(hideTimer);
-    hideTimer = window.setTimeout(() => goalOv.classList.remove("show"), 950);
+    hideTimer = window.setTimeout(() => liveStore.hideGoal(), 950);
   }
   function delayFor(ev: MatchEvent): number {
     switch (ev.type) {
@@ -2671,9 +1842,25 @@ function renderCampaignMatch() {
         return 760;
     }
   }
+  let paused = false;
+  let pendingFn: (() => void) | null = null;
   function schedule(d: number, fn: () => void = tick) {
     clearTimeout(timer);
-    timer = window.setTimeout(fn, d);
+    pendingFn = fn;
+    if (paused) return;
+    timer = window.setTimeout(() => {
+      pendingFn = null;
+      fn();
+    }, d);
+  }
+  function setPaused(p: boolean) {
+    paused = p;
+    liveStore.setPaused(p);
+    if (p) {
+      clearTimeout(timer);
+    } else if (pendingFn) {
+      schedule(120, pendingFn);
+    }
   }
   function tick() {
     if (!L.playing) return;
@@ -2684,13 +1871,11 @@ function renderCampaignMatch() {
       addFeed(ev);
       if (ev.type === "goal") {
         const p = pidOf(ev.side);
-        if (p) goals[p as "you" | "opp"]++;
         if (p) {
-          bumpStat(liveStats, ev.player, p, "goals");
-          bumpStat(liveStats, ev.assist, p, "assists");
-          renderLiveStats(liveLeaders, liveStats);
+          goals[p as "you" | "opp"]++;
+          liveStore.addGoal(p, Math.min(ev.minute, 90), ev.player ?? "?", ev.assist ?? null);
         }
-        updateScore();
+        liveStore.setScore(goals.you, goals.opp);
         goalAnim(ev.player);
       }
       schedule(d / L.matchSpeed);
@@ -2702,34 +1887,36 @@ function renderCampaignMatch() {
       return;
     }
     minute++;
-    clk.textContent = String(Math.min(minute, 90));
-    halfLabel.textContent = minute <= 45 ? "1º Tempo" : "2º Tempo";
+    liveStore.setMinute(minute);
+    liveStore.setHalfLabel(minute <= 45 ? "1º Tempo" : "2º Tempo");
     schedule(130 / L.matchSpeed);
-  }
-  function renderKick(kick: ShootoutKick, score: { you: number; opp: number }) {
-    const side = kick.side === "home" ? "you" : "opp";
-    if (kick.scored) score[side]++;
-    penScore.textContent = `${score.you} x ${score.opp}`;
-    const li = document.createElement("li");
-    li.className = `pen-kick ${kick.scored ? "made" : "missed"}`;
-    li.innerHTML = `<strong>${escapeHtml(kick.taker)}</strong><span>${kick.scored ? "converteu" : "perdeu"}</span>`;
-    (side === "you" ? penYou : penOpp).appendChild(li);
   }
   function playShootout() {
     if (!r.shootout?.length) return finish();
-    shootoutPanel.hidden = false;
-    halfLabel.textContent = "Pênaltis";
-    const score = { you: 0, opp: 0 };
+    liveStore.setHalfLabel("Pênaltis");
+    liveStore.openShootout();
     let kickIdx = 0;
+    // Penalties always play out at a dramatic, fixed pace (ignore match speed).
+    const STEP_UP = 1100; // kicker steps up, suspense before the result
+    const REVEAL = 1500; // pause on the result before the next kicker
     const nextKick = () => {
       if (!L.playing) return;
-      const kick = r.shootout![kickIdx++];
+      const kick = r.shootout![kickIdx];
       if (!kick) {
-        schedule(1300, finish);
+        schedule(1600, finish);
         return;
       }
-      renderKick(kick, score);
-      schedule(900 / L.matchSpeed, nextKick);
+      // after the first 5 pairs, every remaining kick is sudden death
+      if (kickIdx === 10) liveStore.setSuddenDeath();
+      kickIdx++;
+      const side = kick.side === "home" ? "you" : "opp";
+      const id = liveStore.appendKick(side, kick.taker);
+      schedule(STEP_UP, () => {
+        if (!L.playing) return;
+        // the shootout panel tracks the running score from resolved kicks
+        liveStore.resolveKick(side, id, kick.scored);
+        schedule(REVEAL, nextKick);
+      });
     };
     nextKick();
   }
@@ -2739,17 +1926,7 @@ function renderCampaignMatch() {
     campaignAdvance();
   }
 
-  app.querySelectorAll<HTMLButtonElement>(".spd").forEach(
-    (b) =>
-      (b.onclick = () => {
-        setMatchSpeed(Number(b.dataset.spd));
-        app
-          .querySelectorAll(".spd")
-          .forEach((x) => x.classList.remove("active"));
-        b.classList.add("active");
-      }),
-  );
-  $("skip").onclick = () => finish();
+  skipRef.current = finish;
   schedule(700);
 }
 
@@ -2766,47 +1943,41 @@ function renderCampaignGameOver() {
     : r.penaltyScore
       ? `Empate contra ${r.oppName}: ${r.youGoals} x ${r.oppGoals}. Nos pênaltis, ${r.penaltyScore[r.youId]} x ${r.penaltyScore[r.oppId]}.`
       : `Resultado contra ${r.oppName}: ${r.youGoals} x ${r.oppGoals} (${r.outcome === "draw" ? "empate" : "derrota"}).`;
-  const penLine = r.penaltyScore
-    ? `<div class="cup-end-pens">Pênaltis ${r.penaltyScore[r.youId]} x ${r.penaltyScore[r.oppId]}</div>`
-    : "";
-  app.innerHTML = `
-    <div class="screen cup-screen cup-end">
-      <div class="cup-end-card lose">
-        <span class="cup-tag">Game Over</span>
-        <h1>${escapeHtml(title)}</h1>
-        <p class="cup-end-msg">${escapeHtml(detail)}</p>
-        <div class="cup-end-score">${r.youGoals} <span class="x">x</span> ${r.oppGoals}${penLine}<div class="cup-end-opp">contra ${escapeHtml(r.oppName)}</div></div>
-        ${renderCampaignJourneyLeaders()}
-        ${fellInGroup ? renderGroupTable() : renderKnockoutBracket()}
-        ${campaignProgress(completed)}
-        <div class="lobby-actions">
-          <button id="cup-retry" class="primary big">Tentar de novo</button>
-          <button id="cup-home" class="primary alt big">Tela inicial</button>
-        </div>
-      </div>
-    </div>`;
-  document.getElementById("cup-retry")!.onclick = () => startCampaign();
-  document.getElementById("cup-home")!.onclick = goHome;
+  const penaltyLabel = r.penaltyScore
+    ? `Pênaltis ${r.penaltyScore[r.youId]} x ${r.penaltyScore[r.oppId]}`
+    : null;
+  const status: CampaignStatusData = fellInGroup
+    ? campaignStatusData()
+    : { kind: "knockout", bracket: knockoutBracketData() };
+  renderReact(
+    createElement(CampaignGameOver, {
+      title,
+      detail,
+      youGoals: r.youGoals,
+      oppGoals: r.oppGoals,
+      oppName: r.oppName,
+      penaltyLabel,
+      journeyLeaders: campaignJourneyLeadersData(),
+      status,
+      progressRound: completed,
+      onRetry: () => startCampaign(),
+      onHome: goHome,
+    }),
+  );
 }
 
 function renderCampaignVictory() {
   const c = L.campaign!;
-  app.innerHTML = `
-    <div class="screen cup-screen cup-end">
-      <div class="cup-end-card win">
-        <img class="cup-victory-trophy" src="/world_cup_trophy.png" alt="Troféu da Copa do Mundo" />        <h1>CAMPEÃO DO MUNDO!</h1>
-        <p class="cup-end-msg">Classificado como ${escapeHtml(c.groupQualifiedLabel ?? "líder do grupo")} e campeão de todo o mata-mata. Campanha impecável!</p>
-        ${renderCampaignJourneyLeaders()}
-        ${renderKnockoutBracket()}
-        ${campaignProgress(8)}
-        <div class="lobby-actions">
-          <button id="cup-retry" class="primary big">Jogar de novo</button>
-          <button id="cup-home" class="primary alt big">Tela inicial</button>
-        </div>
-      </div>
-    </div>`;
-  document.getElementById("cup-retry")!.onclick = () => startCampaign();
-  document.getElementById("cup-home")!.onclick = goHome;
+  renderReact(
+    createElement(CampaignVictory, {
+      groupLabel: c.groupQualifiedLabel ?? "líder do grupo",
+      journeyLeaders: campaignJourneyLeadersData(),
+      bracket: knockoutBracketData(),
+      progressRound: 8,
+      onRetry: () => startCampaign(),
+      onHome: goHome,
+    }),
+  );
 }
 
 // ---------------- Lobby / Setup ----------------
@@ -2815,132 +1986,47 @@ function renderLobby() {
   const s = L.state!;
   const you = me();
   const opp = opponent();
-  const youReady = you?.ready;
   const vsAI = s.players.some((p) => p.isAI);
+  const formation = getFormation(L.formationId)!;
 
-  app.innerHTML = `
-    <div class="screen lobby">
-      <div class="topbar">
-        ${
-          vsAI
-            ? `<div class="room-code">Modo solo <strong>vs Máquina</strong></div>`
-            : `<div class="room-code">Sala <strong>${s.code}</strong>
-                <button id="copy" class="ghost">copiar</button>
-              </div>`
-        }
-        <div class="mode-tag ${s.mode}">${s.mode === "hardcore" ? "Modo Hardcore" : "Modo Clássico"}</div>
-        <button id="leave-room" class="ghost">Sair</button>
-      </div>
-
-      <div class="players-status">
-        ${playerChip(you, "Você")}
-        ${opp ? playerChip(opp, "Adversário") : `<div class="chip waiting">Aguardando adversário…</div>`}
-      </div>
-
-      <div class="setup-board">
-        <section class="setup-panel setup-formation">
-          <div class="setup-panel-head">
-            <h2>Formação</h2>
-            <span>${escapeHtml(getFormation(L.formationId)?.name ?? L.formationId)}</span>
-          </div>
-          <div class="formation-grid">
-            ${FORMATIONS.map(
-              (f) =>
-                `<button class="form-btn ${f.id === L.formationId ? "active" : ""}" data-form="${f.id}">${f.name}</button>`,
-            ).join("")}
-          </div>
-          <div class="mini-pitch-wrap setup-pitch">
-            ${renderPitch(getFormation(L.formationId)!, [], false, false, true)}
-          </div>
-        </section>
-
-        <section class="setup-panel setup-mentality mentality-col">
-          <div class="setup-panel-head">
-            <h2>Mentalidade</h2>
-            <span>Plano de jogo</span>
-          </div>
-          ${MENTALITIES.map(
-            (m) => `
-            <button class="ment-btn ${m.id === L.mentality ? "active" : ""}" data-ment="${m.id}">
-              <strong>${m.name}</strong>
-              <span>${m.desc}</span>
-            </button>`,
-          ).join("")}
-        </section>
-
-        <section class="setup-panel setup-focus">
-          <div class="setup-panel-head">
-            <h2>Foco de ataque</h2>
-            <span>Preferência ofensiva</span>
-          </div>
-          <div class="focus-grid">
-            ${ATTACK_FOCUS_OPTIONS.map(
-              (f) => `
-              <button class="focus-btn ${f.id === L.attackFocus ? "active" : ""}" data-focus="${f.id}">
-                <strong>${f.name}</strong>
-                <span>${f.desc}</span>
-              </button>`,
-            ).join("")}
-          </div>
-
-          <div class="lobby-actions">
-            <button id="ready" class="primary big ${youReady ? "done" : ""}" ${youReady ? "disabled" : ""}>
-              ${youReady ? "✓ Pronto! Aguardando…" : "Confirmar e ficar pronto"}
-            </button>
-          </div>
-        </section>
-      </div>
-    </div>
-  `;
-
-  app
-    .querySelector<HTMLButtonElement>("#copy")
-    ?.addEventListener("click", () => {
-      navigator.clipboard?.writeText(s.code);
-      showToast("Código copiado!");
-    });
-  app.querySelector<HTMLButtonElement>("#leave-room")!.onclick = goHome;
-
-  app.querySelectorAll<HTMLButtonElement>(".form-btn").forEach((btn) => {
-    btn.onclick = () => {
-      L.formationId = btn.dataset.form!;
-      sendSetup(L.formationId, L.mentality, L.attackFocus);
-      render();
-    };
-  });
-
-  app.querySelectorAll<HTMLButtonElement>(".ment-btn").forEach((btn) => {
-    btn.onclick = () => {
-      L.mentality = btn.dataset.ment as Mentality;
-      sendSetup(L.formationId, L.mentality, L.attackFocus);
-      render();
-    };
-  });
-
-  app.querySelectorAll<HTMLButtonElement>(".focus-btn").forEach((btn) => {
-    btn.onclick = () => {
-      L.attackFocus = btn.dataset.focus as AttackFocus;
-      sendSetup(L.formationId, L.mentality, L.attackFocus);
-      render();
-    };
-  });
-
-  app.querySelector<HTMLButtonElement>("#ready")!.onclick = () => {
-    sendSetup(L.formationId, L.mentality, L.attackFocus);
-    sendReady();
-  };
-}
-
-function playerChip(p: PlayerPublic | undefined, label: string): string {
-  if (!p) return "";
-  const form = p.formationId ?? "—";
-  return `
-    <div class="chip ${p.ready ? "ready" : ""} ${p.connected ? "" : "offline"}">
-      <span class="chip-label">${label}</span>
-      <strong>${escapeHtml(p.name)}</strong>
-      <span class="chip-sub">${form} ${p.ready ? "• ✓ pronto" : "• escolhendo…"}</span>
-    </div>
-  `;
+  renderReact(
+    createElement(Lobby, {
+      code: s.code,
+      mode: s.mode,
+      vsAI,
+      you,
+      opponent: opp,
+      formation,
+      formationId: L.formationId,
+      mentality: L.mentality,
+      attackFocus: L.attackFocus,
+      pitchSlots: buildPitchSlots(formation, [], { showPos: true }),
+      onCopyCode: () => {
+        navigator.clipboard?.writeText(s.code);
+        showToast("Código copiado!");
+      },
+      onLeave: goHome,
+      onFormationChange: (formationId: string) => {
+        L.formationId = formationId;
+        sendSetup(L.formationId, L.mentality, L.attackFocus);
+        render();
+      },
+      onMentalityChange: (mentality: Mentality) => {
+        L.mentality = mentality;
+        sendSetup(L.formationId, L.mentality, L.attackFocus);
+        render();
+      },
+      onAttackFocusChange: (focus: AttackFocus) => {
+        L.attackFocus = focus;
+        sendSetup(L.formationId, L.mentality, L.attackFocus);
+        render();
+      },
+      onReady: () => {
+        sendSetup(L.formationId, L.mentality, L.attackFocus);
+        sendReady();
+      },
+    }),
+  );
 }
 
 // ---------------- Draft ----------------
@@ -2953,190 +2039,166 @@ function renderDraft() {
   const vsAI = s.players.some((p) => p.isAI);
   const team = s.currentTeam;
   const yourForm = getFormation(you.formationId!)!;
-  const renderPlayerItem = (
-    pl: NonNullable<typeof team>["players"][number],
-  ) => {
-    const taken = s.takenThisRound.includes(pl.name);
-    const selected = L.selectedPlayer === pl.name;
-    const clickable = yourTurn && !taken;
-    return `
-      <li class="pl-item ${taken ? "taken" : ""} ${selected ? "selected" : ""} ${clickable ? "clickable" : ""}"
-          data-player="${escapeHtml(pl.name)}">
-        <span class="pl-pos pos-${groupOf(pl.pos).toLowerCase()}" title="${escapeHtml(playerPosText(pl))}">${escapeHtml(playerPosText(pl))}</span>
-        <span class="pl-name">${escapeHtml(pl.name)}</span>
-        ${s.hideRatings ? `<span class="pl-rt hidden">??</span>` : `<span class="pl-rt">${pl.rating}</span>`}
-        ${taken ? `<span class="pl-tick">✓</span>` : ""}
-      </li>`;
-  };
-
-  app.innerHTML = `
-    <div class="screen draft">
-      <div class="topbar">
-        <div class="room-code">${
-          vsAI
-            ? `Modo solo <strong>vs Máquina</strong>`
-            : `Sala <strong>${s.code}</strong>`
-        }</div>
-        <div class="round-info">Rodada <strong>${s.round + 1}</strong> / ${s.totalSlots}</div>
-        <div class="turn-pill ${yourTurn ? "you" : "opp"}">
-          ${yourTurn ? "Sua vez de escolher" : `Vez de ${escapeHtml(opp?.name ?? "adversário")}`}
-        </div>
-        <button id="leave-room" class="ghost">Sair</button>
-      </div>
-
-      <div class="draft-layout classic-draft-layout">
-        <!-- Seu time -->
-        <section class="board draft-board you-board ${yourTurn ? "active-turn" : ""}">
-          <div class="draft-board-head">
-            <h3>Seu time</h3>
-            ${teamStrengthCard(you)}
-          </div>
-          ${renderPitch(yourForm, you.picks, yourTurn && !!L.selectedPlayer, true, true)}
-          ${renderAttackFocusBanner(you.picks, you.attackFocus ?? L.attackFocus)}
-        </section>
-
-        <!-- Time sorteado -->
-        <section class="draw-panel classic-draw ${yourTurn ? "your-turn" : ""}">
-          <div class="draw-head">
-            <span class="draw-label">Time sorteado</span>
-            <h2>${team ? escapeHtml(`${team.name} ${team.season}`) : "—"}</h2>
-            <span class="draw-league">${team?.league ?? ""}</span>
-            ${
-              s.pvpRerollsEnabled
-                ? `<button id="reroll-team" class="ghost reroll" ${!yourTurn || (you.rerollsRemaining ?? 0) <= 0 ? "disabled" : ""}>
-                    Atualizar time (${you.rerollsRemaining ?? 0})
-                  </button>`
-                : ""
-            }
-          </div>
-          <ul class="player-list">
-            ${team ? team.players.map(renderPlayerItem).join("") : ""}
-          </ul>
-          <p class="draft-hint">
-            ${
-              yourTurn
-                ? L.selectedPlayer
-                  ? `Agora clique numa <strong>vaga livre</strong> do seu campo para escalar <strong>${escapeHtml(L.selectedPlayer)}</strong>.`
-                  : "Selecione um jogador da lista acima."
-                : "Aguarde o adversário escolher…"
-            }
-          </p>
-        </section>
-
-        <!-- Adversário -->
-        <section class="board draft-board opp-board ${!yourTurn ? "active-turn" : ""}">
-          <div class="draft-board-head">
-            <h3>${escapeHtml(opp?.name ?? "Adversário")}</h3>
-            ${teamStrengthCard(opp)}
-          </div>
-          ${opp && opp.formationId ? renderPitch(getFormation(opp.formationId)!, opp.picks, false, false, true) : ""}
-        </section>
-      </div>
-    </div>
-  `;
-
-  app.querySelector<HTMLButtonElement>("#leave-room")!.onclick = goHome;
-
-  // select a player
-  app
-    .querySelector<HTMLButtonElement>("#reroll-team")
-    ?.addEventListener("click", () => {
-      L.selectedPlayer = null;
-      sendRerollTeam();
-    });
-
-  // select a player
-  app.querySelectorAll<HTMLLIElement>(".pl-item.clickable").forEach((li) => {
-    li.onclick = () => {
-      L.selectedPlayer = li.dataset.player!;
-      render();
-    };
-  });
-
-  // click an open slot to field the player
-  if (yourTurn && L.selectedPlayer) {
-    app
-      .querySelectorAll<HTMLElement>(".you-board .slot.empty")
-      .forEach((slot) => {
-        slot.onclick = () => {
-          sendPick(slot.dataset.slot!, L.selectedPlayer!);
-          L.selectedPlayer = null;
-        };
-      });
-  }
+  renderReact(
+    createElement(Draft, {
+      state: s,
+      you,
+      opponent: opp,
+      team,
+      yourTurn,
+      vsAI,
+      selectedPlayer: L.selectedPlayer,
+      youPitchSlots: buildPitchSlots(yourForm, you.picks, { showPos: true }),
+      opponentPitchSlots:
+        opp && opp.formationId
+          ? buildPitchSlots(getFormation(opp.formationId)!, opp.picks, { showPos: true })
+          : null,
+      youStrength: teamStrengthData(you),
+      opponentStrength: teamStrengthData(opp),
+      attackFocusBanner: attackFocusBannerSpec(
+        you.picks,
+        you.attackFocus ?? L.attackFocus,
+      ),
+      playerPosText,
+      onLeave: goHome,
+      onReroll: () => {
+        L.selectedPlayer = null;
+        sendRerollTeam();
+      },
+      onSelectPlayer: (name: string) => {
+        L.selectedPlayer = name;
+        render();
+      },
+      onPickSlot: (slotId: string) => {
+        if (!L.selectedPlayer) return;
+        sendPick(slotId, L.selectedPlayer);
+        L.selectedPlayer = null;
+      },
+    }),
+  );
 }
 
-function teamStrengthCard(p: PlayerPublic | undefined): string {
-  if (!p) {
-    return `<div class="cup-draft-rating draft-rating"><strong>--</strong><span>Overall time<br>Ataque -- · Meio -- · Defesa --</span></div>`;
+// ---------------- Pre-Match (classic) ----------------
+
+function picksOvr(p: PlayerPublic | undefined): number {
+  if (!p || !p.picks.length) return 0;
+  return Math.round(
+    p.picks.reduce((sum, pk) => sum + pk.effectiveRating, 0) / p.picks.length,
+  );
+}
+
+function renderPreMatchClassic() {
+  const s = L.state!;
+  const you = me()!;
+  const opp = opponent();
+  const youOvr = picksOvr(you);
+  if (you.picks.length >= 11) awardStrongDraft(youOvr, `draft:${s.code}:${you.id}:${youOvr}`);
+  const vsAI = s.players.some((p) => p.isAI);
+  const hideRatings = s.mode === "hardcore";
+  // dicas táticas (encaixe do foco) — ocultas no modo Hardcore
+  const banners: BannerSpec[] = [];
+  if (hideRatings) {
+    banners.push({ kind: "hardcore", text: "Modo Hardcore: ratings ocultos." });
+  } else {
+    const focusSpec = attackFocusBannerSpec(you.picks, L.attackFocus);
+    if (focusSpec) banners.push(focusSpec);
   }
-  if (L.state?.hideRatings) {
-    return `<div class="cup-draft-rating draft-rating"><strong>??</strong><span>Overall oculto<br>Modo Hardcore ativo</span></div>`;
-  }
-  if (!p.picks.length || !p.formationId) {
-    return `<div class="cup-draft-rating draft-rating"><strong>--</strong><span>Overall time<br>Ataque -- · Meio -- · Defesa --</span></div>`;
-  }
-  const strength = computeStrength(p.picks, p.formationId);
-  return `
-    <div class="cup-draft-rating draft-rating">
-      <strong>${Math.round(strength.overall)}</strong>
-      <span>Overall time<br>Ataque ${Math.round(strength.attack)} · Meio ${Math.round(strength.midfield)} · Defesa ${Math.round(strength.defense)}</span>
-    </div>`;
+  // sync any pending tactic tweak to the server before user clicks Continuar
+  const sync = () => sendSetup(L.formationId, L.mentality, L.attackFocus);
+  renderReact(
+    createElement(PreMatchClassic, {
+      code: s.code,
+      mode: s.mode,
+      vsAI,
+      you,
+      opponent: opp,
+      youOvrText: hideRatings ? "OVR ??" : `OVR ${youOvr}`,
+      oppOvrText: hideRatings ? "OVR ??" : `OVR ${picksOvr(opp)}`,
+      youMentalityLabel: mentalityLabel(L.mentality),
+      youFocusLabel: attackFocusLabel(L.attackFocus),
+      oppMentalityLabel: opp?.mentality
+        ? mentalityLabel(opp.mentality)
+        : "—",
+      oppFocusLabel: attackFocusLabel(opp?.attackFocus),
+      mentality: L.mentality,
+      attackFocus: L.attackFocus,
+      banners,
+      onLeave: goHome,
+      onSelectMentality: (m) => {
+        L.mentality = m;
+        sync();
+        render();
+      },
+      onSelectFocus: (f) => {
+        L.attackFocus = f;
+        sync();
+        render();
+      },
+      onContinue: () => {
+        sync();
+        sendPreMatchReady();
+      },
+    }),
+  );
+}
+
+function teamStrengthData(p: PlayerPublic | undefined): TeamStrengthData {
+  if (!p) return { state: "none" };
+  if (L.state?.hideRatings) return { state: "hidden" };
+  if (!p.picks.length || !p.formationId) return { state: "none" };
+  const s = computeStrength(p.picks, p.formationId);
+  return {
+    state: "ok",
+    overall: s.overall,
+    attack: s.attack,
+    midfield: s.midfield,
+    defense: s.defense,
+  };
 }
 
 // ---------------- Pitch ----------------
 
-function renderPitch(
+interface BuildPitchOpts {
+  /** Overrides global hardcore detection (e.g. ignore in result screen). */
+  forceHideRatings?: boolean;
+  /** Always show ratings even in hardcore mode (e.g. end-of-game reveal). */
+  forceShowRatings?: boolean;
+  /** Show position tag chip above the dot. */
+  showPos?: boolean;
+  /** Open-slot ids (highlights empty slots for selection). */
+  openSlotIds?: Set<string>;
+  /** Currently-selected sub source slot id. */
+  selectedSubId?: string | null;
+}
+
+function buildPitchSlots(
   formation: ReturnType<typeof getFormation> & {},
   picks: PlayerPublic["picks"],
-  highlightEmpty = false,
-  interactive = false,
-  small = false,
-  showPos = false,
-): string {
+  opts: BuildPitchOpts = {},
+): PitchSlot[] {
   const bySlot = new Map(picks.map((p) => [p.slotId, p]));
-  const hideRatings =
-    !!L.state?.hideRatings || L.campaign?.mode === "hardcore";
-  const nodes = formation.slots
-    .map((slot) => {
-      const pick = bySlot.get(slot.id);
-      const filled = !!pick;
-      const cls = filled ? "filled" : highlightEmpty ? "empty open" : "empty";
-      const rating =
-        pick && !hideRatings
-          ? `<span class="slot-rt">${pick.effectiveRating}</span>`
-          : "";
-      const penal =
-        pick &&
-        !hideRatings &&
-        pick.effectiveRating < pick.player.rating
-          ? `<span class="slot-pen" title="Fora de posição">▼</span>`
-          : "";
-      const hiddenPos =
-        pick && hideRatings
-          ? `<span class="slot-hidden-pos">${posLabel(slot.pos)}</span>`
-          : "";
-      const posTag =
-        filled && showPos
-          ? `<span class="slot-postag">${posLabel(slot.pos)}</span>`
-          : "";
-      const label = filled ? lastName(pick!.player.name) : posLabel(slot.pos);
-      return `
-        <div class="slot ${cls}" data-slot="${slot.id}"
-             style="left:${slot.x}%; bottom:${slot.y}%">
-          ${posTag}
-          <div class="slot-dot pos-${groupOf(slot.pos).toLowerCase()}">
-            ${hiddenPos}${rating}${penal}
-          </div>
-          <span class="slot-name">${escapeHtml(label)}</span>
-        </div>`;
-    })
-    .join("");
-
-  return `<div class="pitch ${small ? "small" : ""} ${interactive ? "interactive" : ""}">
-    <div class="pitch-lines"></div>
-    ${nodes}
-  </div>`;
+  const hideGlobal = !!L.state?.hideRatings || L.campaign?.mode === "hardcore";
+  const hideRating =
+    opts.forceShowRatings ? false : opts.forceHideRatings ?? hideGlobal;
+  return formation.slots.map((slot) => {
+    const pick = bySlot.get(slot.id);
+    const filled = !!pick;
+    return {
+      id: slot.id,
+      pos: slot.pos,
+      x: slot.x,
+      y: slot.y,
+      label: filled ? lastName(pick!.player.name) : posLabel(slot.pos),
+      filled,
+      rating: pick?.effectiveRating,
+      penalty:
+        !!pick && pick.effectiveRating < pick.player.rating,
+      hideRating,
+      showPos: opts.showPos,
+      open: !filled && opts.openSlotIds?.has(slot.id),
+      selectedSub: filled && opts.selectedSubId === slot.id,
+    };
+  });
 }
 
 function reassignPicksToFormation(player: PlayerPublic, formationId: string) {
@@ -3282,65 +2344,6 @@ function renderResult() {
 
 const TICK_BASE_MS = 130; // ms per match "minute" at 1x
 
-// Mini pitch (viewBox in meters: 105 x 68) with a light grid and standard markings.
-function ballFieldSvg(): string {
-  const grid: string[] = [];
-  for (let x = 5; x < 105; x += 5)
-    grid.push(`<line x1="${x}" y1="0" x2="${x}" y2="68" class="bf-grid"/>`);
-  for (let y = 5; y < 68; y += 5)
-    grid.push(`<line x1="0" y1="${y}" x2="105" y2="${y}" class="bf-grid"/>`);
-  return `
-    <svg class="bf-svg" viewBox="0 0 105 68" preserveAspectRatio="none" xmlns="http://www.w3.org/2000/svg">
-      <rect x="0" y="0" width="105" height="68" class="bf-pitch"/>
-      <g>${grid.join("")}</g>
-      <g class="bf-lines">
-        <rect x="0.5" y="0.5" width="104" height="67"/>
-        <line x1="52.5" y1="0.5" x2="52.5" y2="67.5"/>
-        <circle cx="52.5" cy="34" r="9.15" fill="none"/>
-        <circle cx="52.5" cy="34" r="0.6" class="bf-spot"/>
-        <rect x="0.5" y="13.84" width="16.5" height="40.32" fill="none"/>
-        <rect x="88" y="13.84" width="16.5" height="40.32" fill="none"/>
-        <rect x="0.5" y="24.84" width="5.5" height="18.32" fill="none"/>
-        <rect x="99" y="24.84" width="5.5" height="18.32" fill="none"/>
-        <circle cx="11" cy="34" r="0.6" class="bf-spot"/>
-        <circle cx="94" cy="34" r="0.6" class="bf-spot"/>
-      </g>
-    </svg>`;
-}
-
-// Classic black/white soccer ball: a center pentagon and five rim pentagons
-// clipped to the circle, with a spherical light/shadow overlay for a 3D look.
-function soccerBallSvg(): string {
-  const pent = (cx: number, cy: number, r: number, rot: number) =>
-    Array.from({ length: 5 }, (_, i) => {
-      const a = ((rot + i * 72 - 90) * Math.PI) / 180;
-      return `${(cx + r * Math.cos(a)).toFixed(1)},${(cy + r * Math.sin(a)).toFixed(1)}`;
-    }).join(" ");
-  const rim: string[] = [];
-  for (let i = 0; i < 5; i++) {
-    const t = ((i * 72 - 90) * Math.PI) / 180;
-    rim.push(pent(50 + 46 * Math.cos(t), 50 + 46 * Math.sin(t), 14, i * 72));
-  }
-  return `
-    <svg class="bf-ball-svg" viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <clipPath id="bfClip"><circle cx="50" cy="50" r="47.5"/></clipPath>
-        <radialGradient id="bfShine" cx="34%" cy="28%" r="80%">
-          <stop offset="0%" stop-color="#ffffff" stop-opacity="0.55"/>
-          <stop offset="42%" stop-color="#ffffff" stop-opacity="0"/>
-          <stop offset="100%" stop-color="#000000" stop-opacity="0.34"/>
-        </radialGradient>
-      </defs>
-      <circle cx="50" cy="50" r="47.5" fill="#f2f2f2"/>
-      <g clip-path="url(#bfClip)" fill="#1a1a1a">
-        <polygon points="${pent(50, 50, 15, 0)}"/>
-        ${rim.map((p) => `<polygon points="${p}"/>`).join("")}
-      </g>
-      <circle cx="50" cy="50" r="47.5" fill="url(#bfShine)"/>
-      <circle cx="50" cy="50" r="47" fill="none" stroke="#c2c2c2" stroke-width="1"/>
-    </svg>`;
-}
-
 function renderLiveMatch() {
   const s = L.state!;
   let r = s.result!;
@@ -3355,144 +2358,59 @@ function renderLiveMatch() {
   const sideToPid = (side: "home" | "away" | null) =>
     side === "home" ? r.homeId : side === "away" ? r.awayId : "";
 
-  const oppPalette = teamPalette(opp.name);
-  const youPalette = teamPalette(you.name);
-  const youBadge = youPalette.flagSvg
-    ? `<span class="sb-badge flag">${youPalette.flagSvg}</span>`
-    : `<span class="sb-badge you">${escapeHtml(initials(you.name))}</span>`;
-  const oppBadge = oppPalette.flagSvg
-    ? `<span class="sb-badge flag">${oppPalette.flagSvg}</span>`
-    : `<span class="sb-badge opp">${escapeHtml(initials(opp.name))}</span>`;
+  const liveSkipRef: { current: (() => void) | null } = { current: null };
+  // current halftime selection (kept locally; written to halftimeStore each refresh)
+  let halfFormValue = you.formationId ?? L.formationId;
+  let halfMentValue = (you.mentality ?? L.mentality) as Mentality;
+  let halfFocusValue = (you.attackFocus ?? L.attackFocus) as AttackFocus;
+  liveStore.reset();
+  halftimeStore.reset();
 
-  app.innerHTML = `
-    <div class="screen live">
-      <div class="live-stage">
-        <div class="live-layout">
-          <div class="live-left">
-            <div class="ballfield">
-              ${ballFieldSvg()}
-              <div class="bf-ball" id="bf-ball">${soccerBallSvg()}</div>
-            </div>
-          </div>
-          <div class="live-center">
-            <div class="live-sub">
-              <span class="sb-leg" id="half-label">1º Tempo</span>
-              <span class="agg-mini" id="pen-label"></span>
-            </div>
-            <div class="scoreboard">
-              <div class="sb-team">${youBadge}<span class="sb-name">${escapeHtml(you.name)}</span></div>
-              <div class="sb-center">
-                <div class="sb-score"><span id="sc-l">0</span><span class="sb-sep">:</span><span id="sc-r">0</span></div>
-                <div class="sb-clock"><span id="clk">0</span>'</div>
-              </div>
-              <div class="sb-team right"><span class="sb-name">${escapeHtml(opp.name)}</span>${oppBadge}</div>
-            </div>
-            <div class="live-leaders" id="live-leaders"></div>
-            <div class="goal-overlay" id="goal-ov">
-              <div class="goal-word">GOL!</div>
-              <div class="goal-scorer" id="goal-scorer"></div>
-            </div>
-            <div class="card-overlay" id="card-ov">
-              <div class="card-flash" id="card-flash"></div>
-              <div class="card-name" id="card-name"></div>
-            </div>
-          </div>
-          <div class="live-right">
-            <div class="speed-row">
-              <span class="spd-label">Velocidade</span>
-              ${(vsAI ? [1, 1.5, 2] : [1])
-                .map(
-                  (v) =>
-                    `<button class="spd ${v === speedFactor() ? "active" : ""}" data-spd="${v}">${v}x</button>`,
-                )
-                .join("")}
-              ${vsAI ? "" : `<span class="speed-note">Velocidade extra só contra a máquina</span>`}
-              <button id="skip" class="ghost skip">Pular</button>
-            </div>
-            <ul class="event-feed" id="feed"></ul>
-          </div>
-        </div>
-        <div class="halftime-modal" id="half-panel" hidden>
-          <div class="halftime-card">
-            <div class="section-head">
-              <div>
-                <span class="half-kicker">Intervalo</span>
-                <h3>Ajustes do time</h3>
-              </div>
-              <span id="sub-count">Substituições 0/5</span>
-            </div>
-            <div class="half-controls">
-              <label>Formação
-                <select id="half-form">
-                  ${FORMATIONS.map((f) => `<option value="${f.id}" ${f.id === (you.formationId ?? L.formationId) ? "selected" : ""}>${f.name}</option>`).join("")}
-                </select>
-              </label>
-              <label>Estilo
-                <select id="half-ment">
-                  ${MENTALITIES.map((m) => `<option value="${m.id}" ${m.id === (you.mentality ?? L.mentality) ? "selected" : ""}>${m.name}</option>`).join("")}
-                </select>
-              </label>
-              <label>Foco
-                <select id="half-focus">
-                  ${ATTACK_FOCUS_OPTIONS.map((f) => `<option value="${f.id}" ${f.id === (you.attackFocus ?? L.attackFocus) ? "selected" : ""}>${f.name}</option>`).join("")}
-                </select>
-              </label>
-              <button id="half-continue" class="primary">Voltar para o jogo</button>
-            </div>
-            <div id="half-focus-report">
-              ${renderAttackFocusBanner(you.picks, you.attackFocus ?? L.attackFocus)}
-            </div>
-            <div class="halftime-squad">
-              <div class="half-field-box">
-                <div id="half-pitch" class="half-pitch">
-                  ${renderPitch(getFormation(you.formationId ?? L.formationId)!, you.picks, false, false, true, true)}
-                </div>
-                <p id="sub-status" class="sub-status">Clique em um jogador no campo e depois escolha um reserva.</p>
-              </div>
-              <div class="half-reserve-box">
-                <span class="half-box-title">Reservas disponíveis</span>
-                <ul id="reserve-list" class="reserve-list"></ul>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  `;
+  const halftimeOptions: HalftimeOptions = {
+    formations: FORMATIONS.map((f) => ({ id: f.id, name: f.name })),
+    mentalities: MENTALITIES.map((m) => ({ id: m.id, name: m.name })),
+    focuses: ATTACK_FOCUS_OPTIONS.map((f) => ({ id: f.id, name: f.name })),
+  };
+  const halftimeCallbacks: HalftimeCallbacks = {
+    onFormationChange: (id) => onHalfFormationChange(id),
+    onMentalityChange: (id) => {
+      halfMentValue = id as Mentality;
+      halftimeStore.set({ mentality: id });
+      syncHalftimeReadyUi();
+    },
+    onFocusChange: (id) => onHalfFocusChange(id as AttackFocus),
+    onSlotClick: (slotId) => onHalfPitchSlotClick(slotId),
+    onReserveClick: (name) => onReserveClick(name),
+    onContinue: () => onHalfContinue(),
+    onBackgroundClick: () => {
+      if (!L.selectedSubOut && !L.selectedSubIn) return;
+      L.selectedSubOut = null;
+      L.selectedSubIn = null;
+      refreshHalftimeSquad(
+        "Seleção cancelada. Clique em um jogador para trocar de posição ou escolher um reserva.",
+      );
+    },
+  };
 
-  const scL = document.getElementById("sc-l")!;
-  const scR = document.getElementById("sc-r")!;
-  const clk = document.getElementById("clk")!;
-  const halfLabel = document.getElementById("half-label")!;
-  const penLabel = document.getElementById("pen-label")!;
-  const feed = document.getElementById("feed")!;
-  const goalOv = document.getElementById("goal-ov")!;
-  const goalScorer = document.getElementById("goal-scorer")!;
-  const halfPanel = document.getElementById("half-panel") as HTMLDivElement;
-  const halfForm = document.getElementById("half-form") as HTMLSelectElement;
-  const halfMent = document.getElementById("half-ment") as HTMLSelectElement;
-  const halfFocus = document.getElementById("half-focus") as HTMLSelectElement;
-  const halfFocusReport = document.getElementById(
-    "half-focus-report",
-  ) as HTMLDivElement;
-  const halfContinue = document.getElementById(
-    "half-continue",
-  ) as HTMLButtonElement;
-  const halfPitch = document.getElementById("half-pitch") as HTMLDivElement;
-  const reserveList = document.getElementById(
-    "reserve-list",
-  ) as HTMLUListElement;
-  const subStatus = document.getElementById(
-    "sub-status",
-  ) as HTMLParagraphElement;
-  const subCount = document.getElementById("sub-count") as HTMLSpanElement;
-  const cardOv = document.getElementById("card-ov")!;
-  const cardFlash = document.getElementById("card-flash")!;
-  const cardName = document.getElementById("card-name")!;
-  const ball = document.getElementById("bf-ball") as HTMLDivElement;
-  const liveLeaders = document.getElementById("live-leaders")!;
-  const liveStats = new Map<string, LiveStatLine>();
-  renderLiveStats(liveLeaders, liveStats);
+  renderReact(
+    createElement(LiveMatchShell, {
+      youInitials: initials(you.name),
+      opponentInitials: initials(opp.name),
+      youName: you.name,
+      opponentName: opp.name,
+      speedOptions: vsAI ? [1, 1.5, 2] : [1],
+      activeSpeed: speedFactor(),
+      vsAI,
+      // pause makes sense only against the machine — never in real-time PvP
+      showPause: vsAI,
+      halftimeOptions,
+      halftimeCallbacks,
+      onSpeedChange: setMatchSpeed,
+      onTogglePause: (p) => setPaused(p),
+      onSkip: () => liveSkipRef.current?.(),
+    }),
+  );
+
 
   // engine coords have "home" attacking toward bx=105; rotate 180° if you are the
   // away player so YOUR team always attacks to the right on screen.
@@ -3509,10 +2427,12 @@ function renderLiveMatch() {
   function moveBall(ev: MatchEvent, durationMs: number) {
     if (ev.bx === undefined) return;
     const { bx, by } = displayCoord(ev);
-    ball.style.transitionDuration = `${Math.max(180, Math.min(1300, durationMs * 0.85))}ms`;
-    ball.style.left = `${((bx - 0.5) / 105) * 100}%`;
-    ball.style.top = `${((by - 0.5) / 68) * 100}%`;
-    ball.classList.toggle("goal", ev.type === "goal");
+    liveStore.setBall({
+      transitionMs: Math.max(180, Math.min(1300, durationMs * 0.85)),
+      left: ((bx - 0.5) / 105) * 100,
+      top: ((by - 0.5) / 68) * 100,
+      goal: ev.type === "goal",
+    });
   }
 
   const goals: Record<string, number> = { [you.id]: 0, [opp.id]: 0 };
@@ -3522,157 +2442,135 @@ function renderLiveMatch() {
   let hideTimer: number | undefined;
 
   function updateScore() {
-    scL.textContent = String(goals[you.id]);
-    scR.textContent = String(goals[opp.id]);
+    liveStore.setScore(goals[you.id], goals[opp.id]);
   }
 
   function addFeed(ev: MatchEvent) {
-    const li = document.createElement("li");
-    const cardCls =
-      ev.type === "card" ? (ev.card === "red" ? " red" : " yellow") : "";
-    li.className = `ev ${ev.type}${cardCls}`;
-    const min = Math.min(ev.minute, 90);
-    let posTag = "";
+    const cardKind = ev.type === "card" ? (ev.card === "red" ? "red" : "yellow") : undefined;
+    let pos: string | null = null;
     if (ev.bx !== undefined) {
       const { bx, by } = displayCoord(ev);
-      posTag = `<span class="ev-pos">${bx}-${by}</span>`;
+      pos = `${bx}-${by}`;
     }
-    li.innerHTML = `<span class="ev-min">${min}'</span><span class="ev-tx">${escapeHtml(ev.text)}</span>${posTag}`;
-    feed.prepend(li);
+    liveStore.prependFeed({
+      type: ev.type,
+      minute: ev.minute,
+      text: ev.text,
+      pos,
+      cardKind,
+    });
   }
 
-  function renderReserveList() {
-    reserveList.innerHTML = (L.intervalBench ?? [])
-      .map((p) => {
-        const team = getTeam(p.fromTeamId);
-        const selected = L.selectedSubIn === p.name ? " selected" : "";
-        return `
-          <li>
-            <button class="reserve-option${selected}" data-reserve="${escapeHtml(p.name)}" ${L.intervalSubCount >= 5 ? "disabled" : ""}>
-              <span class="pl-pos pos-${groupOf(p.pos).toLowerCase()}" title="${escapeHtml(playerPosText(p))}">${escapeHtml(playerPosText(p))}</span>
-              <span class="pl-name">${escapeHtml(p.name)}</span>
-              <span class="pl-team">${escapeHtml(team ? `${team.name} ${team.season}` : "Reserva")}</span>
-              ${s.hideRatings ? `<span class="pl-rt hidden">??</span>` : `<span class="pl-rt">${p.rating}</span>`}
-            </button>
-          </li>`;
-      })
-      .join("");
-    reserveList
-      .querySelectorAll<HTMLButtonElement>(".reserve-option")
-      .forEach((btn) => {
-        btn.onclick = () => {
-          if (you.halftimeReady) return;
-          if (L.intervalSubCount >= 5) return;
-          L.selectedSubIn = btn.dataset.reserve ?? null;
-          if (!L.selectedSubOut || !L.selectedSubIn) {
-            subStatus.textContent =
-              "Agora clique em um jogador no campo para definir quem sai.";
-            renderReserveList();
-            return;
-          }
-          const result = applyIntervalSubstitution(
-            you,
-            L.selectedSubOut,
-            L.selectedSubIn,
-          );
-          if (!result) return;
-          L.intervalSubCount++;
-          L.selectedSubOut = null;
-          L.selectedSubIn = null;
-          refreshHalftimeSquad(
-            `Sai ${result.out}, entra ${result.in} (${result.delta >= 0 ? "+" : ""}${result.delta} no encaixe).`,
-          );
-        };
-      });
+  function buildReserves(): import("./lib/liveStore.js").HalftimeReserveItem[] {
+    const ready = !!you.halftimeReady;
+    return (L.intervalBench ?? []).map((p) => {
+      const team = getTeam(p.fromTeamId);
+      return {
+        name: p.name,
+        posGroup: groupOf(p.pos).toLowerCase(),
+        posText: playerPosText(p),
+        rating: s.hideRatings ? 0 : p.rating,
+        teamLabel: team ? `${team.name} ${team.season}` : "Reserva",
+        selected: L.selectedSubIn === p.name,
+        disabled: ready || L.intervalSubCount >= 5,
+      };
+    });
+  }
+
+  function onReserveClick(name: string) {
+    if (you.halftimeReady) return;
+    if (L.intervalSubCount >= 5) return;
+    L.selectedSubIn = name;
+    if (!L.selectedSubOut || !L.selectedSubIn) {
+      refreshHalftimeSquad("Agora clique em um jogador no campo para definir quem sai.");
+      return;
+    }
+    const result = applyIntervalSubstitution(you, L.selectedSubOut, L.selectedSubIn);
+    if (!result) return;
+    L.intervalSubCount++;
+    L.selectedSubOut = null;
+    L.selectedSubIn = null;
+    refreshHalftimeSquad(
+      `Sai ${result.out}, entra ${result.in} (${result.delta >= 0 ? "+" : ""}${result.delta} no encaixe).`,
+    );
+  }
+
+  function onHalfPitchSlotClick(slotId: string) {
+    if (you.halftimeReady) return;
+    if (L.selectedSubOut && slotId && !L.selectedSubIn) {
+      const result = swapLineupSlots(you, L.selectedSubOut, slotId);
+      L.selectedSubOut = null;
+      if (result) {
+        refreshHalftimeSquad(
+          `Troca de posição: ${result.a} e ${result.b} (${result.delta >= 0 ? "+" : ""}${result.delta} no encaixe combinado).`,
+        );
+        return;
+      }
+    }
+    if (L.intervalSubCount >= 5) return;
+    L.selectedSubOut = slotId;
+    if (L.selectedSubOut && L.selectedSubIn) {
+      const result = applyIntervalSubstitution(you, L.selectedSubOut, L.selectedSubIn);
+      if (!result) return;
+      L.intervalSubCount++;
+      L.selectedSubOut = null;
+      L.selectedSubIn = null;
+      refreshHalftimeSquad(
+        `Sai ${result.out}, entra ${result.in} (${result.delta >= 0 ? "+" : ""}${result.delta} no encaixe).`,
+      );
+      return;
+    }
+    const pick = you.picks.find((p) => p.slotId === L.selectedSubOut);
+    if (pick) {
+      const f = getFormation(you.formationId ?? L.formationId);
+      const slotPos = f?.slots.find((sl) => sl.id === L.selectedSubOut)?.pos;
+      const posInfo =
+        slotPos && !playerPositions(pick.player).includes(slotPos)
+          ? `${posLabel(slotPos)}, natural ${playerPosText(pick.player)}`
+          : slotPos
+            ? posLabel(slotPos)
+            : playerPosText(pick.player);
+      refreshHalftimeSquad(
+        `${pick.player.name} (${posInfo}) selecionado. Clique em outro jogador para trocar de posição, ou escolha um reserva.`,
+      );
+    } else {
+      refreshHalftimeSquad("Escolha um reserva.");
+    }
   }
 
   function refreshHalftimeSquad(status?: string) {
-    halfFocusReport.innerHTML = renderAttackFocusBanner(
-      you.picks,
-      halfFocus.value as AttackFocus,
-    );
-    halfPitch.innerHTML = renderPitch(
-      getFormation(you.formationId ?? L.formationId)!,
-      you.picks,
-      false,
-      false,
-      true,
-      true,
-    );
-    halfPitch.querySelectorAll<HTMLElement>(".slot.filled").forEach((slot) => {
-      slot.onclick = () => {
-        if (you.halftimeReady) return;
-        const clickedSlot = slot.dataset.slot ?? null;
-        if (L.selectedSubOut && clickedSlot && !L.selectedSubIn) {
-          const result = swapLineupSlots(you, L.selectedSubOut, clickedSlot);
-          L.selectedSubOut = null;
-          if (result) {
-            refreshHalftimeSquad(
-              `Troca de posição: ${result.a} e ${result.b} (${result.delta >= 0 ? "+" : ""}${result.delta} no encaixe combinado).`,
-            );
-            return;
-          }
-        }
-        if (L.intervalSubCount >= 5) return;
-        L.selectedSubOut = clickedSlot;
-        if (L.selectedSubOut && L.selectedSubIn) {
-          const result = applyIntervalSubstitution(
-            you,
-            L.selectedSubOut,
-            L.selectedSubIn,
-          );
-          if (!result) return;
-          L.intervalSubCount++;
-          L.selectedSubOut = null;
-          L.selectedSubIn = null;
-          refreshHalftimeSquad(
-            `Sai ${result.out}, entra ${result.in} (${result.delta >= 0 ? "+" : ""}${result.delta} no encaixe).`,
-          );
-          return;
-        }
-        halfPitch
-          .querySelectorAll(".slot")
-          .forEach((el) => el.classList.remove("selected-sub"));
-        slot.classList.add("selected-sub");
-        const pick = you.picks.find((p) => p.slotId === L.selectedSubOut);
-        if (pick) {
-          const f = getFormation(you.formationId ?? L.formationId);
-          const slotPos = f?.slots.find((s) => s.id === L.selectedSubOut)?.pos;
-          const posInfo =
-            slotPos && !playerPositions(pick.player).includes(slotPos)
-              ? `${posLabel(slotPos)}, natural ${playerPosText(pick.player)}`
-              : slotPos
-                ? posLabel(slotPos)
-                : playerPosText(pick.player);
-          subStatus.textContent = `${pick.player.name} (${posInfo}) selecionado. Clique em outro jogador para trocar de posição, ou escolha um reserva.`;
-        } else {
-          subStatus.textContent = "Escolha um reserva.";
-        }
-      };
+    const formation = getFormation(you.formationId ?? L.formationId)!;
+    const banner = attackFocusBannerSpec(you.picks, halfFocusValue);
+    const pitchSlots = buildPitchSlots(formation, you.picks, {
+      showPos: true,
+      selectedSubId: L.selectedSubOut,
     });
-    subCount.textContent = `Substituições ${L.intervalSubCount}/5`;
-    subStatus.textContent =
-      status ??
-      (L.intervalSubCount >= 5
-        ? "Limite de 5 substituições usado."
-        : "Clique em um jogador no campo e depois escolha um reserva.");
-    renderReserveList();
+    halftimeStore.set({
+      pitchSlots,
+      focusBanner: banner,
+      reserves: buildReserves(),
+      subStatus:
+        status ??
+        (L.intervalSubCount >= 5
+          ? "Limite de 5 substituições usado."
+          : "Clique em um jogador no campo e depois escolha um reserva."),
+      formationId: halfFormValue,
+      mentality: halfMentValue,
+      attackFocus: halfFocusValue,
+    });
   }
 
   function goalAnim(scorer: string | undefined) {
-    goalScorer.textContent = scorer ?? "";
-    goalOv.classList.add("show");
+    liveStore.showGoal(scorer ?? "");
     clearTimeout(hideTimer);
-    hideTimer = window.setTimeout(() => goalOv.classList.remove("show"), 950);
+    hideTimer = window.setTimeout(() => liveStore.hideGoal(), 950);
   }
 
   function cardAnim(ev: MatchEvent) {
-    cardFlash.className =
-      "card-flash " + (ev.card === "red" ? "red" : "yellow");
-    cardName.textContent = `${ev.card === "red" ? "Vermelho" : "Amarelo"}${ev.player ? `: ${ev.player}` : ""}`;
-    cardOv.classList.add("show");
+    const kind = ev.card === "red" ? "red" : "yellow";
+    liveStore.showCard(kind, `${kind === "red" ? "Vermelho" : "Amarelo"}${ev.player ? `: ${ev.player}` : ""}`);
     clearTimeout(hideTimer);
-    hideTimer = window.setTimeout(() => cardOv.classList.remove("show"), 950);
+    hideTimer = window.setTimeout(() => liveStore.hideCard(), 950);
   }
 
   function isGoalSetupEvent(ev: MatchEvent, nextEv: MatchEvent | undefined) {
@@ -3719,12 +2617,10 @@ function renderLiveMatch() {
     if (ev.type === "goal") {
       const pid = sideToPid(ev.side);
       addFeed(ev);
-      if (pid) goals[pid]++;
       if (pid) {
+        goals[pid]++;
         const side = pid === you.id ? "you" : "opp";
-        bumpStat(liveStats, ev.player, side, "goals");
-        bumpStat(liveStats, ev.assist, side, "assists");
-        renderLiveStats(liveLeaders, liveStats);
+        liveStore.addGoal(side, Math.min(ev.minute, 90), ev.player ?? "?", ev.assist ?? null);
       }
       updateScore();
       goalAnim(ev.player);
@@ -3763,22 +2659,30 @@ function renderLiveMatch() {
     }
 
     minute++;
-    clk.textContent = String(Math.min(minute, 90));
-    halfLabel.textContent = minute <= 45 ? "1º Tempo" : "2º Tempo";
+    liveStore.setMinute(minute);
+    liveStore.setHalfLabel(minute <= 45 ? "1º Tempo" : "2º Tempo");
     schedule(TICK_BASE_MS / speedFactor());
   }
 
-  // penalty shootout revealed kick by kick
+  // penalty shootout revealed kick by kick (dramatic fixed pace, not feed-skippable speed)
   function playShootout() {
-    halfLabel.textContent = "Pênaltis";
+    liveStore.setHalfLabel("Pênaltis");
     const kicks = r.shootout!;
     const pen: Record<string, number> = { [you.id]: 0, [opp.id]: 0 };
     let i = 0;
     const next = () => {
       if (!L.playing) return;
       if (i >= kicks.length) {
-        schedule(900, finish);
+        schedule(1400, finish);
         return;
+      }
+      if (i === 10) {
+        addFeed({
+          minute: 90,
+          type: "info",
+          side: null,
+          text: "⚡ Morte súbita: cada cobrança decide.",
+        });
       }
       const k = kicks[i++];
       const pid = k.side === "home" ? r.homeId : r.awayId;
@@ -3790,148 +2694,165 @@ function renderLiveMatch() {
         side: k.side,
         text: `Pênalti de ${k.taker} (${who}): ${k.scored ? "no gol!" : "defendido!"}`,
       });
-      penLabel.textContent = `Pênaltis ${pen[you.id]} - ${pen[opp.id]}`;
-      schedule(750 / speedFactor(), next);
+      liveStore.setPenaltyLabel(`Pênaltis ${pen[you.id]} - ${pen[opp.id]}`);
+      schedule(1400, next);
     };
     next();
   }
 
+  let paused = false;
+  let pendingFn: (() => void) | null = null;
   function schedule(delay: number, fn: () => void = tick) {
     clearTimeout(timer);
-    timer = window.setTimeout(fn, delay);
+    pendingFn = fn;
+    if (paused) return;
+    timer = window.setTimeout(() => {
+      pendingFn = null;
+      fn();
+    }, delay);
+  }
+  function setPaused(p: boolean) {
+    paused = p;
+    liveStore.setPaused(p);
+    if (p) {
+      clearTimeout(timer);
+    } else if (pendingFn) {
+      schedule(120, pendingFn);
+    }
+  }
+
+  let halftimeResumeStarted = false;
+
+  function onHalfFormationChange(id: string) {
+    if (you.halftimeReady) return;
+    const ratingSwing = reassignPicksToFormation(you, id);
+    L.formationId = id;
+    you.formationId = id;
+    halfFormValue = id;
+    L.selectedSubOut = null;
+    const impact =
+      ratingSwing === null
+        ? "Formação atualizada."
+        : ratingSwing > 0
+          ? `Formação atualizada. Encaixe melhorou +${ratingSwing.toFixed(1)}.`
+          : ratingSwing < 0
+            ? `Formação atualizada. Encaixe caiu ${ratingSwing.toFixed(1)} por jogadores fora de posição.`
+            : "Formação atualizada. Encaixe manteve o mesmo over efetivo.";
+    refreshHalftimeSquad(impact);
+    syncHalftimeReadyUi();
+  }
+
+  function onHalfFocusChange(focus: AttackFocus) {
+    if (you.halftimeReady) return;
+    halfFocusValue = focus;
+    L.attackFocus = focus;
+    you.attackFocus = focus;
+    refreshHalftimeSquad("Foco de ataque atualizado.");
+    syncHalftimeReadyUi();
+  }
+
+  function onHalfContinue() {
+    if (you.halftimeReady) return;
+    L.formationId = halfFormValue;
+    L.mentality = halfMentValue;
+    L.attackFocus = halfFocusValue;
+    you.formationId = L.formationId;
+    you.mentality = L.mentality;
+    you.attackFocus = L.attackFocus;
+    you.halftimeReady = true;
+    const current = me();
+    if (current) {
+      current.halftimeReady = true;
+      current.formationId = L.formationId;
+      current.mentality = L.mentality;
+      current.attackFocus = L.attackFocus;
+    }
+    sendHalftimeReady({
+      formationId: L.formationId,
+      mentality: L.mentality,
+      attackFocus: L.attackFocus,
+      picks: you.picks.map((pk) => ({
+        slotId: pk.slotId,
+        name: pk.player.name,
+        pos: pk.player.pos,
+        rating: pk.player.rating,
+        fromTeamId: pk.fromTeamId,
+      })),
+    });
+    syncHalftimeReadyUi();
+  }
+
+  function preserveLocalHalftimeChanges() {
+    if (!L.state) return;
+    L.state.players = L.state.players.map((p) => {
+      if (p.id === you.id) return { ...you, halftimeReady: p.halftimeReady };
+      if (opp.isAI && p.id === opp.id) {
+        return { ...opp, halftimeReady: p.halftimeReady };
+      }
+      return p;
+    });
+  }
+
+  const halftimeReadyCount = () =>
+    L.state?.players.filter((p) => p.halftimeReady || p.isAI).length ?? 0;
+
+  const allHalftimeReady = () =>
+    !!L.state?.players.length &&
+    L.state.players.every((p) => p.halftimeReady || p.isAI);
+
+  function continueFromHalftime() {
+    if (halftimeResumeStarted) return;
+    halftimeResumeStarted = true;
+    syncLiveUi = null;
+    halftimeStore.close();
+    if (L.state?.result) r = L.state.result;
+    const formationName =
+      FORMATIONS.find((f) => f.id === halfFormValue)?.name ?? halfFormValue;
+    const mentalityName =
+      MENTALITIES.find((m) => m.id === halfMentValue)?.name ?? halfMentValue;
+    addFeed({
+      minute: 46,
+      type: "info",
+      side: null,
+      text: `Início do segundo tempo: ${formationName}, estilo ${mentalityName} e ${L.intervalSubCount}/5 substituições.`,
+    });
+    schedule(800);
+  }
+
+  function syncHalftimeReadyUi() {
+    preserveLocalHalftimeChanges();
+    const current = me();
+    const ready = !!current?.halftimeReady;
+    const readyCount = halftimeReadyCount();
+    const total = L.state?.players.length ?? 2;
+    const subCountLabel = ready
+      ? `Prontos ${readyCount}/${total}`
+      : `Substituições ${L.intervalSubCount}/5 · Prontos ${readyCount}/${total}`;
+    const secondHalfReady = !!L.state?.result?.secondHalfReady;
+    const continueLabel = allHalftimeReady()
+      ? secondHalfReady
+        ? "Voltando..."
+        : "Preparando 2º tempo..."
+      : ready
+        ? "Aguardando adversário..."
+        : "Voltar para o jogo";
+    halftimeStore.set({
+      subCountLabel,
+      continueLabel,
+      continueDisabled: ready,
+      continueDone: ready,
+      controlsDisabled: ready,
+      locked: ready,
+      reserves: buildReserves(),
+    });
+    if (allHalftimeReady() && secondHalfReady) continueFromHalftime();
   }
 
   function showHalftimePanel() {
     L.halftimeAdjusted = true;
-    halfPanel.hidden = false;
+    halftimeStore.set({ open: true, hideRatings: s.hideRatings });
     refreshHalftimeSquad();
-    let halftimeResumeStarted = false;
-
-    const halftimeReadyCount = () =>
-      L.state?.players.filter((p) => p.halftimeReady || p.isAI).length ?? 0;
-
-    const allHalftimeReady = () =>
-      !!L.state?.players.length &&
-      L.state.players.every((p) => p.halftimeReady || p.isAI);
-
-    function preserveLocalHalftimeChanges() {
-      if (!L.state) return;
-      L.state.players = L.state.players.map((p) => {
-        if (p.id === you.id) return { ...you, halftimeReady: p.halftimeReady };
-        if (opp.isAI && p.id === opp.id) {
-          return { ...opp, halftimeReady: p.halftimeReady };
-        }
-        return p;
-      });
-    }
-
-    function continueFromHalftime() {
-      if (halftimeResumeStarted) return;
-      halftimeResumeStarted = true;
-      syncLiveUi = null;
-      halfPanel.hidden = true;
-      // re-read the result: the server has appended the second half (re-simulated
-      // with the new lineups), so switch to the updated timeline before resuming.
-      if (L.state?.result) r = L.state.result;
-      const formationName =
-        FORMATIONS.find((f) => f.id === halfForm.value)?.name ?? halfForm.value;
-      const mentalityName =
-        MENTALITIES.find((m) => m.id === halfMent.value)?.name ??
-        halfMent.value;
-      addFeed({
-        minute: 46,
-        type: "info",
-        side: null,
-        text: `Início do segundo tempo: ${formationName}, estilo ${mentalityName} e ${L.intervalSubCount}/5 substituições.`,
-      });
-      schedule(800);
-    }
-
-    function syncHalftimeReadyUi() {
-      if (halfPanel.hidden) return;
-      preserveLocalHalftimeChanges();
-      const current = me();
-      const ready = !!current?.halftimeReady;
-      const readyCount = halftimeReadyCount();
-      subCount.textContent = ready
-        ? `Prontos ${readyCount}/${L.state?.players.length ?? 2}`
-        : `Substituições ${L.intervalSubCount}/5 · Prontos ${readyCount}/${L.state?.players.length ?? 2}`;
-      halfContinue.disabled = ready;
-      halfContinue.classList.toggle("done", ready);
-      halfForm.disabled = ready;
-      halfMent.disabled = ready;
-      halfFocus.disabled = ready;
-      reserveList
-        .querySelectorAll<HTMLButtonElement>(".reserve-option")
-        .forEach((btn) => {
-          btn.disabled = ready || L.intervalSubCount >= 5;
-        });
-      halfPitch.classList.toggle("locked", ready);
-      const secondHalfReady = !!L.state?.result?.secondHalfReady;
-      halfContinue.textContent = allHalftimeReady()
-        ? secondHalfReady
-          ? "Voltando..."
-          : "Preparando 2º tempo..."
-        : ready
-          ? "Aguardando adversário..."
-          : "Voltar para o jogo";
-      // only resume once the server has simulated and appended the second half
-      if (allHalftimeReady() && secondHalfReady) continueFromHalftime();
-    }
-
     syncLiveUi = syncHalftimeReadyUi;
-    halfForm.onchange = () => {
-      const ratingSwing = reassignPicksToFormation(you, halfForm.value);
-      L.formationId = halfForm.value;
-      L.selectedSubOut = null;
-      const impact =
-        ratingSwing === null
-          ? "Formação atualizada."
-          : ratingSwing > 0
-            ? `Formação atualizada. Encaixe melhorou +${ratingSwing.toFixed(1)}.`
-            : ratingSwing < 0
-              ? `Formação atualizada. Encaixe caiu ${ratingSwing.toFixed(1)} por jogadores fora de posição.`
-              : "Formação atualizada. Encaixe manteve o mesmo over efetivo.";
-      refreshHalftimeSquad(impact);
-      syncHalftimeReadyUi();
-    };
-    halfFocus.onchange = () => {
-      L.attackFocus = halfFocus.value as AttackFocus;
-      you.attackFocus = L.attackFocus;
-      refreshHalftimeSquad("Foco de ataque atualizado.");
-      syncHalftimeReadyUi();
-    };
-    halfContinue.onclick = () => {
-      if (you.halftimeReady) return;
-      L.formationId = halfForm.value;
-      L.mentality = halfMent.value as Mentality;
-      L.attackFocus = halfFocus.value as AttackFocus;
-      you.formationId = L.formationId;
-      you.mentality = L.mentality;
-      you.attackFocus = L.attackFocus;
-      you.halftimeReady = true;
-      const current = me();
-      if (current) {
-        current.halftimeReady = true;
-        current.formationId = L.formationId;
-        current.mentality = L.mentality;
-        current.attackFocus = L.attackFocus;
-      }
-      // send the updated lineup so the server re-simulates the 2nd half with it
-      sendHalftimeReady({
-        formationId: L.formationId,
-        mentality: L.mentality,
-        attackFocus: L.attackFocus,
-        picks: you.picks.map((pk) => ({
-          slotId: pk.slotId,
-          name: pk.player.name,
-          pos: pk.player.pos,
-          rating: pk.player.rating,
-          fromTeamId: pk.fromTeamId,
-        })),
-      });
-      syncHalftimeReadyUi();
-    };
     syncHalftimeReadyUi();
   }
 
@@ -3939,32 +2860,13 @@ function renderLiveMatch() {
     clearTimeout(timer);
     clearTimeout(hideTimer);
     syncLiveUi = null;
+    halftimeStore.close();
     L.playing = false;
     L.matchPlayed = true;
     render();
   }
 
-  app.querySelectorAll<HTMLButtonElement>(".spd").forEach((btn) => {
-    btn.onclick = () => {
-      setMatchSpeed(Number(btn.dataset.spd));
-      app.querySelectorAll(".spd").forEach((b) => b.classList.remove("active"));
-      btn.classList.add("active");
-    };
-  });
-  document.getElementById("skip")!.onclick = () => finish();
-
-  // clicking anywhere that isn't a player on the pitch or a reserve clears the selection
-  document.querySelector(".live-stage")?.addEventListener("click", (e) => {
-    if (!L.selectedSubOut && !L.selectedSubIn) return;
-    const t = e.target as HTMLElement;
-    if (t.closest(".slot.filled") || t.closest(".reserve-option")) return;
-    L.selectedSubOut = null;
-    L.selectedSubIn = null;
-    refreshHalftimeSquad(
-      "Seleção cancelada. Clique em um jogador para trocar de posição ou escolher um reserva.",
-    );
-  });
-
+  liveSkipRef.current = finish;
   schedule(700);
 }
 
@@ -4083,9 +2985,9 @@ function awardRegularMatchAchievements() {
   if (youWon) ids.push("first_win");
   if (youWon && oppGoals === 0) ids.push("clean_sheet");
   if (youWon && r.penaltyScore) ids.push("penalty_win");
+  const totalAssists = [...playerAssists.values()].reduce((sum, n) => sum + n, 0);
   if ([...playerGoals.values()].some((n) => n >= 3)) ids.push("hat_trick");
-  if ([...playerAssists.values()].some((n) => n >= 3))
-    ids.push("assist_master");
+  if (totalAssists >= 3) ids.push("assist_master");
   const avg = you.picks.length
     ? you.picks.reduce((sum, p) => sum + p.effectiveRating, 0) /
       you.picks.length
@@ -4105,32 +3007,26 @@ function awardRegularMatchAchievements() {
   void awardAchievements(ids, key);
 }
 
-function leaderCard(label: string, data: Leader | null): string {
-  const ic = data
-    ? `<div class="leader-ic ${data.side}">${initials(data.name)}</div>`
-    : `<div class="leader-ic">–</div>`;
-  return `
-    <div class="leader-card">
-      ${ic}
-      <div class="leader-meta">
-        <div class="leader-label">${label}</div>
-        <div class="leader-name">${data ? escapeHtml(data.name) : "—"}</div>
-        <div class="leader-val">${data ? data.val : "Sem destaque"}</div>
-      </div>
-    </div>`;
+function leaderCardData(label: string, data: Leader | null): LeaderCardData {
+  return {
+    label,
+    name: data?.name ?? null,
+    val: data ? data.val : "Sem destaque",
+    initials: data ? initials(data.name) : null,
+    side: data?.side ?? null,
+  };
 }
 
-function eventLog(
+function eventLogParts(
   r: MatchResult,
   you: PlayerPublic,
   opp: PlayerPublic,
-): string {
+): { important: LogEventItem[]; full: LogEventItem[] } {
   const sideName = (side: "home" | "away" | null) => {
     if (side === "home") return r.homeId === you.id ? you.name : opp.name;
     if (side === "away") return r.awayId === you.id ? you.name : opp.name;
     return "";
   };
-
   const importantTypes = new Set<MatchEvent["type"]>([
     "goal",
     "card",
@@ -4138,60 +3034,32 @@ function eventLog(
     "halftime",
     "fulltime",
   ]);
-  const important = r.timeline.filter((ev) => importantTypes.has(ev.type));
-  const renderEvents = (events: MatchEvent[]) =>
-    events
-      .map((ev) => {
-        const cardCls =
-          ev.type === "card" ? (ev.card === "red" ? " red" : " yellow") : "";
-        const team = sideName(ev.side);
-        return `
-        <li class="ev ${ev.type}${cardCls}">
-          <span class="ev-min">${Math.min(ev.minute, 90)}'</span>
-          <span class="ev-tx">${escapeHtml(ev.text)}</span>
-          ${team ? `<span class="ev-side">${escapeHtml(team)}</span>` : ""}
-        </li>`;
-      })
-      .join("");
-
-  const penalties = r.shootout
-    ? r.shootout
-        .map((kick) => {
-          const pid = kick.side === "home" ? r.homeId : r.awayId;
-          const team = pid === you.id ? you.name : opp.name;
-          return `
-            <li class="ev penalty">
-              <span class="ev-min">PEN</span>
-              <span class="ev-tx">Pênalti de ${escapeHtml(kick.taker)} (${escapeHtml(team)}): ${
-                kick.scored ? "no gol!" : "defendido!"
-              }</span>
-            </li>`;
-        })
-        .join("")
-    : "";
-
-  return `
-    <section class="match-log">
-      <div class="section-head">
-        <h3>Principais lances</h3>
-        <span>${important.length + (r.shootout?.length ?? 0)} destaques</span>
-      </div>
-      <ul class="event-feed result-feed">
-        ${renderEvents(important)}
-        ${penalties}
-      </ul>
-      <button id="toggle-log" class="ghost log-toggle">Ver todos os lances</button>
-      <div id="full-log" class="full-log" hidden>
-        <div class="section-head compact">
-          <h3>Todos os lances</h3>
-          <span>${r.timeline.length + (r.shootout?.length ?? 0)} eventos</span>
-        </div>
-        <ul class="event-feed result-feed">
-          ${renderEvents(r.timeline)}
-          ${penalties}
-        </ul>
-      </div>
-    </section>`;
+  let nextId = 1;
+  const toItem = (ev: MatchEvent): LogEventItem => ({
+    id: nextId++,
+    type: ev.type,
+    cardKind: ev.type === "card" ? (ev.card === "red" ? "red" : "yellow") : undefined,
+    minute: Math.min(ev.minute, 90),
+    text: ev.text,
+    teamLabel: sideName(ev.side),
+  });
+  const penaltyItems: LogEventItem[] = (r.shootout ?? []).map((kick) => {
+    const pid = kick.side === "home" ? r.homeId : r.awayId;
+    const team = pid === you.id ? you.name : opp.name;
+    return {
+      id: nextId++,
+      type: "penalty",
+      minute: "PEN" as const,
+      text: `Pênalti de ${kick.taker} (${team}): ${kick.scored ? "no gol!" : "defendido!"}`,
+      teamLabel: "",
+    };
+  });
+  const important = r.timeline.filter((ev) => importantTypes.has(ev.type)).map(toItem);
+  const full = r.timeline.map(toItem);
+  return {
+    important: [...important, ...penaltyItems],
+    full: [...full, ...penaltyItems],
+  };
 }
 
 function renderSummary() {
@@ -4205,85 +3073,50 @@ function renderSummary() {
   const ys = r.strengths[you.id];
   const os = r.strengths[opp.id];
   const { scorer, assist, motm } = computeLeaders(r, you.id);
+  const logParts = eventLogParts(r, you, opp);
 
-  app.innerHTML = `
-    <div class="screen result">
-      <div class="match-hero">
-        <div class="hero-team">
-          <div class="hero-crest you">${initials(you.name)}</div>
-          <div class="hero-name">${escapeHtml(you.name)}</div>
-          <div class="hero-tag">${you.formationId ?? ""}</div>
-        </div>
-        <div class="hero-center">
-          <span class="hero-pill ${outcome}">Final</span>
-          <div class="hero-score">${r.goals[you.id]}<span class="dash">-</span>${r.goals[opp.id]}</div>
-          <div class="hero-sub">Arena Pebol &middot; Partida única<br>${youWon ? "Você venceu" : "Você perdeu"}</div>
-          ${
-            r.penaltyScore
-              ? `<div class="hero-pens">Pênaltis ${r.penaltyScore[you.id]} - ${r.penaltyScore[opp.id]}</div>`
-              : ""
-          }
-        </div>
-        <div class="hero-team">
-          <div class="hero-crest opp">${initials(opp.name)}</div>
-          <div class="hero-name">${escapeHtml(opp.name)}</div>
-          <div class="hero-tag">${opp.formationId ?? ""}</div>
-        </div>
-      </div>
-
-      <div class="leaders">
-        ${leaderCard("Artilheiro", scorer)}
-        ${leaderCard("Assistência", assist)}
-        ${leaderCard("Craque do Jogo", motm)}
-      </div>
-
-      <div class="strength-cmp">
-        ${strengthRow("Ataque", ys.attack, os.attack)}
-        ${strengthRow("Meio", ys.midfield, os.midfield)}
-        ${strengthRow("Defesa", ys.defense, os.defense)}
-        ${strengthRow("Geral", ys.overall, os.overall, true)}
-      </div>
-
-      ${eventLog(r, you, opp)}
-
-      <div class="result-squads">
-        <div class="board"><h3>${escapeHtml(you.name)}</h3>${renderPitch(getFormation(you.formationId!)!, you.picks)}</div>
-        <div class="board"><h3>${escapeHtml(opp.name)}</h3>${renderPitch(getFormation(opp.formationId!)!, opp.picks)}</div>
-      </div>
-
-      <div class="lobby-actions">
-        <button id="rematch" class="primary big">Jogar de novo</button>
-        <button id="result-home" class="primary alt big">Tela inicial</button>
-      </div>
-    </div>
-  `;
-
-  app.querySelector<HTMLButtonElement>("#rematch")!.onclick = () =>
-    sendRematch();
-  app.querySelector<HTMLButtonElement>("#result-home")!.onclick = goHome;
-  app.querySelector<HTMLButtonElement>("#toggle-log")!.onclick = (ev) => {
-    const full = document.getElementById("full-log")!;
-    const btn = ev.currentTarget as HTMLButtonElement;
-    full.hidden = !full.hidden;
-    btn.textContent = full.hidden
-      ? "Ver todos os lances"
-      : "Ocultar lances completos";
-  };
+  renderReact(
+    createElement(ResultSummary, {
+      outcome,
+      youName: you.name,
+      opponentName: opp.name,
+      youInitials: initials(you.name),
+      opponentInitials: initials(opp.name),
+      youFormation: you.formationId ?? "",
+      opponentFormation: opp.formationId ?? "",
+      youGoals: r.goals[you.id],
+      opponentGoals: r.goals[opp.id],
+      youWon,
+      penaltyLabel: r.penaltyScore
+        ? `Pênaltis ${r.penaltyScore[you.id]} - ${r.penaltyScore[opp.id]}`
+        : null,
+      leaders: [
+        leaderCardData("Artilheiro", scorer),
+        leaderCardData("Assistência", assist),
+        leaderCardData("Craque do Jogo", motm),
+      ],
+      strengths: [
+        strengthRow("Ataque", ys.attack, os.attack),
+        strengthRow("Meio", ys.midfield, os.midfield),
+        strengthRow("Defesa", ys.defense, os.defense),
+        strengthRow("Geral", ys.overall, os.overall, true),
+      ],
+      importantLog: logParts.important,
+      fullLog: logParts.full,
+      youPitchSlots: buildPitchSlots(getFormation(you.formationId!)!, you.picks, { forceShowRatings: true }),
+      opponentPitchSlots: buildPitchSlots(
+        getFormation(opp.formationId!)!,
+        opp.picks,
+        { forceShowRatings: true },
+      ),
+      onRematch: () => sendRematch(),
+      onHome: goHome,
+    }),
+  );
 }
 
-function strengthRow(
-  label: string,
-  a: number,
-  b: number,
-  bold = false,
-): string {
-  const max = Math.max(a, b, 1);
-  return `
-    <div class="srow ${bold ? "bold" : ""}">
-      <div class="sbar left"><div class="fill" style="width:${(a / max) * 100}%"></div><span>${a.toFixed(1)}</span></div>
-      <div class="slabel">${label}</div>
-      <div class="sbar right"><div class="fill" style="width:${(b / max) * 100}%"></div><span>${b.toFixed(1)}</span></div>
-    </div>`;
+function strengthRow(label: string, a: number, b: number, bold = false): StrengthRow {
+  return { label, a, b, bold };
 }
 
 // ---------------- util ----------------

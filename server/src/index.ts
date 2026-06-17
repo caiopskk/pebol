@@ -17,6 +17,7 @@ import {
   handleDisconnect,
   setup,
   ready,
+  readyPreMatch,
   pick,
   rerollTeam,
   readyHalftime,
@@ -199,6 +200,15 @@ io.on("connection", (socket) => {
     if (!player) return;
     const err = rerollTeam(room, player.id);
     if (err) socket.emit("errorMsg", err);
+    broadcast(room.code);
+  });
+
+  socket.on("preMatchReady", () => {
+    const room = findRoomBySocket(socket.id);
+    if (!room) return;
+    const player = room.players.find((p) => p.socketId === socket.id);
+    if (!player) return;
+    readyPreMatch(room, player.id);
     broadcast(room.code);
   });
 
