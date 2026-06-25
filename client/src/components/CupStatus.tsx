@@ -23,7 +23,7 @@ export function CupProgress({ won }: CupProgressProps) {
           key={label}
           className={`cup-cell ${i < won ? "done" : ""} ${i === won ? "next" : ""}`}
         >
-          {i < won ? "✓" : label}
+          {i < won ? <span className="cup-cell-mark" aria-hidden="true" /> : label}
         </span>
       ))}
     </div>
@@ -116,7 +116,7 @@ export function KnockoutBracket({ rounds }: { rounds: BracketRoundData[] }) {
         <li className={`ladder-node trophy ${champion ? "done" : ""}`.trim()}>
           <span className="ladder-mark" aria-hidden="true" />
           <div className="ladder-card ladder-final">
-            <span className="ladder-round">🏆 Título</span>
+            <span className="ladder-round">Título</span>
             <div className="ladder-match">
               <strong className="ladder-you">Campeão do Mundo</strong>
             </div>

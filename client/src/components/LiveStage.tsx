@@ -13,7 +13,7 @@ export function PauseButton({ onToggle }: { onToggle: (paused: boolean) => void 
       className={`ghost pause-btn ${paused ? "paused" : ""}`.trim()}
       onClick={() => onToggle(!paused)}
     >
-      {paused ? "▶ Continuar" : "⏸ Pausar"}
+      {paused ? "Continuar" : "Pausar"}
     </button>
   );
 }
@@ -115,9 +115,7 @@ function KickRow({ kick }: { kick: { id: number; taker: string; scored: boolean;
   const cls = kick.pending ? "pending" : kick.scored ? "made" : "missed";
   return (
     <li className={`pen-kick ${cls}`}>
-      <span className="pen-mark" aria-hidden="true">
-        {kick.pending ? "" : kick.scored ? "✓" : "✗"}
-      </span>
+      <span className="pen-mark" aria-hidden="true" />
       <strong>{kick.taker}</strong>
       <span className="pen-result">
         {kick.pending ? "cobrando…" : kick.scored ? "converteu" : "perdeu"}
@@ -152,19 +150,19 @@ function ShootoutSpotlight({
         >
           {kick.pending ? (
             <>
-              <span className="ss-icon" aria-hidden="true">🎯</span>
+              <span className="ss-icon stepup" aria-hidden="true" />
               <span className="ss-name">{kick.taker}</span>
               <span className="ss-tag">se prepara para cobrar…</span>
             </>
           ) : kick.scored ? (
             <>
-              <span className="ss-icon" aria-hidden="true">⚽</span>
+              <span className="ss-icon goal" aria-hidden="true" />
               <span className="ss-name">GOL!</span>
               <span className="ss-tag">{kick.taker} converteu</span>
             </>
           ) : (
             <>
-              <span className="ss-icon" aria-hidden="true">🧤</span>
+              <span className="ss-icon miss" aria-hidden="true" />
               <span className="ss-name">DEFENDIDO!</span>
               <span className="ss-tag">{kick.taker} perdeu</span>
             </>
@@ -206,7 +204,7 @@ export function ShootoutPanel({ oppName }: { oppName: string }) {
                     animate={{ opacity: 1, scale: 1 }}
                     transition={{ type: "spring", stiffness: 400, damping: 18 }}
                   >
-                    ⚡ Morte súbita
+                    Morte súbita
                   </motion.span>
                 ) : null}
               </AnimatePresence>

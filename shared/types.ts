@@ -26,6 +26,12 @@ export interface Player {
   pos: Position; // main/natural position
   altPositions?: Position[]; // optional secondary positions with full familiarity
   rating: number; // 60-99
+  pac?: number; // pace
+  sho?: number; // shooting
+  pas?: number; // passing
+  dri?: number; // dribbling
+  def?: number; // defending
+  phy?: number; // physical
 }
 
 export interface Team {
@@ -194,6 +200,12 @@ export interface HalftimeLineup {
     name: string;
     pos: Position;
     rating: number;
+    pac?: number;
+    sho?: number;
+    pas?: number;
+    dri?: number;
+    def?: number;
+    phy?: number;
     fromTeamId: string;
   }[];
 }

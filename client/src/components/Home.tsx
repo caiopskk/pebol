@@ -6,6 +6,7 @@ import type {
   LeaderboardEntry,
   UserProgress,
 } from "../api.js";
+import { DEV_PREVIEWS } from "../devPreviews.js";
 
 interface HomeProps {
   account: AccountUser | null;
@@ -21,6 +22,7 @@ interface HomeProps {
   onOpenAchievements: () => void;
   onLogout: () => void;
   onWorldCup: () => void;
+  onOpenLegal: (kind: "terms" | "privacy") => void;
   onSoon: (mode: "carreira" | "liga") => void;
 }
 
@@ -47,6 +49,7 @@ export function Home({
   onOpenAchievements,
   onLogout,
   onWorldCup,
+  onOpenLegal,
   onSoon,
 }: HomeProps) {
   const [selectedMode, setSelectedMode] = useState<GameMode>("classico");
@@ -96,9 +99,11 @@ export function Home({
               <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }} type="button" onClick={onOpenAchievements} className="primary alt account-action">
                 Progresso
               </motion.button>
-              <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }} type="button" onClick={onOpenAdmin} className="primary account-action">
-                Gerenciar times
-              </motion.button>
+              {account.role === "admin" ? (
+                <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }} type="button" onClick={onOpenAdmin} className="primary account-action">
+                  Gerenciar times
+                </motion.button>
+              ) : null}
               <motion.button whileHover={{ y: -1 }} whileTap={{ scale: 0.98 }} type="button" onClick={onLogout} className="primary alt account-action">
                 Sair
               </motion.button>
@@ -257,7 +262,43 @@ export function Home({
             })}
           </ol>
         </motion.section>
+
+        {import.meta.env.DEV ? (
+          <motion.section className="panel dev-preview-panel" variants={card}>
+            <div className="leaderboard-head">
+              <div>
+                <span className="cup-tag">Dev</span>
+                <h2>Previews rápidos</h2>
+              </div>
+            </div>
+            <div className="dev-preview-grid">
+              {DEV_PREVIEWS.map((preview) => (
+                <motion.button
+                  key={preview.hash}
+                  whileHover={{ y: -1 }}
+                  whileTap={{ scale: 0.985 }}
+                  type="button"
+                  className="primary alt dev-preview-button"
+                  onClick={() => {
+                    location.hash = preview.hash;
+                  }}
+                >
+                  {preview.label}
+                </motion.button>
+              ))}
+            </div>
+          </motion.section>
+        ) : null}
       </div>
+      <motion.footer className="home-footer" variants={card}>
+        <span>Pebol</span>
+        <button type="button" onClick={() => onOpenLegal("terms")}>
+          Termos de Uso
+        </button>
+        <button type="button" onClick={() => onOpenLegal("privacy")}>
+          Política de Privacidade
+        </button>
+      </motion.footer>
     </motion.div>
   );
 }

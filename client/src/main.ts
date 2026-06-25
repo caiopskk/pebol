@@ -106,6 +106,12 @@ import {
   type CampaignJourneyLeader,
 } from "./components/CampaignEnd.js";
 import { TeamForm } from "./components/TeamForm.js";
+import { LegalPage } from "./components/LegalPage.js";
+import {
+  DEV_PREVIEWS,
+  devPreviewFromHash,
+  type DevPreviewKind,
+} from "./devPreviews.js";
 
 const app = document.getElementById("app")!;
 const overlaysRoot = createRoot(document.getElementById("overlays")!);
@@ -129,12 +135,21 @@ setWriteRequestLock({
 
 function renderReact(node: ReactElement) {
   if (!reactRoot) reactRoot = createRoot(app);
+  const preview = devPreviewKind();
+  const content = preview
+    ? createElement(
+        Fragment,
+        null,
+        createElement(DevPreviewChrome, { active: preview }),
+        node,
+      )
+    : node;
   // MotionConfig is a context provider (no DOM wrapper), so the IDs/classes the
   // imperative live-match logic queries are unchanged. reducedMotion="user"
   // makes every screen honor prefers-reduced-motion.
   flushSync(() =>
     reactRoot!.render(
-      createElement(MotionConfig, { reducedMotion: "user" }, node),
+      createElement(MotionConfig, { reducedMotion: "user" }, content),
     ),
   );
 }
@@ -179,7 +194,7 @@ interface Local {
   account: AccountUser | null;
   accountProgress: UserProgress | null;
   leaderboard: LeaderboardEntry[] | null;
-  accountScreen: "login" | "admin" | "achievements" | null;
+  accountScreen: "login" | "admin" | "achievements" | "terms" | "privacy" | null;
   adminTeams: AdminTeam[] | null;
   adminTeamSearch: string;
   adminPlayerSearch: string;
@@ -284,13 +299,84 @@ function opponent(): PlayerPublic | undefined {
   return L.state?.players.find((p) => p.id !== L.youId);
 }
 
+type CampaignEndPreviewKind = "victory" | "gameover";
+
+function devPreviewKind(): DevPreviewKind | null {
+  if (!import.meta.env.DEV) return null;
+  return devPreviewFromHash(location.hash);
+}
+
+function goPreviewHome() {
+  L.campaign = null;
+  L.state = null;
+  L.youId = null;
+  L.playing = false;
+  L.accountScreen = null;
+  halftimeStore.reset();
+  liveStore.reset();
+  if (location.hash) {
+    location.hash = "";
+  } else {
+    render();
+  }
+}
+
+function DevPreviewChrome({ active }: { active: DevPreviewKind }) {
+  const current = DEV_PREVIEWS.find((preview) => preview.kind === active);
+  return createElement(
+    "div",
+    { className: "dev-preview-chrome" },
+    createElement(
+      "button",
+      {
+        type: "button",
+        className: "dev-preview-home",
+        onClick: goPreviewHome,
+      },
+      "Tela inicial",
+    ),
+    createElement(
+      "div",
+      { className: "dev-preview-current" },
+      createElement("span", null, "Preview"),
+      createElement("strong", null, current?.label ?? active),
+    ),
+    createElement(
+      "div",
+      { className: "dev-preview-links" },
+      DEV_PREVIEWS.map((preview) =>
+        createElement(
+          "button",
+          {
+            key: preview.kind,
+            type: "button",
+            className: preview.kind === active ? "active" : "",
+            onClick: () => {
+              location.hash = preview.hash;
+            },
+          },
+          preview.label,
+        ),
+      ),
+    ),
+  );
+}
+
 // ---------------- Main render ----------------
 
 function render() {
+  const preview = devPreviewKind();
+  if (preview) {
+    renderDevPreview(preview);
+    return;
+  }
+
   // account / team admin owns the screen when open
   if (L.accountScreen) {
     if (L.accountScreen === "login") renderLogin();
     else if (L.accountScreen === "admin") renderAdmin();
+    else if (L.accountScreen === "terms" || L.accountScreen === "privacy")
+      renderLegal(L.accountScreen);
     else renderAchievements();
     return;
   }
@@ -390,6 +476,7 @@ function renderHome() {
       onOpenAchievements: () => void openAchievements(),
       onLogout: logout,
       onWorldCup: startCampaign,
+      onOpenLegal: openLegal,
       onSoon: (mode) =>
         showToast(
           `Modo ${mode === "carreira" ? "carreira" : "liga"} estará disponível em breve.`,
@@ -575,6 +662,10 @@ function openLogin() {
   L.accountScreen = "login";
   render();
 }
+function openLegal(kind: "terms" | "privacy") {
+  L.accountScreen = kind;
+  render();
+}
 function closeAccount() {
   L.accountScreen = null;
   L.editingTeam = null;
@@ -699,6 +790,9 @@ function renderLogin() {
     }),
   );
 }
+function renderLegal(kind: "terms" | "privacy") {
+  renderReact(createElement(LegalPage, { kind, onBack: closeAccount }));
+}
 
 function canEditTeam(t: AdminTeam): boolean {
   if (!L.account) return false;
@@ -787,6 +881,14 @@ function normalizeImportedPlayer(v: unknown, teamName: string): Player {
         ? v.altPositions.split(/[,\s/]+/)
         : [];
   const rating = Math.round(Number(v.rating));
+  const attr = (key: "pac" | "sho" | "pas" | "dri" | "def" | "phy") => {
+    const raw = v[key] ?? v[key.toUpperCase()];
+    if (raw == null || raw === "") return undefined;
+    const value = Math.round(Number(raw));
+    if (!Number.isFinite(value) || value < 1 || value > 99)
+      throw new Error(`${key.toUpperCase()} inválido em ${teamName}: ${name || "jogador sem nome"}.`);
+    return value;
+  };
   if (!name) throw new Error(`Há jogador sem nome em ${teamName}.`);
   if (!ALL_POS.includes(pos))
     throw new Error(`Posição inválida em ${teamName}: ${pos}.`);
@@ -801,6 +903,12 @@ function normalizeImportedPlayer(v: unknown, teamName: string): Player {
     pos: pos as Player["pos"],
     altPositions: altPositions.length ? altPositions : undefined,
     rating,
+    pac: attr("pac"),
+    sho: attr("sho"),
+    pas: attr("pas"),
+    dri: attr("dri"),
+    def: attr("def"),
+    phy: attr("phy"),
   };
 }
 
@@ -958,6 +1066,7 @@ function startCampaign() {
 }
 
 function campaignExit() {
+  if (devPreviewKind()) return goPreviewHome();
   L.campaign = null;
   L.playing = false;
   lastCampaignPhase = null;
@@ -1958,6 +2067,7 @@ function renderCampaignGameOver() {
       oppName: r.oppName,
       penaltyLabel,
       journeyLeaders: campaignJourneyLeadersData(),
+      squadRows: campaignSquadRowsData(),
       status,
       progressRound: completed,
       onRetry: () => startCampaign(),
@@ -1972,10 +2082,462 @@ function renderCampaignVictory() {
     createElement(CampaignVictory, {
       groupLabel: c.groupQualifiedLabel ?? "líder do grupo",
       journeyLeaders: campaignJourneyLeadersData(),
+      squadRows: campaignSquadRowsData(),
       bracket: knockoutBracketData(),
       progressRound: 8,
       onRetry: () => startCampaign(),
       onHome: goHome,
+    }),
+  );
+}
+
+function previewSquadRows(): CampaignSquadRow[] {
+  return [
+    ["GOL", "Buffon", 90],
+    ["LD", "Cafu", 89],
+    ["ZAG", "Beckenbauer", 91],
+    ["ZAG", "Cannavaro", 88],
+    ["LE", "Roberto Carlos", 90],
+    ["MC", "Xavi", 91],
+    ["MC", "Zidane", 92],
+    ["MEI", "Maradona", 93],
+    ["PD", "Messi", 94],
+    ["CA", "Ronaldo", 93],
+    ["PE", "Ronaldinho", 91],
+  ].map(([pos, name, rating], idx) => ({
+    slotId: `preview-${idx}`,
+    pos: String(pos),
+    name: String(name),
+    rating: Number(rating),
+    hideRating: false,
+  }));
+}
+
+function previewJourneyLeaders(): CampaignJourneyLeader[] {
+  return [
+    { label: "Artilheiro", name: "Ronaldo", val: "7 gols" },
+    { label: "Assistência", name: "Messi", val: "5 assistências" },
+    { label: "Craque da campanha", name: "Zidane", val: "OVR 92" },
+  ];
+}
+
+function previewBracket(): BracketRoundData[] {
+  return [
+    { label: "16-avos", state: "done", oppLabel: "México 1986", showVs: true },
+    { label: "Oitavas", state: "done", oppLabel: "Holanda 1974", showVs: true },
+    { label: "Quartas", state: "done", oppLabel: "França 1998", showVs: true },
+    { label: "Semifinal", state: "done", oppLabel: "Argentina 1986", showVs: true },
+    { label: "Final", state: "done", oppLabel: "Brasil 1970", showVs: true },
+  ];
+}
+
+function previewRng(seed = 0) {
+  const values = [0.12, 0.44, 0.73, 0.27, 0.91, 0.58, 0.36, 0.82];
+  let i = seed;
+  return () => values[i++ % values.length];
+}
+
+function previewCampaignPicks(count = 11): SquadPick[] {
+  const formation = getFormation("4-3-3")!;
+  const used = new Set<string>();
+  const pool = WC_DRAFT_TEAMS.flatMap((team) =>
+    team.players.map((player) => ({ team, player })),
+  ).sort((a, b) => b.player.rating - a.player.rating);
+
+  return formation.slots.slice(0, count).map((slot) => {
+    const found =
+      pool.find(
+        ({ team, player }) =>
+          !used.has(`${team.id}:${player.name}`) &&
+          playerPositions(player).some((pos) => groupOf(pos) === groupOf(slot.pos)),
+      ) ??
+      pool.find(({ team, player }) => !used.has(`${team.id}:${player.name}`)) ??
+      pool[0];
+    used.add(`${found.team.id}:${found.player.name}`);
+    return {
+      slotId: slot.id,
+      player: found.player,
+      fromTeamId: found.team.id,
+      effectiveRating: effectiveRating(found.player, slot.pos),
+    };
+  });
+}
+
+function previewDraftTeam(picks: SquadPick[]): Team {
+  const formation = getFormation("4-3-3")!;
+  const filled = new Set(picks.map((pick) => pick.slotId));
+  const openGroups = new Set(
+    formation.slots
+      .filter((slot) => !filled.has(slot.id))
+      .map((slot) => groupOf(slot.pos)),
+  );
+  return (
+    WC_DRAFT_TEAMS.find((team) =>
+      team.players.some((player) =>
+        playerPositions(player).some((pos) => openGroups.has(groupOf(pos))),
+      ),
+    ) ?? WC_DRAFT_TEAMS[0]
+  );
+}
+
+function previewGroupRows(groupTeams: Team[]): CupGroupRow[] {
+  return [
+    {
+      id: "you",
+      name: "Seu time",
+      played: 2,
+      wins: 1,
+      draws: 1,
+      losses: 0,
+      gf: 4,
+      ga: 2,
+      points: 4,
+    },
+    {
+      ...groupRow(groupTeams[0]),
+      played: 2,
+      wins: 1,
+      draws: 0,
+      losses: 1,
+      gf: 3,
+      ga: 3,
+      points: 3,
+    },
+    {
+      ...groupRow(groupTeams[1]),
+      played: 2,
+      wins: 0,
+      draws: 2,
+      losses: 0,
+      gf: 2,
+      ga: 2,
+      points: 2,
+    },
+    {
+      ...groupRow(groupTeams[2]),
+      played: 2,
+      wins: 0,
+      draws: 1,
+      losses: 1,
+      gf: 1,
+      ga: 3,
+      points: 1,
+    },
+  ];
+}
+
+function previewCampaignState(kind: Extract<DevPreviewKind, "cup-setup" | "cup-draft" | "cup-prematch">): CampaignState {
+  const picks = kind === "cup-draft" ? previewCampaignPicks(7) : previewCampaignPicks();
+  const groupTeams = [0, 1, 2].map((round) => wcOpponentTeam(round, previewRng(round)));
+  const knockoutPath = [3, 4, 5, 6, 7].map((round) =>
+    wcOpponentTeam(round, previewRng(round)),
+  );
+  const groupTable = previewGroupRows(groupTeams);
+
+  return {
+    phase:
+      kind === "cup-setup"
+        ? "setup"
+        : kind === "cup-draft"
+          ? "draft"
+          : "preMatch",
+    mode: "normal",
+    runId: "cup:preview",
+    formationId: "4-3-3",
+    mentality: "pressao",
+    attackFocus: "meio",
+    round: kind === "cup-prematch" ? 2 : 0,
+    picks: kind === "cup-setup" ? [] : picks,
+    currentTeam: kind === "cup-draft" ? previewDraftTeam(picks) : null,
+    usedTeamIds: picks.map((pick) => pick.fromTeamId),
+    selectedPlayer: null,
+    selectedPickSlotId: null,
+    currentOpp: kind === "cup-prematch" ? groupTeams[2] : null,
+    lastResult: null,
+    rerollsRemaining: 4,
+    campaignGoals: { Ronaldo: 3, Messi: 2, Zidane: 1 },
+    campaignAssists: { Messi: 3, Xavi: 2 },
+    groupTeams,
+    groupTable,
+    groupQualified: null,
+    groupQualifiedLabel: null,
+    knockoutPath,
+  };
+}
+
+function previewHalftimeOptions(): HalftimeOptions {
+  return {
+    formations: FORMATIONS.map((f) => ({ id: f.id, name: f.name })),
+    mentalities: MENTALITIES.map((m) => ({ id: m.id, name: m.name })),
+    focuses: ATTACK_FOCUS_OPTIONS.map((f) => ({ id: f.id, name: f.name })),
+  };
+}
+
+function noopHalftimeCallbacks(): HalftimeCallbacks {
+  return {
+    onFormationChange: () => {},
+    onMentalityChange: () => {},
+    onFocusChange: () => {},
+    onSlotClick: () => {},
+    onReserveClick: () => {},
+    onContinue: () => {},
+    onBackgroundClick: () => {},
+  };
+}
+
+function renderPenaltyModalPreview() {
+  L.campaign = null;
+  liveStore.reset();
+  halftimeStore.reset();
+  liveStore.setScore(2, 2);
+  liveStore.setMinute(90);
+  liveStore.setHalfLabel("Pênaltis");
+  liveStore.setBall({ left: 86, top: 50, transitionMs: 700 });
+  liveStore.addGoal("you", 18, "Ronaldo", "Zidane");
+  liveStore.addGoal("opp", 42, "Maradona", null);
+  liveStore.addGoal("you", 71, "Messi", "Xavi");
+  liveStore.addGoal("opp", 88, "Kempes", "Burruchaga");
+  liveStore.prependFeed({
+    minute: 90,
+    type: "penalty",
+    text: "Disputa empatada. Messi caminha para a cobrança decisiva.",
+    pos: "88-34",
+  });
+  liveStore.prependFeed({
+    minute: 90,
+    type: "fulltime",
+    text: "Fim do tempo normal: 2 x 2. A semifinal vai para os pênaltis.",
+    pos: null,
+  });
+  liveStore.openShootout();
+  const kicks: Array<["you" | "opp", string, boolean]> = [
+    ["you", "Ronaldo", true],
+    ["opp", "Maradona", true],
+    ["you", "Ronaldinho", false],
+    ["opp", "Batistuta", false],
+    ["you", "Zidane", true],
+    ["opp", "Kempes", true],
+    ["you", "Xavi", true],
+    ["opp", "Burruchaga", true],
+    ["you", "Cafu", true],
+    ["opp", "Passarella", true],
+  ];
+  for (const [side, taker, scored] of kicks) {
+    const id = liveStore.appendKick(side, taker);
+    liveStore.resolveKick(side, id, scored);
+  }
+  liveStore.setSuddenDeath();
+  liveStore.appendKick("you", "Messi");
+
+  renderReact(
+    createElement(CampaignMatchShell, {
+      ladderLabel: "Semifinal",
+      oppName: "Argentina 1986",
+      oppFlagName: "Argentina",
+      oppInitials: "AR",
+      speedOptions: [1, 1.5, 2],
+      activeSpeed: 1,
+      showPause: true,
+      onSpeedChange: setMatchSpeed,
+      onTogglePause: (paused) => liveStore.setPaused(paused),
+      onSkip: () => {},
+    }),
+  );
+}
+
+function renderSubstitutionModalPreview() {
+  L.campaign = null;
+  liveStore.reset();
+  halftimeStore.reset();
+  liveStore.setScore(1, 1);
+  liveStore.setMinute(45);
+  liveStore.setHalfLabel("Intervalo");
+  liveStore.setBall({ left: 50, top: 50, transitionMs: 700 });
+  liveStore.addGoal("you", 24, "Ronaldo", "Messi");
+  liveStore.addGoal("opp", 39, "Cruyff", "Neeskens");
+  liveStore.prependFeed({
+    minute: 45,
+    type: "halftime",
+    text: "Intervalo: hora de ajustar formação, foco e substituições.",
+    pos: null,
+  });
+  liveStore.prependFeed({
+    minute: 39,
+    type: "goal",
+    text: "Gol da Holanda 1974. Cruyff empata antes do intervalo.",
+    pos: "92-34",
+  });
+
+  const formation = getFormation("4-3-3")!;
+  const picks = previewCampaignPicks();
+  const selectedSlotId = formation.slots[8]?.id ?? formation.slots[0].id;
+  const pitchSlots = buildPitchSlots(formation, picks, {
+    showPos: true,
+    selectedSubId: selectedSlotId,
+  });
+  halftimeStore.set({
+    open: true,
+    formationId: "4-3-3",
+    mentality: "pressao",
+    attackFocus: "meio",
+    subStatus:
+      "Messi selecionado. Clique em outro jogador para trocar de posição, ou escolha um reserva.",
+    subCountLabel: "Substituições 2/5 · Prontos 0/2",
+    continueLabel: "Voltar para o jogo",
+    continueDisabled: false,
+    continueDone: false,
+    controlsDisabled: false,
+    locked: false,
+    hideRatings: false,
+    focusBanner: {
+      kind: "good",
+      text: "Foco encaixado: seu elenco rende melhor pelo meio. Lados 88 · Meio 92 · OVR 91.",
+    },
+    pitchSlots,
+    reserves: [
+      {
+        name: "Cristiano Ronaldo",
+        posGroup: "att",
+        posText: "PE/CA",
+        rating: 92,
+        teamLabel: "Portugal 2016",
+        selected: false,
+        disabled: false,
+      },
+      {
+        name: "Iniesta",
+        posGroup: "mid",
+        posText: "MC/MEI",
+        rating: 91,
+        teamLabel: "Espanha 2010",
+        selected: true,
+        disabled: false,
+      },
+      {
+        name: "Maldini",
+        posGroup: "def",
+        posText: "LE/ZAG",
+        rating: 90,
+        teamLabel: "Itália 2006",
+        selected: false,
+        disabled: false,
+      },
+      {
+        name: "Neuer",
+        posGroup: "gk",
+        posText: "GOL",
+        rating: 89,
+        teamLabel: "Alemanha 2014",
+        selected: false,
+        disabled: true,
+      },
+      {
+        name: "Kaká",
+        posGroup: "mid",
+        posText: "MEI",
+        rating: 88,
+        teamLabel: "Brasil 2002",
+        selected: false,
+        disabled: false,
+      },
+    ],
+  });
+
+  renderReact(
+    createElement(LiveMatchShell, {
+      youInitials: "VC",
+      opponentInitials: "HO",
+      youName: "Seu time",
+      opponentName: "Holanda 1974",
+      speedOptions: [1, 1.5, 2],
+      activeSpeed: 1,
+      vsAI: true,
+      showPause: true,
+      halftimeOptions: previewHalftimeOptions(),
+      halftimeCallbacks: noopHalftimeCallbacks(),
+      onSpeedChange: setMatchSpeed,
+      onTogglePause: (paused) => liveStore.setPaused(paused),
+      onSkip: () => {},
+    }),
+  );
+}
+
+function renderDevPreview(kind: DevPreviewKind) {
+  L.state = null;
+  L.youId = null;
+  L.playing = false;
+  L.accountScreen = null;
+  lastCampaignPhase = null;
+
+  if (kind === "penalty-modal") {
+    renderPenaltyModalPreview();
+    return;
+  }
+  if (kind === "substitution-modal") {
+    renderSubstitutionModalPreview();
+    return;
+  }
+
+  if (kind === "cup-victory") {
+    L.campaign = null;
+    renderCampaignEndPreview("victory");
+    return;
+  }
+  if (kind === "cup-gameover") {
+    L.campaign = null;
+    renderCampaignEndPreview("gameover");
+    return;
+  }
+
+  L.campaign = previewCampaignState(kind);
+  if (kind === "cup-draft" && L.campaign.currentTeam) {
+    L.campaign.selectedPlayer = [...campaignSelectable()][0] ?? null;
+  }
+  renderCampaign();
+}
+
+function renderCampaignEndPreview(kind: CampaignEndPreviewKind) {
+  if (kind === "victory") {
+    renderReact(
+      createElement(CampaignVictory, {
+        groupLabel: "líder do grupo",
+        journeyLeaders: previewJourneyLeaders(),
+        squadRows: previewSquadRows(),
+        bracket: previewBracket(),
+        progressRound: 8,
+        onRetry: () => {
+          location.hash = "";
+          startCampaign();
+        },
+        onHome: () => {
+          location.hash = "";
+          goHome();
+        },
+      }),
+    );
+    return;
+  }
+
+  renderReact(
+    createElement(CampaignGameOver, {
+      title: "Eliminado na semifinal",
+      detail: "Resultado contra Argentina 1986: 2 x 3 (derrota).",
+      youGoals: 2,
+      oppGoals: 3,
+      oppName: "Argentina 1986",
+      penaltyLabel: null,
+      journeyLeaders: previewJourneyLeaders(),
+      squadRows: previewSquadRows(),
+      status: { kind: "knockout", bracket: previewBracket() },
+      progressRound: 6,
+      onRetry: () => {
+        location.hash = "";
+        startCampaign();
+      },
+      onHome: () => {
+        location.hash = "";
+        goHome();
+      },
     }),
   );
 }
@@ -2681,7 +3243,7 @@ function renderLiveMatch() {
           minute: 90,
           type: "info",
           side: null,
-          text: "⚡ Morte súbita: cada cobrança decide.",
+          text: "Morte súbita: cada cobrança decide.",
         });
       }
       const k = kicks[i++];
@@ -2776,6 +3338,12 @@ function renderLiveMatch() {
         name: pk.player.name,
         pos: pk.player.pos,
         rating: pk.player.rating,
+        pac: pk.player.pac,
+        sho: pk.player.sho,
+        pas: pk.player.pas,
+        dri: pk.player.dri,
+        def: pk.player.def,
+        phy: pk.player.phy,
         fromTeamId: pk.fromTeamId,
       })),
     });
@@ -3132,5 +3700,6 @@ function escapeHtml(s: string): string {
 }
 
 render();
+window.addEventListener("hashchange", render);
 void loadLeaderboard();
 void restoreSession();

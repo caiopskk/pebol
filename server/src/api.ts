@@ -28,6 +28,7 @@ function forClient(t: DbTeam, u?: AuthUser | null): DbTeam {
 const VALID_POS = new Set([
   "GK", "RB", "LB", "CB", "RWB", "LWB", "CDM", "CM", "CAM", "RM", "LM", "RW", "LW", "CF", "ST",
 ]);
+const PLAYER_ATTRIBUTES = ["pac", "sho", "pas", "dri", "def", "phy"] as const;
 
 function validateTeam(t: TeamInput): string | null {
   if (!t || typeof t.name !== "string" || !t.name.trim()) return "Nome do time é obrigatório.";
@@ -38,12 +39,31 @@ function validateTeam(t: TeamInput): string | null {
     if (!VALID_POS.has(p.pos)) return `Posição inválida: ${p.pos}.`;
     if (p.altPositions?.some((pos) => !VALID_POS.has(pos))) return `Posição alternativa inválida em ${p.name}.`;
     if (typeof p.rating !== "number" || p.rating < 40 || p.rating > 99) return "Rating deve ser entre 40 e 99.";
+    for (const attr of PLAYER_ATTRIBUTES) {
+      const value = p[attr];
+      if (value == null) continue;
+      if (typeof value !== "number" || value < 1 || value > 99)
+        return `${attr.toUpperCase()} deve ser entre 1 e 99.`;
+    }
   }
   return null;
 }
 
 function canEdit(t: DbTeam, u: AuthUser): boolean {
   return t.ownerId ? t.ownerId === u.id : u.role === "admin";
+}
+
+function requireAdminUser(req: AuthRequest, res: Response): AuthUser | null {
+  const u = req.authUser;
+  if (!u) {
+    res.status(401).json({ error: "Faça login para continuar." });
+    return null;
+  }
+  if (u.role !== "admin") {
+    res.status(403).json({ error: "Apenas administradores podem gerenciar times." });
+    return null;
+  }
+  return u;
 }
 
 /** Register auth + team CRUD routes. `onOfficialChange` refreshes the game's team cache. */
@@ -89,25 +109,29 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
   });
 
   app.get("/api/teams", async (req: AuthRequest, res) => {
-    const u = req.authUser;
-    const teams = await getVisibleTeams(u?.id ?? null, u?.role ?? "user");
+    const u = requireAdminUser(req, res);
+    if (!u) return;
+    const teams = await getVisibleTeams(u.id, u.role);
     res.json({ teams: teams.map((t) => forClient(t, u)) });
   });
 
   app.get("/api/teams/:id", async (req: AuthRequest, res: Response) => {
+    const u = requireAdminUser(req, res);
+    if (!u) return;
     const t = await getTeamById(req.params.id);
     if (!t) return res.status(404).json({ error: "Time não encontrado." });
-    if (t.ownerId && t.ownerId !== req.authUser?.id && req.authUser?.role !== "admin")
+    if (t.ownerId && t.ownerId !== u.id && u.role !== "admin")
       return res.status(403).json({ error: "Sem acesso a este time." });
-    res.json({ team: forClient(t, req.authUser) });
+    res.json({ team: forClient(t, u) });
   });
 
   app.post("/api/teams", requireAuth, async (req: AuthRequest, res) => {
+    const u = requireAdminUser(req, res);
+    if (!u) return;
     const body = req.body as TeamInput & { official?: boolean; kind?: "club" | "national" };
     const err = validateTeam(body);
     if (err) return res.status(400).json({ error: err });
-    const u = req.authUser!;
-    const official = !!body.official && u.role === "admin";
+    const official = body.official !== false;
     const ownerId = official ? null : u.id;
     const dup = await findTeamByNameSeason(body.name, body.season ?? "", ownerId);
     if (dup) {
@@ -120,9 +144,11 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
   });
 
   app.put("/api/teams/:id", requireAuth, async (req: AuthRequest, res) => {
+    const u = requireAdminUser(req, res);
+    if (!u) return;
     const existing = await getTeamById(req.params.id);
     if (!existing) return res.status(404).json({ error: "Time não encontrado." });
-    if (!canEdit(existing, req.authUser!)) return res.status(403).json({ error: "Você não pode editar este time." });
+    if (!canEdit(existing, u)) return res.status(403).json({ error: "Você não pode editar este time." });
     const err = validateTeam(req.body);
     if (err) return res.status(400).json({ error: err });
     const body = req.body as TeamInput;
@@ -137,9 +163,11 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
   });
 
   app.delete("/api/teams/:id", requireAuth, async (req: AuthRequest, res) => {
+    const u = requireAdminUser(req, res);
+    if (!u) return;
     const existing = await getTeamById(req.params.id);
     if (!existing) return res.status(404).json({ error: "Time não encontrado." });
-    if (!canEdit(existing, req.authUser!)) return res.status(403).json({ error: "Você não pode excluir este time." });
+    if (!canEdit(existing, u)) return res.status(403).json({ error: "Você não pode excluir este time." });
     await deleteTeam(req.params.id);
     if (!existing.ownerId) onOfficialChange();
     res.json({ ok: true });

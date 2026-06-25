@@ -5,7 +5,7 @@
   "type": "module",
   "description": "Draft de futebol 1v1 em tempo real",
   "scripts": {
-    "dev": "concurrently -n server,client -c blue,green \"npm:dev:server\" \"npm:dev:client\"",
+    "dev": "concurrently -n server,client -c blue,green \"pnpm run dev:server\" \"pnpm run dev:client\"",
     "dev:server": "tsx watch server/src/index.ts",
     "dev:client": "vite",
     "build": "vite build",

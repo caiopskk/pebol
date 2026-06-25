@@ -6,6 +6,7 @@ import type {
   Mentality,
   AttackFocus,
   Team,
+  Player,
   SquadPick,
   HalftimeLineup,
   Position,
@@ -369,6 +370,12 @@ function applyHalftimeLineup(p: InternalPlayer, lineup: HalftimeLineup) {
       name: String(pk.name).slice(0, 40),
       pos: pk.pos as Position,
       rating: Math.max(50, Math.min(99, Math.round(pk.rating))),
+      pac: pk.pac,
+      sho: pk.sho,
+      pas: pk.pas,
+      dri: pk.dri,
+      def: pk.def,
+      phy: pk.phy,
     };
     return {
       slotId: pk.slotId,
@@ -469,6 +476,16 @@ export function toPublic(room: Room): RoomState {
   const hide = room.mode === "hardcore" && room.phase === "draft";
   const hasAI = room.players.some((p) => p.isAI);
   const rerollsEnabled = isPvP(room) || (hasAI && room.mode === "classico");
+  const hiddenPlayer = (player: Player): Player => ({
+    ...player,
+    rating: 0,
+    pac: undefined,
+    sho: undefined,
+    pas: undefined,
+    dri: undefined,
+    def: undefined,
+    phy: undefined,
+  });
 
   const players: PlayerPublic[] = room.players.map((p) => ({
     id: p.id,
@@ -484,7 +501,7 @@ export function toPublic(room: Room): RoomState {
     attackFocus: p.attackFocus,
     picks: p.picks.map((pk) =>
       hide
-        ? { ...pk, effectiveRating: 0, player: { ...pk.player, rating: 0 } }
+        ? { ...pk, effectiveRating: 0, player: hiddenPlayer(pk.player) }
         : pk,
     ),
   }));
@@ -493,8 +510,8 @@ export function toPublic(room: Room): RoomState {
   if (currentTeam && hide) {
     currentTeam = {
       ...currentTeam,
-      players: currentTeam.players.map((pl) => ({ ...pl, rating: 0 })),
-      bench: currentTeam.bench?.map((pl) => ({ ...pl, rating: 0 })),
+      players: currentTeam.players.map((pl) => hiddenPlayer(pl)),
+      bench: currentTeam.bench?.map((pl) => hiddenPlayer(pl)),
     };
   }
 

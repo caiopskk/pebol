@@ -10,6 +10,10 @@ import {
 import { CLUB_ALIASES } from "../../shared/data/aliases.js";
 import { ACHIEVEMENTS, type AchievementDefinition } from "../../shared/achievements.js";
 import { buildLevelProgress, type LevelProgress } from "../../shared/progression.js";
+import {
+  PLAYER_ATTRIBUTE_KEYS,
+  withDerivedAttributes,
+} from "../../shared/playerAttributes.js";
 import type { Team, Player, Position } from "../../shared/types.js";
 
 // Turso/libSQL in production (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN), local file in dev.
@@ -22,6 +26,42 @@ if (url.startsWith("file:")) {
     });
   } catch {
     /* dir already exists */
+  }
+}
+
+async function backfillPlayerAttributes(): Promise<void> {
+  const rows = (
+    await db.execute(
+      "SELECT id, name, pos, rating, pac, sho, pas, dri, def, phy FROM players",
+    )
+  ).rows as unknown as Record<string, unknown>[];
+
+  for (const row of rows) {
+    const missing = PLAYER_ATTRIBUTE_KEYS.some((key) => row[key] == null);
+    if (!missing) continue;
+    const player = withDerivedAttributes({
+      name: String(row.name),
+      pos: String(row.pos) as Position,
+      rating: Number(row.rating),
+      pac: row.pac == null ? undefined : Number(row.pac),
+      sho: row.sho == null ? undefined : Number(row.sho),
+      pas: row.pas == null ? undefined : Number(row.pas),
+      dri: row.dri == null ? undefined : Number(row.dri),
+      def: row.def == null ? undefined : Number(row.def),
+      phy: row.phy == null ? undefined : Number(row.phy),
+    });
+    await db.execute({
+      sql: "UPDATE players SET pac=?, sho=?, pas=?, dri=?, def=?, phy=? WHERE id=?",
+      args: [
+        player.pac ?? null,
+        player.sho ?? null,
+        player.pas ?? null,
+        player.dri ?? null,
+        player.def ?? null,
+        player.phy ?? null,
+        String(row.id),
+      ],
+    });
   }
 }
 export const db: Client = createClient(
@@ -69,6 +109,7 @@ export async function initDb(): Promise<void> {
       `CREATE TABLE IF NOT EXISTS players (
         id TEXT PRIMARY KEY, team_id TEXT NOT NULL, name TEXT NOT NULL, pos TEXT NOT NULL,
         rating INTEGER NOT NULL, alt_pos TEXT NOT NULL DEFAULT '',
+        pac INTEGER, sho INTEGER, pas INTEGER, dri INTEGER, def INTEGER, phy INTEGER,
         is_bench INTEGER NOT NULL DEFAULT 0, sort_order INTEGER NOT NULL DEFAULT 0)`,
       `CREATE TABLE IF NOT EXISTS achievements (
         id TEXT PRIMARY KEY, title TEXT NOT NULL, description TEXT NOT NULL,
@@ -88,20 +129,30 @@ export async function initDb(): Promise<void> {
     "write",
   );
   await migrateDb();
+  await backfillPlayerAttributes();
   await seedAchievements();
   await seedIfEmpty();
 }
 
 async function migrateDb(): Promise<void> {
-  try {
-    await db.execute(
-      "ALTER TABLE players ADD COLUMN alt_pos TEXT NOT NULL DEFAULT ''",
-    );
-  } catch (err) {
-    const msg = (
-      err instanceof Error ? err.message : String(err)
-    ).toLowerCase();
-    if (!msg.includes("duplicate column")) throw err;
+  const columns = [
+    "alt_pos TEXT NOT NULL DEFAULT ''",
+    "pac INTEGER",
+    "sho INTEGER",
+    "pas INTEGER",
+    "dri INTEGER",
+    "def INTEGER",
+    "phy INTEGER",
+  ];
+  for (const column of columns) {
+    try {
+      await db.execute(`ALTER TABLE players ADD COLUMN ${column}`);
+    } catch (err) {
+      const msg = (
+        err instanceof Error ? err.message : String(err)
+      ).toLowerCase();
+      if (!msg.includes("duplicate column")) throw err;
+    }
   }
 }
 
@@ -175,16 +226,23 @@ async function writePlayers(teamId: string, t: TeamInput): Promise<void> {
     ...(t.bench ?? []).map((p, i) => ({ p, bench: 1, i })),
   ];
   for (const { p, bench, i } of rows) {
+    const player = withDerivedAttributes(p);
     const altPos = normalizeAltPositions(p).join(",");
     await db.execute({
-      sql: `INSERT INTO players (id,team_id,name,pos,rating,alt_pos,is_bench,sort_order) VALUES (?,?,?,?,?,?,?,?)`,
+      sql: `INSERT INTO players (id,team_id,name,pos,rating,alt_pos,pac,sho,pas,dri,def,phy,is_bench,sort_order) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       args: [
         randomUUID(),
         teamId,
-        String(p.name).slice(0, 40),
-        p.pos,
-        clampRating(p.rating),
+        String(player.name).slice(0, 40),
+        player.pos,
+        clampRating(player.rating),
         altPos,
+        clampAttribute(player.pac),
+        clampAttribute(player.sho),
+        clampAttribute(player.pas),
+        clampAttribute(player.dri),
+        clampAttribute(player.def),
+        clampAttribute(player.phy),
         bench,
         i,
       ],
@@ -194,6 +252,13 @@ async function writePlayers(teamId: string, t: TeamInput): Promise<void> {
 
 const clampRating = (n: number) =>
   Math.max(40, Math.min(99, Math.round(Number(n) || 60)));
+
+const clampAttribute = (n: unknown): number | null => {
+  if (n == null || n === "") return null;
+  const value = Number(n);
+  if (!Number.isFinite(value)) return null;
+  return Math.max(1, Math.min(99, Math.round(value)));
+};
 
 function normalizeAltPositions(p: Player): Position[] {
   return (p.altPositions ?? []).filter(
@@ -228,6 +293,12 @@ function rowsToTeams(
       pos,
       altPositions: parseAltPositions(p.alt_pos, pos),
       rating: Number(p.rating),
+      pac: p.pac == null ? undefined : Number(p.pac),
+      sho: p.sho == null ? undefined : Number(p.sho),
+      pas: p.pas == null ? undefined : Number(p.pas),
+      dri: p.dri == null ? undefined : Number(p.dri),
+      def: p.def == null ? undefined : Number(p.def),
+      phy: p.phy == null ? undefined : Number(p.phy),
     };
     (Number(p.is_bench)
       ? byTeam.get(tid)!.bench

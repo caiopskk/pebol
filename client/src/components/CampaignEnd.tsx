@@ -2,10 +2,12 @@ import { motion } from "framer-motion";
 import { pressFx, screenIn } from "../lib/motion.js";
 import {
   CampaignStatus,
+  CampaignSquadRows,
   CupProgress,
   KnockoutBracket,
   type BracketRoundData,
   type CampaignStatusData,
+  type CampaignSquadRow,
 } from "./CupStatus.js";
 
 export interface CampaignJourneyLeader {
@@ -33,6 +35,18 @@ function JourneyLeaders({ leaders }: { leaders: CampaignJourneyLeader[] }) {
   );
 }
 
+function SquadShowcase({ rows }: { rows: CampaignSquadRow[] }) {
+  return (
+    <section className="cup-end-squad" aria-label="Elenco montado">
+      <div className="section-head compact">
+        <h3>Elenco montado</h3>
+        <span>Seu XI da campanha</span>
+      </div>
+      <CampaignSquadRows rows={rows} />
+    </section>
+  );
+}
+
 interface GameOverProps {
   title: string;
   detail: string;
@@ -41,6 +55,7 @@ interface GameOverProps {
   oppName: string;
   penaltyLabel: string | null;
   journeyLeaders: CampaignJourneyLeader[];
+  squadRows: CampaignSquadRow[];
   status: CampaignStatusData;
   progressRound: number;
   onRetry: () => void;
@@ -55,6 +70,7 @@ export function CampaignGameOver({
   oppName,
   penaltyLabel,
   journeyLeaders,
+  squadRows,
   status,
   progressRound,
   onRetry,
@@ -77,7 +93,10 @@ export function CampaignGameOver({
           <div className="cup-end-opp">contra {oppName}</div>
         </div>
         <JourneyLeaders leaders={journeyLeaders} />
-        <CampaignStatus data={status} />
+        <div className="cup-end-share-grid">
+          <SquadShowcase rows={squadRows} />
+          <CampaignStatus data={status} />
+        </div>
         <CupProgress won={progressRound} />
         <div className="lobby-actions">
           <motion.button type="button" className="primary big" onClick={onRetry} {...pressFx}>
@@ -95,6 +114,7 @@ export function CampaignGameOver({
 interface VictoryProps {
   groupLabel: string;
   journeyLeaders: CampaignJourneyLeader[];
+  squadRows: CampaignSquadRow[];
   bracket: BracketRoundData[];
   progressRound: number;
   onRetry: () => void;
@@ -104,6 +124,7 @@ interface VictoryProps {
 export function CampaignVictory({
   groupLabel,
   journeyLeaders,
+  squadRows,
   bracket,
   progressRound,
   onRetry,
@@ -131,7 +152,10 @@ export function CampaignVictory({
           impecável!
         </p>
         <JourneyLeaders leaders={journeyLeaders} />
-        <KnockoutBracket rounds={bracket} />
+        <div className="cup-end-share-grid">
+          <SquadShowcase rows={squadRows} />
+          <KnockoutBracket rounds={bracket} />
+        </div>
         <CupProgress won={progressRound} />
         <div className="lobby-actions">
           <motion.button type="button" className="primary big" onClick={onRetry} {...pressFx}>

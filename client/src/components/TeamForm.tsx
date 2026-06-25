@@ -37,6 +37,15 @@ interface RowState extends Player {
   key: string;
 }
 
+const PLAYER_ATTRS = [
+  ["pac", "PAC"],
+  ["sho", "SHO"],
+  ["pas", "PAS"],
+  ["dri", "DRI"],
+  ["def", "DEF"],
+  ["phy", "PHY"],
+] as const;
+
 function newKey(): string {
   return Math.random().toString(36).slice(2, 10);
 }
@@ -56,6 +65,7 @@ function rowMatches(row: RowState, key: string): boolean {
     row.pos,
     (row.altPositions ?? []).join(" "),
     String(row.rating),
+    ...PLAYER_ATTRS.map(([key]) => String(row[key] ?? "")),
   ]
     .join(" ");
   return searchKey(joined).includes(key);
@@ -120,6 +130,25 @@ function PlayerRow({
           onChange(row.key, { rating: Number(e.target.value) || 0 })
         }
       />
+      <div className="pf-attrs" aria-label="Atributos estilo EA FC">
+        {PLAYER_ATTRS.map(([key, label]) => (
+          <label key={key}>
+            <span>{label}</span>
+            <input
+              type="number"
+              min={1}
+              max={99}
+              value={row[key] ?? ""}
+              placeholder="--"
+              onChange={(e) =>
+                onChange(row.key, {
+                  [key]: e.target.value === "" ? undefined : Number(e.target.value) || 0,
+                } as Partial<RowState>)
+              }
+            />
+          </label>
+        ))}
+      </div>
       {bench && onRemove ? (
         <button
           className="ghost pf-del"
@@ -204,6 +233,17 @@ export function TeamForm({
           ...p,
           name: p.name.trim(),
           rating: Math.max(40, Math.min(99, Math.round(p.rating || 75))),
+          ...Object.fromEntries(
+            PLAYER_ATTRS.map(([key]) => {
+              const value = p[key];
+              return [
+                key,
+                value == null || value === 0
+                  ? undefined
+                  : Math.max(1, Math.min(99, Math.round(value))),
+              ];
+            }),
+          ),
           altPositions:
             p.altPositions && p.altPositions.length
               ? p.altPositions.filter((x, i, a) => x !== p.pos && a.indexOf(x) === i)
@@ -302,7 +342,7 @@ export function TeamForm({
                 setSearch(e.target.value);
                 onSearchChange?.(e.target.value);
               }}
-              placeholder="Digite nome, posição ou overall"
+              placeholder="Digite nome, posição, overall ou atributo"
               autoComplete="off"
             />
           </label>

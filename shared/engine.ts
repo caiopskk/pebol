@@ -75,7 +75,74 @@ export function effectiveRating(player: Player, slotPos: Position): number {
   return Math.max(40, Math.round(r));
 }
 
-/** Compute team strength per line from the assigned picks. */
+function round1(n: number): number {
+  return Math.round(n * 10) / 10;
+}
+
+type PlayerAttr = "pac" | "sho" | "pas" | "dri" | "def" | "phy";
+
+function clamp(n: number, lo: number, hi: number): number {
+  return Math.max(lo, Math.min(hi, n));
+}
+
+function clampRating(n: number): number {
+  return clamp(n, 40, 99);
+}
+
+function playerAttr(player: Player, attr: PlayerAttr): number {
+  return player[attr] ?? player.rating;
+}
+
+function positionFit(pick: SquadPick): number {
+  return clamp(pick.effectiveRating / Math.max(1, pick.player.rating), 0.55, 1);
+}
+
+function adjustedAttr(pick: SquadPick, attr: PlayerAttr): number {
+  return clampRating(playerAttr(pick.player, attr) * positionFit(pick));
+}
+
+function attrScore(
+  pick: SquadPick,
+  weights: Partial<Record<PlayerAttr, number>>,
+): number {
+  let sum = 0;
+  let total = 0;
+  for (const [attr, weight] of Object.entries(weights) as [PlayerAttr, number][]) {
+    sum += adjustedAttr(pick, attr) * weight;
+    total += weight;
+  }
+  return total ? clampRating(sum / total) : pick.effectiveRating;
+}
+
+function attackingSkill(pick: SquadPick): number {
+  return attrScore(pick, { sho: 0.36, dri: 0.24, pac: 0.18, pas: 0.12, phy: 0.1 });
+}
+
+function playmakingSkill(pick: SquadPick): number {
+  return attrScore(pick, { pas: 0.42, dri: 0.26, sho: 0.1, pac: 0.1, def: 0.07, phy: 0.05 });
+}
+
+function defendingSkill(pick: SquadPick): number {
+  return attrScore(pick, { def: 0.48, phy: 0.22, pac: 0.12, pas: 0.08, dri: 0.06, sho: 0.04 });
+}
+
+function keeperSkill(pick: SquadPick): number {
+  return attrScore(pick, { def: 0.46, phy: 0.22, pac: 0.1, dri: 0.08, pas: 0.08, sho: 0.06 });
+}
+
+function midfieldSkill(pick: SquadPick): number {
+  return attrScore(pick, { pas: 0.34, dri: 0.24, def: 0.16, phy: 0.1, pac: 0.1, sho: 0.06 });
+}
+
+function roleScore(pick: SquadPick, slotPos: Position): number {
+  const group = groupOf(slotPos);
+  if (group === "GK") return keeperSkill(pick);
+  if (group === "DEF") return defendingSkill(pick);
+  if (group === "MID") return midfieldSkill(pick);
+  return attackingSkill(pick);
+}
+
+/** Compute team strength per line from the assigned picks and player attributes. */
 export function computeStrength(
   picks: SquadPick[],
   formationId: string,
@@ -86,29 +153,30 @@ export function computeStrength(
     MID: [],
     ATT: [],
   };
+  const allScores: number[] = [];
   let gk = 0;
 
   for (const pick of picks) {
     const slot = formation?.slots.find((s) => s.id === pick.slotId);
     const slotPos = slot?.pos ?? pick.player.pos;
-    const g = groupOf(slotPos);
-    if (g === "GK") {
-      gk = pick.effectiveRating;
+    const score = roleScore(pick, slotPos);
+    allScores.push(score);
+    const group = groupOf(slotPos);
+    if (group === "GK") {
+      gk = score;
     } else {
-      lines[g].push(pick.effectiveRating);
+      lines[group].push(score);
     }
   }
 
   const avg = (arr: number[]) =>
     arr.length ? arr.reduce((a, b) => a + b, 0) / arr.length : 60;
 
-  // the goalkeeper weighs into the defense line
   const defense = picks.length ? (avg(lines.DEF) * 3 + gk * 2) / 5 : 60;
   const midfield = avg(lines.MID);
   const attack = avg(lines.ATT);
-  const allRatings = picks.map((p) => p.effectiveRating);
-  const overall = allRatings.length
-    ? allRatings.reduce((a, b) => a + b, 0) / allRatings.length
+  const overall = allScores.length
+    ? allScores.reduce((a, b) => a + b, 0) / allScores.length
     : 60;
 
   return {
@@ -117,10 +185,6 @@ export function computeStrength(
     defense: round1(defense),
     overall: round1(overall),
   };
-}
-
-function round1(n: number): number {
-  return Math.round(n * 10) / 10;
 }
 
 function applyMentality(
@@ -158,7 +222,7 @@ const CENTRAL_POS = new Set<Position>(["CDM", "CM", "CAM", "CF", "ST"]);
 function zoneAvg(picks: SquadPick[], set: Set<Position>): number | null {
   const r = picks
     .filter((p) => set.has(p.player.pos))
-    .map((p) => p.effectiveRating);
+    .map((p) => attackingSkill(p));
   return r.length ? r.reduce((a, b) => a + b, 0) / r.length : null;
 }
 
@@ -191,7 +255,7 @@ export function attackFocusReport(picks: SquadPick[]): {
   best: AttackFocus;
 } {
   const overall = picks.length
-    ? picks.reduce((a, p) => a + p.effectiveRating, 0) / picks.length
+    ? picks.reduce((a, p) => a + attackingSkill(p), 0) / picks.length
     : 0;
   const wide = zoneAvg(picks, WIDE_POS);
   const central = zoneAvg(picks, CENTRAL_POS);
@@ -209,7 +273,17 @@ type Side = "home" | "away";
 function scoreWeight(pick: SquadPick): number {
   const base: Record<string, number> = { ATT: 7, MID: 3, DEF: 0.7, GK: 0.02 };
   const g = groupOf(pick.player.pos);
-  return base[g] * (pick.effectiveRating / 80);
+  return base[g] * (attackingSkill(pick) / 80);
+}
+
+function eventSkill(
+  pick: SquadPick,
+  weights: Partial<Record<string, number>>,
+): number {
+  if (weights === W_ATTACK || weights === W_CHANCE) return attackingSkill(pick);
+  if (weights === W_PLAYMAKER) return playmakingSkill(pick);
+  if (weights === W_DEFENSE) return defendingSkill(pick);
+  return pick.effectiveRating;
 }
 
 /** Pick a random player from the team, weighted by position group. */
@@ -220,7 +294,7 @@ function weightedPlayer(
 ): string {
   const pool = side.picks.map((p) => ({
     name: p.player.name,
-    w: (w[groupOf(p.player.pos)] ?? 0) + 0.01,
+    w: ((w[groupOf(p.player.pos)] ?? 0) * eventSkill(p, w)) / 80 + 0.01,
   }));
   const total = pool.reduce((a, b) => a + b.w, 0) || 1;
   let r = rng() * total;
@@ -711,12 +785,46 @@ export interface SimInput {
   strengthScale?: number;
 }
 
+function penaltyTakerSkill(pick: SquadPick): number {
+  return attrScore(pick, {
+    sho: 0.56,
+    dri: 0.16,
+    phy: 0.12,
+    pas: 0.08,
+    pac: 0.08,
+  });
+}
+
+function penaltyKeeperSkill(pick: SquadPick): number {
+  return attrScore(pick, {
+    def: 0.5,
+    phy: 0.2,
+    pac: 0.12,
+    dri: 0.08,
+    pas: 0.06,
+    sho: 0.04,
+  });
+}
+
+function goalkeeperPick(side: SimSide): SquadPick | undefined {
+  return (
+    side.picks.find((p) => groupOf(p.player.pos) === "GK") ??
+    side.picks.find((p) => p.slotId.toLowerCase().includes("gk")) ??
+    side.picks[0]
+  );
+}
+
+function penaltyChance(taker: SquadPick, keeper: SquadPick | undefined): number {
+  const kicker = penaltyTakerSkill(taker);
+  const gk = keeper ? penaltyKeeperSkill(keeper) : 75;
+  return clamp(0.76 + (kicker - gk) / 180, 0.58, 0.92);
+}
+
 /** Penalty taker order: best finishers first. */
-function takerOrder(side: SimSide): string[] {
+function takerOrder(side: SimSide): SquadPick[] {
   return [...side.picks]
     .filter((p) => groupOf(p.player.pos) !== "GK")
-    .sort((a, b) => scoreWeight(b) - scoreWeight(a))
-    .map((p) => p.player.name);
+    .sort((a, b) => penaltyTakerSkill(b) - penaltyTakerSkill(a));
 }
 
 function runShootout(home: SimSide, away: SimSide, rng: () => number) {
@@ -725,10 +833,14 @@ function runShootout(home: SimSide, away: SimSide, rng: () => number) {
   const tA = takerOrder(away);
   let h = 0, a = 0; // goals
   let kh = 0, ka = 0; // kicks taken
-  const take = (side: Side, takers: string[], n: number): boolean => {
-    const taker = takers[n % takers.length] ?? "o cobrador";
-    const scored = rng() > 0.26;
-    kicks.push({ side, scored, taker });
+  const take = (side: Side, takers: SquadPick[], n: number): boolean => {
+    const team = side === "home" ? home : away;
+    const opponent = side === "home" ? away : home;
+    const taker = takers[n % takers.length] ?? team.picks[0];
+    const scored = taker
+      ? rng() < penaltyChance(taker, goalkeeperPick(opponent))
+      : rng() > 0.26;
+    kicks.push({ side, scored, taker: taker?.player.name ?? "o cobrador" });
     return scored;
   };
   // a team is already out of the best-of-5 if it can't catch up with its remaining kicks
