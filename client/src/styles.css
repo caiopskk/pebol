@@ -3816,12 +3816,20 @@ select option:checked {
   }
 }
 
-.achievement-pop {
+.notice-stack {
   position: fixed;
   right: 1.25rem;
   bottom: 1.25rem;
   z-index: 70;
   width: min(24rem, calc(100vw - 2rem));
+  display: grid;
+  gap: 0.75rem;
+  pointer-events: none;
+}
+
+.achievement-pop {
+  width: 100%;
+  min-height: 5.75rem;
   display: grid;
   grid-template-columns: 3.25rem minmax(0, 1fr) auto;
   gap: 0.875rem;
@@ -3840,6 +3848,7 @@ select option:checked {
   backdrop-filter: blur(14px) saturate(1.2);
   -webkit-backdrop-filter: blur(14px) saturate(1.2);
   animation: achievementIn 0.32s ease;
+  pointer-events: auto;
 }
 .achievement-pop.leaving {
   animation: achievementOut 0.28s ease forwards;
@@ -3881,6 +3890,10 @@ select option:checked {
   color: var(--muted);
   font-size: 0.75rem;
   line-height: 1.35;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
 }
 .achievement-pop em {
   align-self: start;
@@ -3925,6 +3938,42 @@ select option:checked {
     opacity: 0;
     transform: translateX(1.25rem) translateY(0.5rem);
   }
+}
+
+:root[data-resolved-theme="light"] .achievement-pop {
+  border-color: rgba(0, 169, 96, 0.34);
+  border-left-color: #00a960;
+  background:
+    radial-gradient(
+      18rem 8rem at 0% 0%,
+      rgba(0, 169, 96, 0.13),
+      transparent 72%
+    ),
+    rgba(255, 255, 255, 0.94);
+  color: var(--strong-text);
+  box-shadow:
+    0 1rem 2.4rem rgba(15, 38, 42, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+:root[data-resolved-theme="light"] .achievement-pop-copy strong {
+  color: var(--strong-text);
+}
+
+:root[data-resolved-theme="light"] .achievement-pop-copy p {
+  color: #4e6470;
+}
+
+:root[data-resolved-theme="light"] .xp-pop {
+  border-color: rgba(184, 128, 16, 0.36);
+  border-left-color: #c48913;
+  background:
+    radial-gradient(
+      18rem 8rem at 0% 0%,
+      rgba(184, 128, 16, 0.13),
+      transparent 72%
+    ),
+    rgba(255, 255, 255, 0.94);
 }
 
 /* ---------- World Cup campaign ---------- */
@@ -4635,26 +4684,14 @@ select option:checked {
   content: "";
   position: absolute;
   inset: 0;
-  padding: 1px;
   border-radius: inherit;
-  background: linear-gradient(
-    115deg,
-    var(--gold),
-    rgba(31, 199, 125, 0.9),
-    rgba(58, 134, 212, 0.88),
-    var(--gold)
-  );
-  background-size: 240% 240%;
+  border: 1px solid rgba(255, 206, 84, 0.5);
+  background: none;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 255, 135, 0.16),
+    0 0 1.6rem rgba(255, 206, 84, 0.12);
   pointer-events: none;
-  mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  mask-composite: exclude;
-  -webkit-mask:
-    linear-gradient(#000 0 0) content-box,
-    linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-  animation: cup-end-border-flow 5s linear infinite;
+  animation: cup-end-border-flow 3.6s ease-in-out infinite;
 }
 .cup-end-card::after {
   content: "";
@@ -4841,11 +4878,18 @@ select option:checked {
   font-size: 0.85rem;
 }
 @keyframes cup-end-border-flow {
-  0% {
-    background-position: 0% 50%;
-  }
+  0%,
   100% {
-    background-position: 240% 50%;
+    border-color: rgba(255, 206, 84, 0.48);
+    box-shadow:
+      inset 0 0 0 1px rgba(0, 255, 135, 0.12),
+      0 0 1.4rem rgba(255, 206, 84, 0.1);
+  }
+  50% {
+    border-color: rgba(0, 255, 135, 0.62);
+    box-shadow:
+      inset 0 0 0 1px rgba(58, 134, 212, 0.18),
+      0 0 2rem rgba(0, 255, 135, 0.14);
   }
 }
 @media (prefers-reduced-motion: reduce) {
@@ -6670,7 +6714,29 @@ select option:checked {
 }
 
 .cup-end .cup-journey-leaders {
-  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(min(18rem, 100%), 1fr));
+  justify-content: center;
+}
+
+.cup-end .cup-journey-leaders .leader-card {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+  text-align: center;
+}
+
+.cup-end .cup-journey-leaders .leader-ic {
+  position: absolute;
+  left: 0.85rem;
+  top: 50%;
+  transform: translateY(-50%);
+}
+
+.cup-end .cup-journey-leaders .leader-meta {
+  width: 100%;
+  align-items: center;
+  text-align: center;
 }
 
 /* Premium match engine polish: commentary, scoreboard, field and controls. */

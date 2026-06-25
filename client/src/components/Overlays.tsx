@@ -111,6 +111,7 @@ function AchievementPop({ data }: { data: AchievementPopData }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -18 }}
       transition={{ duration: 0.22 }}
+      layout
     >
       <div className="achievement-pop-icon">✓</div>
       <div className="achievement-pop-copy">
@@ -132,6 +133,7 @@ function XpPop({ data }: { data: XpPopData }) {
       animate={{ opacity: 1, y: 0 }}
       exit={{ opacity: 0, y: -18 }}
       transition={{ duration: 0.22 }}
+      layout
     >
       <div className="achievement-pop-icon">XP</div>
       <div className="achievement-pop-copy">
@@ -151,10 +153,12 @@ export function Overlays() {
     <>
       <WriteLock visible={writeLock} />
       <AnimatePresence>{toast ? <Toast message={toast} /> : null}</AnimatePresence>
-      <AnimatePresence>
-        {achievement ? <AchievementPop data={achievement} /> : null}
-      </AnimatePresence>
-      <AnimatePresence>{xp ? <XpPop data={xp} /> : null}</AnimatePresence>
+      <div className="notice-stack" aria-live="polite" aria-atomic="false">
+        <AnimatePresence initial={false}>
+          {achievement ? <AchievementPop data={achievement} /> : null}
+          {xp ? <XpPop data={xp} /> : null}
+        </AnimatePresence>
+      </div>
     </>
   );
 }

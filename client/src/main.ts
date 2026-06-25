@@ -379,41 +379,46 @@ function goPreviewHome() {
 function DevPreviewChrome({ active }: { active: DevPreviewKind }) {
   const current = DEV_PREVIEWS.find((preview) => preview.kind === active);
   return createElement(
-    "div",
-    { className: "dev-preview-chrome" },
-    createElement(
-      "button",
-      {
-        type: "button",
-        className: "dev-preview-home",
-        onClick: goPreviewHome,
-      },
-      "Tela inicial",
-    ),
+    Fragment,
+    null,
     createElement(
       "div",
-      { className: "dev-preview-current" },
-      createElement("span", null, "Preview"),
-      createElement("strong", null, current?.label ?? active),
-    ),
-    createElement(
-      "div",
-      { className: "dev-preview-links" },
-      DEV_PREVIEWS.map((preview) =>
-        createElement(
-          "button",
-          {
-            key: preview.kind,
-            type: "button",
-            className: preview.kind === active ? "active" : "",
-            onClick: () => {
-              location.hash = preview.hash;
+      { className: "dev-preview-chrome" },
+      createElement(
+        "button",
+        {
+          type: "button",
+          className: "dev-preview-home",
+          onClick: goPreviewHome,
+        },
+        "Tela inicial",
+      ),
+      createElement(
+        "div",
+        { className: "dev-preview-current" },
+        createElement("span", null, "Preview"),
+        createElement("strong", null, current?.label ?? active),
+      ),
+      createElement(
+        "div",
+        { className: "dev-preview-links" },
+        DEV_PREVIEWS.map((preview) =>
+          createElement(
+            "button",
+            {
+              key: preview.kind,
+              type: "button",
+              className: preview.kind === active ? "active" : "",
+              onClick: () => {
+                location.hash = preview.hash;
+              },
             },
-          },
-          preview.label,
+            preview.label,
+          ),
         ),
       ),
     ),
+    createElement(PreviewNoticeControls),
   );
 }
 
@@ -454,6 +459,47 @@ function triggerPreviewAlert(kind: "goal" | "yellow" | "red") {
     previewAlertTimer = window.setTimeout(() => liveStore.hideCard(), CARD_ALERT_HIDE_MS);
     return;
   }
+}
+
+function triggerPreviewNotice(kind: "achievement" | "xp" | "combo") {
+  if (kind === "achievement" || kind === "combo") {
+    queueAchievementNotice(kind === "combo" ? "world_champion" : "first_win");
+  }
+  if (kind === "xp" || kind === "combo") {
+    queueXpNotice({
+      amount: kind === "combo" ? 150 : 45,
+      reason: kind === "combo" ? "Título da Copa do Mundo" : "Preview de progresso",
+      level: kind === "combo" ? 12 : 4,
+      title: kind === "combo" ? "Capitão" : "Aspirante",
+    });
+  }
+}
+
+function PreviewNoticeControls() {
+  const buttons: Array<[string, Parameters<typeof triggerPreviewNotice>[0]]> = [
+    ["Conquista", "achievement"],
+    ["XP", "xp"],
+    ["Combo", "combo"],
+  ];
+  return createElement(
+    "div",
+    {
+      className: "preview-alert-controls",
+      "aria-label": "Disparar conquistas do preview",
+    },
+    createElement("span", null, "Conquistas"),
+    ...buttons.map(([label, kind]) =>
+      createElement(
+        "button",
+        {
+          key: kind,
+          type: "button",
+          onClick: () => triggerPreviewNotice(kind),
+        },
+        label,
+      ),
+    ),
+  );
 }
 
 function PreviewAlertControls() {
@@ -2379,6 +2425,52 @@ function previewGroupRows(groupTeams: Team[]): CupGroupRow[] {
   ];
 }
 
+function previewCompletedGroupRows(groupTeams: Team[]): CupGroupRow[] {
+  return [
+    {
+      id: "you",
+      name: "Seu time",
+      played: 3,
+      wins: 2,
+      draws: 1,
+      losses: 0,
+      gf: 7,
+      ga: 3,
+      points: 7,
+    },
+    {
+      ...groupRow(groupTeams[0]),
+      played: 3,
+      wins: 2,
+      draws: 0,
+      losses: 1,
+      gf: 5,
+      ga: 4,
+      points: 6,
+    },
+    {
+      ...groupRow(groupTeams[1]),
+      played: 3,
+      wins: 1,
+      draws: 1,
+      losses: 1,
+      gf: 4,
+      ga: 4,
+      points: 4,
+    },
+    {
+      ...groupRow(groupTeams[2]),
+      played: 3,
+      wins: 0,
+      draws: 0,
+      losses: 3,
+      gf: 2,
+      ga: 7,
+      points: 0,
+    },
+  ];
+}
+
 function previewCampaignState(kind: Extract<DevPreviewKind, "cup-setup" | "cup-draft" | "cup-prematch">): CampaignState {
   const picks = kind === "cup-draft" ? previewCampaignPicks(7) : previewCampaignPicks();
   const groupTeams = [0, 1, 2].map((round) => wcOpponentTeam(round, previewRng(round)));
@@ -2414,6 +2506,54 @@ function previewCampaignState(kind: Extract<DevPreviewKind, "cup-setup" | "cup-d
     groupTable,
     groupQualified: null,
     groupQualifiedLabel: null,
+    knockoutPath,
+  };
+}
+
+function previewCampaignEndState(kind: CampaignEndPreviewKind): CampaignState {
+  const picks = previewCampaignPicks();
+  const groupTeams = [0, 1, 2].map((round) => wcOpponentTeam(round, previewRng(round)));
+  const knockoutPath = [3, 4, 5, 6, 7].map((round) =>
+    wcOpponentTeam(round, previewRng(round)),
+  );
+  const isVictory = kind === "victory";
+  const lastOpp = knockoutPath[3] ?? groupTeams[2];
+
+  return {
+    phase: isVictory ? "victory" : "gameover",
+    mode: "normal",
+    runId: `cup:preview:${kind}`,
+    formationId: "4-3-3",
+    mentality: "pressao",
+    attackFocus: "meio",
+    round: isVictory ? 8 : 6,
+    picks,
+    currentTeam: null,
+    usedTeamIds: picks.map((pick) => pick.fromTeamId),
+    selectedPlayer: null,
+    selectedPickSlotId: null,
+    currentOpp: null,
+    lastResult: isVictory
+      ? null
+      : {
+          youId: "you",
+          oppId: lastOpp.id,
+          oppName: teamFullName(lastOpp),
+          timeline: [],
+          youGoals: 2,
+          oppGoals: 3,
+          outcome: "loss",
+          shootout: null,
+          penaltyScore: null,
+          winnerId: lastOpp.id,
+        },
+    rerollsRemaining: 0,
+    campaignGoals: { Ronaldo: 7, Messi: 3, Zidane: 1 },
+    campaignAssists: { Messi: 5, Xavi: 2 },
+    groupTeams,
+    groupTable: previewCompletedGroupRows(groupTeams),
+    groupQualified: true,
+    groupQualifiedLabel: "líder do grupo",
     knockoutPath,
   };
 }
@@ -2693,13 +2833,13 @@ function renderDevPreview(kind: DevPreviewKind) {
   }
 
   if (kind === "cup-victory") {
-    L.campaign = null;
-    renderCampaignEndPreview("victory");
+    L.campaign = previewCampaignEndState("victory");
+    renderCampaign();
     return;
   }
   if (kind === "cup-gameover") {
-    L.campaign = null;
-    renderCampaignEndPreview("gameover");
+    L.campaign = previewCampaignEndState("gameover");
+    renderCampaign();
     return;
   }
 
