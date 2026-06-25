@@ -10,6 +10,7 @@ import {
   type HalftimeCallbacks,
   type HalftimeOptions,
   HalfLabel,
+  MomentOverlay,
   PauseButton,
   PenaltyLabel,
   ScoreNumber,
@@ -65,20 +66,22 @@ export function LiveMatchShell({
           </div>
           <div className="speed-row">
             <span className="spd-label">Velocidade</span>
-            {speedOptions.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={`spd ${s === speed ? "active" : ""}`}
-                data-spd={s}
-                onClick={() => {
-                  setSpeed(s);
-                  onSpeedChange(s);
-                }}
-              >
-                {s}x
-              </button>
-            ))}
+            <div className="speed-control" role="group" aria-label="Velocidade da partida">
+              {speedOptions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`spd ${s === speed ? "active" : ""}`}
+                  data-spd={s}
+                  onClick={() => {
+                    setSpeed(s);
+                    onSpeedChange(s);
+                  }}
+                >
+                  {s}x
+                </button>
+              ))}
+            </div>
             {vsAI ? null : (
               <span className="speed-note">
                 Velocidade extra só contra a máquina
@@ -124,6 +127,7 @@ export function LiveMatchShell({
           </div>
           <GoalOverlay />
           <CardOverlay />
+          <MomentOverlay />
         </motion.div>
 
         <div className="live-main">

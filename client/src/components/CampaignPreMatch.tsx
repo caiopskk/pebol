@@ -70,7 +70,7 @@ export function CampaignPreMatch({
       className="min-h-screen bg-stadium-depth px-4 py-5 font-body text-pebol-text sm:px-6 lg:px-8"
       {...screenIn}
     >
-      <div className="mx-auto grid max-w-6xl gap-4">
+      <div className="mx-auto grid max-w-[82rem] gap-4">
         <div className="flex flex-wrap items-center justify-between gap-3 rounded-2xl border border-white/10 bg-pebol-panel px-4 py-3 shadow-premium backdrop-blur-xl">
           <div>
             <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
@@ -91,15 +91,15 @@ export function CampaignPreMatch({
 
         <CupProgress won={progressRound} />
 
-        <div className="grid gap-4 lg:grid-cols-[20rem_minmax(0,1fr)]">
-          <div className="min-w-0">
+        <div className="grid justify-center gap-4 lg:grid-cols-[28rem_minmax(0,51rem)] lg:items-stretch">
+          <div className="cup-prematch-status min-w-0">
             <CampaignStatus data={status} />
           </div>
-          <div className="relative overflow-hidden rounded-2xl border border-white/10 bg-pebol-panel p-5 shadow-premium backdrop-blur-xl">
+          <div className="cup-prematch-card relative h-full overflow-hidden rounded-2xl border border-white/10 bg-pebol-panel p-5 shadow-premium backdrop-blur-xl">
             <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_50%_0%,rgba(0,255,135,.12),transparent_34%),radial-gradient(circle_at_80%_16%,rgba(255,209,102,.12),transparent_28%)]" />
             <div className="relative grid gap-5">
               <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 text-center">
+                <div className="cup-vs-card rounded-2xl border border-white/10 bg-white/[0.045] p-4 text-center">
                   <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-pebol-accent/40 bg-pebol-accent/15 font-display text-lg font-black text-pebol-accent shadow-glow">
                     VC
                   </div>
@@ -109,7 +109,7 @@ export function CampaignPreMatch({
                   </div>
                 </div>
                 <span className="justify-self-center font-display text-2xl font-black text-pebol-gold">VS</span>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 text-center">
+                <div className="cup-vs-card rounded-2xl border border-white/10 bg-white/[0.045] p-4 text-center">
                   <div className="mx-auto flex justify-center">
                     <TeamBadge
                       teamName={oppFlagName}
@@ -125,12 +125,12 @@ export function CampaignPreMatch({
                 </div>
               </div>
 
-              <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3">
+              <div className="prematch-banner-shell rounded-2xl border border-white/10 bg-white/[0.045] p-3">
                 <TacticBannerList banners={banners} />
               </div>
 
-              <div className="grid gap-4 lg:grid-cols-2">
-                <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+              <div className="prematch-control-shell grid gap-4 lg:grid-cols-2">
+                <div className="prematch-control-card rounded-2xl border border-white/10 bg-white/[0.045] p-4">
                   <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-muted">
                     Mentalidade
                   </span>
@@ -148,7 +148,7 @@ export function CampaignPreMatch({
                     ))}
                   </div>
                 </div>
-                <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4">
+                <div className="prematch-control-card rounded-2xl border border-white/10 bg-white/[0.045] p-4">
                   <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-muted">
                     Foco de ataque
                   </span>

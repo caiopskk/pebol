@@ -2,10 +2,12 @@ import { useState } from "react";
 import { motion } from "framer-motion";
 import {
   BallSprite,
+  CardOverlay,
   ClockMinute,
   EventFeed,
   GoalOverlay,
   HalfLabel,
+  MomentOverlay,
   PauseButton,
   ScoreNumber,
   ScoreboardGoals,
@@ -55,20 +57,22 @@ export function CampaignMatchShell({
           </div>
           <div className="speed-row">
             <span className="spd-label">Velocidade</span>
-            {speedOptions.map((s) => (
-              <button
-                key={s}
-                type="button"
-                className={`spd ${s === speed ? "active" : ""}`}
-                data-spd={s}
-                onClick={() => {
-                  setSpeed(s);
-                  onSpeedChange(s);
-                }}
-              >
-                {s}x
-              </button>
-            ))}
+            <div className="speed-control" role="group" aria-label="Velocidade da partida">
+              {speedOptions.map((s) => (
+                <button
+                  key={s}
+                  type="button"
+                  className={`spd ${s === speed ? "active" : ""}`}
+                  data-spd={s}
+                  onClick={() => {
+                    setSpeed(s);
+                    onSpeedChange(s);
+                  }}
+                >
+                  {s}x
+                </button>
+              ))}
+            </div>
             {showPause ? <PauseButton onToggle={onTogglePause} /> : null}
             <button type="button" className="ghost skip" onClick={onSkip}>
               Pular
@@ -108,6 +112,8 @@ export function CampaignMatchShell({
             </div>
           </div>
           <GoalOverlay />
+          <CardOverlay />
+          <MomentOverlay />
         </motion.div>
 
         <ShootoutPanel oppName={oppName} />

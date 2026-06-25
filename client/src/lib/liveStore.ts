@@ -43,6 +43,13 @@ export interface CardOverlayState {
   name: string;
 }
 
+export interface MomentOverlayState {
+  show: boolean;
+  kind: "penalty" | "chance" | "var" | "save" | "corner" | "info";
+  title: string;
+  detail: string;
+}
+
 export interface ShootoutKickRow {
   id: number;
   taker: string;
@@ -76,6 +83,7 @@ export interface LiveState {
   ball: BallState;
   goal: GoalOverlayState;
   card: CardOverlayState;
+  moment: MomentOverlayState;
   feed: FeedItem[];
   goals: GoalEntry[];
   shootout: ShootoutState;
@@ -92,6 +100,7 @@ const INITIAL: LiveState = {
   ball: { left: 50, top: 50, transitionMs: 700, goal: false },
   goal: { show: false, scorer: "" },
   card: { show: false, kind: null, name: "" },
+  moment: { show: false, kind: "info", title: "", detail: "" },
   feed: [],
   goals: [],
   shootout: { show: false, scoreYou: 0, scoreOpp: 0, you: [], opp: [], suddenDeath: false },
@@ -161,6 +170,14 @@ export const liveStore = {
   },
   hideCard() {
     state = { ...state, card: { show: false, kind: null, name: "" } };
+    emit();
+  },
+  showMoment(kind: MomentOverlayState["kind"], title: string, detail: string) {
+    state = { ...state, moment: { show: true, kind, title, detail } };
+    emit();
+  },
+  hideMoment() {
+    state = { ...state, moment: { show: false, kind: "info", title: "", detail: "" } };
     emit();
   },
   prependFeed(item: Omit<FeedItem, "id">) {

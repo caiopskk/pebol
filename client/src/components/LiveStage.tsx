@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useLiveState, useHalftimeState, type HalftimeReserveItem } from "../lib/liveStore.js";
 import { TacticBanner } from "./TacticBanner.js";
@@ -21,7 +21,19 @@ export function PauseButton({ onToggle }: { onToggle: (paused: boolean) => void 
 /** Score number that updates from the live store. */
 export function ScoreNumber({ side }: { side: "left" | "right" }) {
   const s = useLiveState();
-  return <span>{side === "left" ? s.scoreL : s.scoreR}</span>;
+  const value = side === "left" ? s.scoreL : s.scoreR;
+  const previous = useRef(value);
+  const [pop, setPop] = useState(false);
+
+  useEffect(() => {
+    if (previous.current === value) return;
+    previous.current = value;
+    setPop(true);
+    const timer = window.setTimeout(() => setPop(false), 360);
+    return () => window.clearTimeout(timer);
+  }, [value]);
+
+  return <span className={`score-num ${pop ? "pop" : ""}`.trim()}>{value}</span>;
 }
 
 export function ClockMinute() {
@@ -75,6 +87,16 @@ export function CardOverlay() {
   );
 }
 
+export function MomentOverlay() {
+  const s = useLiveState();
+  return (
+    <div className={`moment-overlay ${s.moment.show ? "show" : ""} ${s.moment.kind}`.trim()}>
+      <div className="moment-kicker">{s.moment.title}</div>
+      <div className="moment-detail">{s.moment.detail}</div>
+    </div>
+  );
+}
+
 export function EventFeed() {
   const s = useLiveState();
   return (
@@ -97,9 +119,8 @@ export function EventFeed() {
 export function ScoreboardGoals({ side }: { side: "you" | "opp" }) {
   const s = useLiveState();
   const goals = s.goals.filter((g) => g.side === side);
-  if (goals.length === 0) return null;
   return (
-    <ul className={`sb-goals ${side}`}>
+    <ul className={`sb-goals ${side}${goals.length === 0 ? " empty" : ""}`}>
       {goals.map((g) => (
         <li key={g.id}>
           <span className="sbg-min">{g.minute}'</span>

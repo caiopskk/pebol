@@ -417,6 +417,86 @@ function DevPreviewChrome({ active }: { active: DevPreviewKind }) {
   );
 }
 
+let previewAlertTimer: number | undefined;
+
+function triggerPreviewAlert(kind: "goal" | "yellow" | "red" | "penalty" | "var" | "chance") {
+  clearTimeout(previewAlertTimer);
+  liveStore.hideGoal();
+  liveStore.hideCard();
+  liveStore.hideMoment();
+
+  const feedBase = { minute: 64, pos: "88-38" };
+  if (kind === "goal") {
+    liveStore.setBall({ left: 90, top: 48, transitionMs: 420, goal: true });
+    liveStore.showGoal("Messi");
+    liveStore.prependFeed({
+      ...feedBase,
+      type: "goal",
+      text: "Gol do Seu time! Messi bate colocado no canto.",
+    });
+    previewAlertTimer = window.setTimeout(() => liveStore.hideGoal(), 1150);
+    return;
+  }
+
+  if (kind === "yellow" || kind === "red") {
+    const cardKind = kind === "red" ? "red" : "yellow";
+    liveStore.showCard(
+      cardKind,
+      `${cardKind === "red" ? "Vermelho" : "Amarelo"}: Zidane`,
+    );
+    liveStore.prependFeed({
+      ...feedBase,
+      type: "card",
+      text: `${cardKind === "red" ? "Cartão vermelho" : "Cartão amarelo"} para Zidane por falta dura.`,
+      cardKind,
+    });
+    previewAlertTimer = window.setTimeout(() => liveStore.hideCard(), 1100);
+    return;
+  }
+
+  const momentMap = {
+    penalty: ["penalty", "Pênalti", "Pênalti para o Seu time após toque de mão na área."],
+    var: ["var", "VAR em ação", "O lance está sendo revisado pela arbitragem de vídeo."],
+    chance: ["chance", "Chance perigosa", "Quase! Ronaldo recebe livre e finaliza rente à trave."],
+  } as const;
+  const [momentKind, title, detail] = momentMap[kind];
+  liveStore.setBall({ left: kind === "penalty" ? 88 : 82, top: kind === "penalty" ? 50 : 42, transitionMs: 420, goal: false });
+  liveStore.showMoment(momentKind, title, detail);
+  liveStore.prependFeed({
+    ...feedBase,
+    type: momentKind,
+    text: detail,
+  });
+  previewAlertTimer = window.setTimeout(() => liveStore.hideMoment(), 1250);
+}
+
+function PreviewAlertControls() {
+  const buttons: Array<[string, Parameters<typeof triggerPreviewAlert>[0]]> = [
+    ["Gol", "goal"],
+    ["Amarelo", "yellow"],
+    ["Vermelho", "red"],
+    ["Pênalti", "penalty"],
+    ["VAR", "var"],
+    ["Chance", "chance"],
+  ];
+  return createElement(
+    "div",
+    { className: "preview-alert-controls", "aria-label": "Disparar alertas do preview" },
+    createElement("span", null, "Alertas"),
+    ...buttons.map(([label, kind]) =>
+      createElement(
+        "button",
+        {
+          key: kind,
+          type: "button",
+          onClick: () => triggerPreviewAlert(kind),
+        },
+        label,
+      ),
+    ),
+  );
+}
+
 // ---------------- Main render ----------------
 
 function render() {
@@ -1982,7 +2062,8 @@ function renderCampaignMatch() {
   let minute = 0,
     evIdx = 0,
     timer: number | undefined,
-    hideTimer: number | undefined;
+    hideTimer: number | undefined,
+    momentTimer: number | undefined;
 
   const pidOf = (side: MatchEvent["side"]) =>
     side === "home" ? "you" : side === "away" ? "opp" : null;
@@ -2010,6 +2091,26 @@ function renderCampaignMatch() {
     liveStore.showGoal(scorer ?? "");
     clearTimeout(hideTimer);
     hideTimer = window.setTimeout(() => liveStore.hideGoal(), 950);
+  }
+  function cardAnim(ev: MatchEvent) {
+    const kind = ev.card === "red" ? "red" : "yellow";
+    liveStore.showCard(kind, `${kind === "red" ? "Vermelho" : "Amarelo"}${ev.player ? `: ${ev.player}` : ""}`);
+    clearTimeout(hideTimer);
+    hideTimer = window.setTimeout(() => liveStore.hideCard(), 1050);
+  }
+  function momentAnim(ev: MatchEvent) {
+    const map: Partial<Record<MatchEvent["type"], [Parameters<typeof liveStore.showMoment>[0], string]>> = {
+      penalty: ["penalty", "Pênalti"],
+      chance: ["chance", "Chance perigosa"],
+      save: ["save", "Defesa importante"],
+      corner: ["corner", "Escanteio"],
+      var: ["var", "VAR em ação"],
+    };
+    const spec = map[ev.type];
+    if (!spec) return;
+    liveStore.showMoment(spec[0], spec[1], ev.text);
+    clearTimeout(momentTimer);
+    momentTimer = window.setTimeout(() => liveStore.hideMoment(), 1250);
   }
   function delayFor(ev: MatchEvent): number {
     switch (ev.type) {
@@ -2068,6 +2169,10 @@ function renderCampaignMatch() {
         }
         liveStore.setScore(goals.you, goals.opp);
         goalAnim(ev.player);
+      } else if (ev.type === "card") {
+        cardAnim(ev);
+      } else {
+        momentAnim(ev);
       }
       schedule(d / L.matchSpeed);
       return;
@@ -2427,6 +2532,63 @@ function renderPenaltyModalPreview() {
   );
 }
 
+function renderCampaignMatchPreview() {
+  L.campaign = null;
+  liveStore.reset();
+  halftimeStore.reset();
+  liveStore.setScore(2, 1);
+  liveStore.setMinute(64);
+  liveStore.setHalfLabel("2º Tempo");
+  liveStore.setBall({ left: 62, top: 44, transitionMs: 700 });
+  liveStore.addGoal("you", 18, "Ronaldo", "Zidane");
+  liveStore.addGoal("opp", 39, "Trejo", "Hugo Sánchez");
+  liveStore.addGoal("you", 58, "Messi", "Xavi");
+  liveStore.prependFeed({
+    minute: 64,
+    type: "possession",
+    text: "Seu time troca passes pelo meio e controla o ritmo.",
+    pos: "62-44",
+  });
+  liveStore.prependFeed({
+    minute: 61,
+    type: "chance",
+    text: "Quase! Messi recebe entre linhas e finaliza rente à trave.",
+    pos: "88-38",
+  });
+  liveStore.prependFeed({
+    minute: 58,
+    type: "goal",
+    text: "Gol do Seu time! Messi vira o jogo depois de passe de Xavi.",
+    pos: "94-35",
+  });
+  liveStore.prependFeed({
+    minute: 39,
+    type: "goal",
+    text: "México empata com Trejo após contra-ataque rápido.",
+    pos: "91-32",
+  });
+
+  renderReact(
+    createElement(
+      Fragment,
+      null,
+      createElement(PreviewAlertControls),
+      createElement(CampaignMatchShell, {
+        ladderLabel: "Fase de grupos - Jogo 3",
+        oppName: "México 1986",
+        oppFlagName: "México",
+        oppInitials: "MX",
+        speedOptions: [1, 1.5, 2],
+        activeSpeed: 2,
+        showPause: true,
+        onSpeedChange: setMatchSpeed,
+        onTogglePause: (paused) => liveStore.setPaused(paused),
+        onSkip: () => {},
+      }),
+    ),
+  );
+}
+
 function renderSubstitutionModalPreview() {
   L.campaign = null;
   liveStore.reset();
@@ -2553,6 +2715,10 @@ function renderDevPreview(kind: DevPreviewKind) {
 
   if (kind === "penalty-modal") {
     renderPenaltyModalPreview();
+    return;
+  }
+  if (kind === "cup-match") {
+    renderCampaignMatchPreview();
     return;
   }
   if (kind === "substitution-modal") {
@@ -3092,6 +3258,7 @@ function renderLiveMatch() {
   let evIdx = 0;
   let timer: number | undefined;
   let hideTimer: number | undefined;
+  let momentTimer: number | undefined;
 
   function updateScore() {
     liveStore.setScore(goals[you.id], goals[opp.id]);
@@ -3225,6 +3392,21 @@ function renderLiveMatch() {
     hideTimer = window.setTimeout(() => liveStore.hideCard(), 950);
   }
 
+  function momentAnim(ev: MatchEvent) {
+    const map: Partial<Record<MatchEvent["type"], [Parameters<typeof liveStore.showMoment>[0], string]>> = {
+      penalty: ["penalty", "Pênalti"],
+      chance: ["chance", "Chance perigosa"],
+      save: ["save", "Defesa importante"],
+      corner: ["corner", "Escanteio"],
+      var: ["var", "VAR em ação"],
+    };
+    const spec = map[ev.type];
+    if (!spec) return;
+    liveStore.showMoment(spec[0], spec[1], ev.text);
+    clearTimeout(momentTimer);
+    momentTimer = window.setTimeout(() => liveStore.hideMoment(), 1250);
+  }
+
   function isGoalSetupEvent(ev: MatchEvent, nextEv: MatchEvent | undefined) {
     return (
       (ev.type === "info" || ev.type === "chance") &&
@@ -3285,6 +3467,7 @@ function renderLiveMatch() {
       return null;
     } else {
       addFeed(ev);
+      momentAnim(ev);
     }
 
     return eventDelay(ev, isGoalSetup);
