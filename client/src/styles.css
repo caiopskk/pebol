@@ -2201,19 +2201,15 @@ label {
 
 /* keep the goal/card flash centered over the scoreboard in the stacked layout */
 .live-headline .goal-overlay,
-.live-headline .card-overlay,
-.live-headline .moment-overlay {
+.live-headline .card-overlay {
   top: 50%;
   transform: translate(-50%, -50%);
 }
 .live-headline .goal-overlay.show {
-  animation: goalFlashCentered 0.95s ease;
+  animation: goalFlashCentered 0.95s ease both;
 }
 .live-headline .card-overlay.show {
-  animation: cardFadeCentered 0.95s ease;
-}
-.live-headline .moment-overlay.show {
-  animation: momentFlashCentered 1.25s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: cardFadeCentered 0.95s ease both;
 }
 @keyframes goalFlashCentered {
   0% {
@@ -2247,23 +2243,6 @@ label {
   100% {
     opacity: 0;
     transform: translate(-50%, -50%) scale(1);
-  }
-}
-@keyframes momentFlashCentered {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.94);
-  }
-  14% {
-    opacity: 1;
-    transform: translate(-50%, -50%) scale(1);
-  }
-  82% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    transform: translate(-50%, -50%) scale(0.98);
   }
 }
 .scoreboard {
@@ -3059,8 +3038,7 @@ label {
   -webkit-backdrop-filter: blur(18px);
 }
 .goal-overlay::before,
-.card-overlay::before,
-.moment-overlay::before {
+.card-overlay::before {
   content: "";
   position: absolute;
   inset: 0;
@@ -3070,14 +3048,13 @@ label {
   pointer-events: none;
 }
 .goal-overlay.show::before,
-.card-overlay.show::before,
-.moment-overlay.show::before {
+.card-overlay.show::before {
   animation: alertSweep 0.85s ease-out 0.08s;
 }
 .goal-overlay.show {
   opacity: 1;
   visibility: visible;
-  animation: goalFlash 1.15s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: goalFlash 1.15s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes goalFlash {
   0% {
@@ -3162,7 +3139,7 @@ label {
 .card-overlay.show {
   opacity: 1;
   visibility: visible;
-  animation: cardFade 1.1s cubic-bezier(0.22, 1, 0.36, 1);
+  animation: cardFade 1.1s cubic-bezier(0.22, 1, 0.36, 1) both;
 }
 @keyframes cardFade {
   0% {
@@ -3205,97 +3182,6 @@ label {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-}
-
-.moment-overlay {
-  position: absolute;
-  left: 50%;
-  top: -4.75rem;
-  z-index: 11;
-  display: grid;
-  gap: 0.25rem;
-  width: min(36rem, calc(100% - 2rem));
-  min-height: 4.8rem;
-  padding: 0.95rem 1.2rem;
-  border: 1px solid rgba(255, 206, 84, 0.42);
-  border-left-width: 0.35rem;
-  border-radius: 1rem;
-  background:
-    linear-gradient(135deg, rgba(255, 206, 84, 0.16), rgba(255, 255, 255, 0.04)),
-    rgba(5, 16, 19, 0.92);
-  box-shadow:
-    0 1.4rem 3rem rgba(0, 0, 0, 0.38),
-    0 0 1.9rem rgba(255, 206, 84, 0.12),
-    inset 0 1px 0 rgba(255, 255, 255, 0.08);
-  opacity: 0;
-  pointer-events: none;
-  visibility: hidden;
-  transform: translate(-50%, -8px);
-  overflow: hidden;
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
-}
-
-.moment-overlay.show {
-  opacity: 1;
-  visibility: visible;
-  animation: momentFlash 1.25s cubic-bezier(0.22, 1, 0.36, 1);
-}
-
-.moment-overlay.penalty,
-.moment-overlay.var,
-.moment-overlay.corner {
-  border-color: rgba(255, 206, 84, 0.5);
-}
-
-.moment-overlay.save {
-  border-color: rgba(78, 166, 255, 0.48);
-  background:
-    linear-gradient(135deg, rgba(78, 166, 255, 0.18), rgba(255, 255, 255, 0.04)),
-    rgba(5, 16, 19, 0.92);
-}
-
-.moment-overlay.chance {
-  border-color: rgba(255, 206, 84, 0.5);
-}
-
-.moment-kicker {
-  font-family: var(--font-display);
-  font-size: 0.72rem;
-  font-weight: 900;
-  letter-spacing: 0.16em;
-  text-transform: uppercase;
-  color: var(--gold);
-}
-
-.moment-detail {
-  min-width: 0;
-  overflow: hidden;
-  color: var(--text);
-  font-size: clamp(0.95rem, 1.4vw, 1.1rem);
-  font-weight: 750;
-  line-height: 1.25;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-@keyframes momentFlash {
-  0% {
-    opacity: 0;
-    transform: translate(-50%, -14px) scale(0.98);
-  }
-  15% {
-    opacity: 1;
-    transform: translate(-50%, 0) scale(1);
-  }
-  82% {
-    opacity: 1;
-  }
-  100% {
-    opacity: 0;
-    visibility: hidden;
-    transform: translate(-50%, -8px) scale(0.98);
-  }
 }
 
 @keyframes alertSweep {
@@ -3858,24 +3744,20 @@ select option:checked {
   position: fixed;
   bottom: 26px;
   left: 50%;
-  transform: translateX(-50%);
+  width: max-content;
+  max-width: min(32rem, calc(100vw - 2rem));
   background: var(--glass-2);
   color: var(--text);
   border: 1px solid var(--line-strong);
   padding: 12px 22px;
   border-radius: var(--radius-sm);
   font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
   z-index: 50;
   box-shadow: var(--shadow);
-  animation: rise 0.2s ease;
   backdrop-filter: blur(14px);
   -webkit-backdrop-filter: blur(14px);
-}
-@keyframes rise {
-  from {
-    opacity: 0;
-    transform: translate(-50%, 10px);
-  }
 }
 
 .write-lock {
@@ -3886,9 +3768,9 @@ select option:checked {
   align-items: center;
   justify-content: center;
   padding: 1.25rem;
-  background: rgba(3, 6, 12, 0.62);
-  backdrop-filter: blur(0.375rem);
-  -webkit-backdrop-filter: blur(0.375rem);
+  background: rgba(3, 6, 12, 0.16);
+  backdrop-filter: blur(0.125rem);
+  -webkit-backdrop-filter: blur(0.125rem);
   opacity: 0;
   visibility: hidden;
   pointer-events: none;
@@ -3902,40 +3784,31 @@ select option:checked {
   pointer-events: auto;
 }
 .write-lock-card {
-  min-width: min(22rem, 100%);
-  display: flex;
+  width: 3.75rem;
+  height: 3.75rem;
+  display: grid;
+  place-items: center;
   align-items: center;
-  gap: 0.875rem;
-  padding: 1rem 1.125rem;
+  padding: 0;
   background:
     radial-gradient(
-      16rem 8rem at 20% 20%,
-      rgba(31, 199, 125, 0.16),
+      4rem 4rem at 50% 20%,
+      rgba(31, 199, 125, 0.22),
       transparent 70%
     ),
     var(--glass);
   border: 1px solid var(--line-strong);
+  border-radius: 999px;
   box-shadow: var(--shadow);
 }
 .write-spinner {
-  width: 2rem;
-  height: 2rem;
+  width: 1.75rem;
+  height: 1.75rem;
   flex: 0 0 auto;
   border: 0.1875rem solid rgba(255, 255, 255, 0.14);
   border-top-color: var(--accent);
   border-radius: 50%;
   animation: writeSpin 0.8s linear infinite;
-}
-.write-lock-card strong {
-  display: block;
-  font-size: 0.9375rem;
-  color: var(--text);
-}
-.write-lock-card span:not(.write-spinner) {
-  display: block;
-  margin-top: 0.125rem;
-  font-size: 0.8125rem;
-  color: var(--muted);
 }
 @keyframes writeSpin {
   to {
@@ -6519,13 +6392,101 @@ select option:checked {
   text-rendering: geometricPrecision;
 }
 
+.home-leader-row {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.home-podium::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  opacity: 0;
+  transform: translateX(-115%);
+  pointer-events: none;
+  animation: homePodiumSweep 4.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.home-rank-1::before {
+  background: linear-gradient(105deg, transparent 16%, rgba(255, 206, 84, 0.18), transparent 74%);
+}
+
+.home-rank-2::before {
+  background: linear-gradient(105deg, transparent 16%, rgba(214, 226, 238, 0.16), transparent 74%);
+  animation-delay: 0.45s;
+}
+
+.home-rank-3::before {
+  background: linear-gradient(105deg, transparent 16%, rgba(217, 119, 6, 0.15), transparent 74%);
+  animation-delay: 0.9s;
+}
+
+.home-podium .home-rank-badge {
+  animation: homeRankPulse 3.6s ease-in-out infinite;
+}
+
+.home-rank-2 .home-rank-badge {
+  animation-delay: 0.4s;
+}
+
+.home-rank-3 .home-rank-badge {
+  animation-delay: 0.8s;
+}
+
 .home-leader-name {
   line-height: 1.2;
 }
 
-.home-leader-level,
+.home-leader-level {
+  min-width: 3.35rem;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+  color: #061812 !important;
+  background:
+    linear-gradient(180deg, rgba(44, 255, 166, 0.98), rgba(17, 190, 113, 0.92)) !important;
+  border-color: rgba(102, 255, 194, 0.38) !important;
+  box-shadow:
+    0 0.35rem 0.9rem rgba(0, 255, 135, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
 .home-leader-xp {
   line-height: 1.15;
+}
+
+@keyframes homePodiumSweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-115%);
+  }
+  18% {
+    opacity: 1;
+  }
+  48% {
+    opacity: 0.72;
+    transform: translateX(115%);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(115%);
+  }
+}
+
+@keyframes homeRankPulse {
+  0%,
+  100% {
+    transform: translateZ(0) scale(1);
+    box-shadow: none;
+  }
+  45% {
+    transform: translateZ(0) scale(1.045);
+    box-shadow: 0 0 1rem rgba(255, 206, 84, 0.18);
+  }
 }
 
 /* Stable live-match composition: reserve space before goals/feed arrive. */
@@ -6970,8 +6931,7 @@ select option:checked {
 }
 
 :root[data-resolved-theme="light"] .goal-overlay,
-:root[data-resolved-theme="light"] .card-overlay,
-:root[data-resolved-theme="light"] .moment-overlay {
+:root[data-resolved-theme="light"] .card-overlay {
   background:
     linear-gradient(135deg, rgba(255, 255, 255, 0.84), rgba(232, 247, 240, 0.7)),
     rgba(255, 255, 255, 0.82);
@@ -6989,23 +6949,13 @@ select option:checked {
     inset 0 1px 0 rgba(255, 255, 255, 0.86);
 }
 
-:root[data-resolved-theme="light"] .card-overlay,
-:root[data-resolved-theme="light"] .moment-overlay {
+:root[data-resolved-theme="light"] .card-overlay {
   border-color: rgba(196, 137, 19, 0.44);
 }
 
-:root[data-resolved-theme="light"] .moment-overlay.save {
-  border-color: rgba(43, 111, 176, 0.42);
-}
-
 :root[data-resolved-theme="light"] .goal-scorer,
-:root[data-resolved-theme="light"] .card-name,
-:root[data-resolved-theme="light"] .moment-detail {
+:root[data-resolved-theme="light"] .card-name {
   color: #071316;
-}
-
-:root[data-resolved-theme="light"] .moment-kicker {
-  color: #a36d0d;
 }
 
 .bf-pitch {

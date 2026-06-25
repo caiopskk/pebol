@@ -7,7 +7,6 @@ import {
   EventFeed,
   GoalOverlay,
   HalfLabel,
-  MomentOverlay,
   PauseButton,
   ScoreNumber,
   ScoreboardGoals,
@@ -113,7 +112,6 @@ export function CampaignMatchShell({
           </div>
           <GoalOverlay />
           <CardOverlay />
-          <MomentOverlay />
         </motion.div>
 
         <ShootoutPanel oppName={oppName} />

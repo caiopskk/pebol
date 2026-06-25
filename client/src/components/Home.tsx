@@ -367,7 +367,7 @@ function LeaderboardPanel({
               layout={!!p}
               key={p?.userId ?? `placeholder-${rank}`}
               whileHover={p ? { x: 3, scale: 1.01 } : undefined}
-              className={`grid min-h-12 grid-cols-[2.6rem_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border px-3 py-2 transition-all duration-300 ${
+              className={`home-leader-row ${p && rank <= 3 ? `home-podium home-rank-${rank}` : ""} grid min-h-12 grid-cols-[2.6rem_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border px-3 py-2 transition-all duration-300 ${
                 p
                   ? isYou
                     ? "border-pebol-accent/50 bg-pebol-accent/10"
@@ -478,7 +478,13 @@ export function Home({
             <motion.div variants={cardMotion} className={`${panel} grid min-h-[15rem] place-items-center p-6 text-center`}>
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(0,255,135,.16),transparent_42%)]" />
               <div className="relative">
-                <img className="home-brand-logo mx-auto w-[min(24rem,82vw)] drop-shadow-[0_26px_34px_rgba(0,0,0,.58)]" src="/pebol_logo.png" alt="Pebol" />
+                <img
+                  className="home-brand-logo mx-auto w-[min(24rem,82vw)] drop-shadow-[0_26px_34px_rgba(0,0,0,.58)]"
+                  src="/512x512.png"
+                  srcSet="/512x512.png 512w, /1024x1024.png 1024w"
+                  sizes="min(24rem, 82vw)"
+                  alt="Pebol"
+                />
                 <p className="mx-auto mt-3 max-w-sm text-sm font-semibold leading-6 text-pebol-muted">
                   Monte seu time no draft e desafie um amigo 1v1 ou jogue contra a máquina.
                 </p>

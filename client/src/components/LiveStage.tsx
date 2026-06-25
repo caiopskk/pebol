@@ -87,16 +87,6 @@ export function CardOverlay() {
   );
 }
 
-export function MomentOverlay() {
-  const s = useLiveState();
-  return (
-    <div className={`moment-overlay ${s.moment.show ? "show" : ""} ${s.moment.kind}`.trim()}>
-      <div className="moment-kicker">{s.moment.title}</div>
-      <div className="moment-detail">{s.moment.detail}</div>
-    </div>
-  );
-}
-
 export function EventFeed() {
   const s = useLiveState();
   return (

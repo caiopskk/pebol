@@ -418,12 +418,13 @@ function DevPreviewChrome({ active }: { active: DevPreviewKind }) {
 }
 
 let previewAlertTimer: number | undefined;
+const GOAL_ALERT_HIDE_MS = 1250;
+const CARD_ALERT_HIDE_MS = 1200;
 
-function triggerPreviewAlert(kind: "goal" | "yellow" | "red" | "penalty" | "var" | "chance") {
+function triggerPreviewAlert(kind: "goal" | "yellow" | "red") {
   clearTimeout(previewAlertTimer);
   liveStore.hideGoal();
   liveStore.hideCard();
-  liveStore.hideMoment();
 
   const feedBase = { minute: 64, pos: "88-38" };
   if (kind === "goal") {
@@ -434,7 +435,7 @@ function triggerPreviewAlert(kind: "goal" | "yellow" | "red" | "penalty" | "var"
       type: "goal",
       text: "Gol do Seu time! Messi bate colocado no canto.",
     });
-    previewAlertTimer = window.setTimeout(() => liveStore.hideGoal(), 1150);
+    previewAlertTimer = window.setTimeout(() => liveStore.hideGoal(), GOAL_ALERT_HIDE_MS);
     return;
   }
 
@@ -450,24 +451,9 @@ function triggerPreviewAlert(kind: "goal" | "yellow" | "red" | "penalty" | "var"
       text: `${cardKind === "red" ? "Cartão vermelho" : "Cartão amarelo"} para Zidane por falta dura.`,
       cardKind,
     });
-    previewAlertTimer = window.setTimeout(() => liveStore.hideCard(), 1100);
+    previewAlertTimer = window.setTimeout(() => liveStore.hideCard(), CARD_ALERT_HIDE_MS);
     return;
   }
-
-  const momentMap = {
-    penalty: ["penalty", "Pênalti", "Pênalti para o Seu time após toque de mão na área."],
-    var: ["var", "VAR em ação", "O lance está sendo revisado pela arbitragem de vídeo."],
-    chance: ["chance", "Chance perigosa", "Quase! Ronaldo recebe livre e finaliza rente à trave."],
-  } as const;
-  const [momentKind, title, detail] = momentMap[kind];
-  liveStore.setBall({ left: kind === "penalty" ? 88 : 82, top: kind === "penalty" ? 50 : 42, transitionMs: 420, goal: false });
-  liveStore.showMoment(momentKind, title, detail);
-  liveStore.prependFeed({
-    ...feedBase,
-    type: momentKind,
-    text: detail,
-  });
-  previewAlertTimer = window.setTimeout(() => liveStore.hideMoment(), 1250);
 }
 
 function PreviewAlertControls() {
@@ -475,9 +461,6 @@ function PreviewAlertControls() {
     ["Gol", "goal"],
     ["Amarelo", "yellow"],
     ["Vermelho", "red"],
-    ["Pênalti", "penalty"],
-    ["VAR", "var"],
-    ["Chance", "chance"],
   ];
   return createElement(
     "div",
@@ -2062,8 +2045,7 @@ function renderCampaignMatch() {
   let minute = 0,
     evIdx = 0,
     timer: number | undefined,
-    hideTimer: number | undefined,
-    momentTimer: number | undefined;
+    hideTimer: number | undefined;
 
   const pidOf = (side: MatchEvent["side"]) =>
     side === "home" ? "you" : side === "away" ? "opp" : null;
@@ -2090,27 +2072,13 @@ function renderCampaignMatch() {
   function goalAnim(scorer?: string) {
     liveStore.showGoal(scorer ?? "");
     clearTimeout(hideTimer);
-    hideTimer = window.setTimeout(() => liveStore.hideGoal(), 950);
+    hideTimer = window.setTimeout(() => liveStore.hideGoal(), GOAL_ALERT_HIDE_MS);
   }
   function cardAnim(ev: MatchEvent) {
     const kind = ev.card === "red" ? "red" : "yellow";
     liveStore.showCard(kind, `${kind === "red" ? "Vermelho" : "Amarelo"}${ev.player ? `: ${ev.player}` : ""}`);
     clearTimeout(hideTimer);
-    hideTimer = window.setTimeout(() => liveStore.hideCard(), 1050);
-  }
-  function momentAnim(ev: MatchEvent) {
-    const map: Partial<Record<MatchEvent["type"], [Parameters<typeof liveStore.showMoment>[0], string]>> = {
-      penalty: ["penalty", "Pênalti"],
-      chance: ["chance", "Chance perigosa"],
-      save: ["save", "Defesa importante"],
-      corner: ["corner", "Escanteio"],
-      var: ["var", "VAR em ação"],
-    };
-    const spec = map[ev.type];
-    if (!spec) return;
-    liveStore.showMoment(spec[0], spec[1], ev.text);
-    clearTimeout(momentTimer);
-    momentTimer = window.setTimeout(() => liveStore.hideMoment(), 1250);
+    hideTimer = window.setTimeout(() => liveStore.hideCard(), CARD_ALERT_HIDE_MS);
   }
   function delayFor(ev: MatchEvent): number {
     switch (ev.type) {
@@ -2171,8 +2139,6 @@ function renderCampaignMatch() {
         goalAnim(ev.player);
       } else if (ev.type === "card") {
         cardAnim(ev);
-      } else {
-        momentAnim(ev);
       }
       schedule(d / L.matchSpeed);
       return;
@@ -3258,7 +3224,6 @@ function renderLiveMatch() {
   let evIdx = 0;
   let timer: number | undefined;
   let hideTimer: number | undefined;
-  let momentTimer: number | undefined;
 
   function updateScore() {
     liveStore.setScore(goals[you.id], goals[opp.id]);
@@ -3382,29 +3347,14 @@ function renderLiveMatch() {
   function goalAnim(scorer: string | undefined) {
     liveStore.showGoal(scorer ?? "");
     clearTimeout(hideTimer);
-    hideTimer = window.setTimeout(() => liveStore.hideGoal(), 950);
+    hideTimer = window.setTimeout(() => liveStore.hideGoal(), GOAL_ALERT_HIDE_MS);
   }
 
   function cardAnim(ev: MatchEvent) {
     const kind = ev.card === "red" ? "red" : "yellow";
     liveStore.showCard(kind, `${kind === "red" ? "Vermelho" : "Amarelo"}${ev.player ? `: ${ev.player}` : ""}`);
     clearTimeout(hideTimer);
-    hideTimer = window.setTimeout(() => liveStore.hideCard(), 950);
-  }
-
-  function momentAnim(ev: MatchEvent) {
-    const map: Partial<Record<MatchEvent["type"], [Parameters<typeof liveStore.showMoment>[0], string]>> = {
-      penalty: ["penalty", "Pênalti"],
-      chance: ["chance", "Chance perigosa"],
-      save: ["save", "Defesa importante"],
-      corner: ["corner", "Escanteio"],
-      var: ["var", "VAR em ação"],
-    };
-    const spec = map[ev.type];
-    if (!spec) return;
-    liveStore.showMoment(spec[0], spec[1], ev.text);
-    clearTimeout(momentTimer);
-    momentTimer = window.setTimeout(() => liveStore.hideMoment(), 1250);
+    hideTimer = window.setTimeout(() => liveStore.hideCard(), CARD_ALERT_HIDE_MS);
   }
 
   function isGoalSetupEvent(ev: MatchEvent, nextEv: MatchEvent | undefined) {
@@ -3467,7 +3417,6 @@ function renderLiveMatch() {
       return null;
     } else {
       addFeed(ev);
-      momentAnim(ev);
     }
 
     return eventDelay(ev, isGoalSetup);

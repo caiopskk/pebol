@@ -39,7 +39,9 @@ export function Login({ onSubmit, onBack }: LoginProps) {
         <header className="text-center">
           <img
             className="mx-auto w-[min(18rem,78vw)] drop-shadow-[0_24px_32px_rgba(0,0,0,.58)]"
-            src="/pebol_logo.png"
+            src="/512x512.png"
+            srcSet="/512x512.png 512w, /1024x1024.png 1024w"
+            sizes="min(18rem, 78vw)"
             alt="Pebol"
           />
         </header>

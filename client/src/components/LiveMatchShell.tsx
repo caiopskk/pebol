@@ -10,7 +10,6 @@ import {
   type HalftimeCallbacks,
   type HalftimeOptions,
   HalfLabel,
-  MomentOverlay,
   PauseButton,
   PenaltyLabel,
   ScoreNumber,
@@ -127,7 +126,6 @@ export function LiveMatchShell({
           </div>
           <GoalOverlay />
           <CardOverlay />
-          <MomentOverlay />
         </motion.div>
 
         <div className="live-main">

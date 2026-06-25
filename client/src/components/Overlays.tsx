@@ -76,9 +76,9 @@ function Toast({ message }: { message: string }) {
     <motion.div
       key={message}
       className="toast"
-      initial={{ opacity: 0, y: 12 }}
-      animate={{ opacity: 1, y: 0 }}
-      exit={{ opacity: 0, y: 12 }}
+      initial={{ opacity: 0, x: "-50%", y: 12 }}
+      animate={{ opacity: 1, x: "-50%", y: 0 }}
+      exit={{ opacity: 0, x: "-50%", y: 12 }}
       transition={{ duration: 0.18 }}
     >
       {message}
@@ -91,14 +91,12 @@ function WriteLock({ visible }: { visible: boolean }) {
     <div
       className={`write-lock ${visible ? "active" : ""}`}
       role="status"
+      aria-label="Salvando alterações"
       aria-live="polite"
       aria-hidden={visible ? "false" : "true"}
     >
       <div className="write-lock-card">
         <span className="write-spinner" aria-hidden="true" />
-        <div>
-          <strong>Sincronizando</strong>
-        </div>
       </div>
     </div>
   );
