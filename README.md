@@ -4,8 +4,8 @@ Pebol é um jogo web de draft de futebol em tempo real. Você monta um XI titula
 de times sorteados, ajusta formação, mentalidade e foco de ataque, e assiste a uma partida
 narrada lance a lance contra outro jogador ou contra a máquina.
 
-O projeto também tem campanha de Copa do Mundo, contas de usuário, CRUD de times e
-jogadores, importação por JSON, conquistas e deploy em porta única para produção.
+O projeto também tem campanha de Copa do Mundo, contas de usuário, painel administrativo de
+times e jogadores, importação por JSON, conquistas e deploy em porta única para produção.
 
 ## Funcionalidades
 
@@ -17,10 +17,12 @@ jogadores, importação por JSON, conquistas e deploy em porta única para produ
 - **XP, níveis e títulos**: ganhe experiência jogando partidas, avançando fases da Copa e
   desbloqueando conquistas; cada 100 XP é um nível, com títulos de Aspirante a Imortal.
 - **Leaderboard por nível** na home, com pódio destacado e seu próprio nome em evidência.
-- **3 atualizações de time/seleção** no draft quando o modo permite reroll.
+- **Atualizações de time/seleção no draft** quando o modo permite reroll: 5 no Clássico/Normal
+  e 3 no Hardcore.
 - **10 formações** e **6 mentalidades** para montar o time.
 - **Foco de ataque**: equilibrado, pelos lados ou pelo meio.
-- **Jogadores com posições alternativas**, penalidade por improviso e cálculo de overall.
+- **Jogadores com atributos estilo EA FC**: overall, PAC, SHO, PAS, DRI, DEF, PHY, posições
+  alternativas, penalidade por improviso e cálculo de força por setor.
 - **Partida ao vivo** com placar, campo visual, feed de eventos, gols, cartões, VAR,
   faltas, escanteios, impedimentos, defesas, lesões, posse de bola e pênaltis.
 - **Participações em gol** durante a partida e líderes no resultado final.
@@ -29,12 +31,31 @@ jogadores, importação por JSON, conquistas e deploy em porta única para produ
 - **Resultado completo** com destaques, eventos importantes, todos os logs e botões para
   jogar novamente ou voltar ao início.
 - **Campanha Copa do Mundo 48 seleções** com draft de seleções históricas, fase de grupos,
-  mata-mata, chaveamento, adversários históricos, bandeiras, pênaltis e final.
+  mata-mata, chaveamento, adversários históricos, bandeiras, pênaltis, final e telas finais
+  com elenco montado para compartilhar.
 - **Autenticação** com cadastro/login, JWT e papéis de usuário/admin.
-- **CRUD de times e jogadores** para usuários e admins.
+- **Painel de times e jogadores para administradores**.
 - **Importação de times por JSON** com arquivo modelo para baixar.
 - **Conquistas** com tela de progresso e popups no estilo Steam quando desbloqueadas.
+- **Página de novidades** com mudanças visíveis para jogadores, sem itens internos de dev.
+- **Tema escuro e tema claro** com alternância rápida no topo da interface.
 - **Modo carreira** e **Modo liga** já aparecem na home como modos futuros.
+
+## Novidades recentes
+
+- A interface foi modernizada com visual mais premium, cards com profundidade, estados de
+  hover mais suaves e melhor legibilidade em telas de jogo.
+- O jogo agora tem tema escuro e tema claro; o modo escuro é o padrão, e o claro fica
+  disponível pelo switch no topo.
+- Jogadores agora podem ter atributos no estilo EA FC (`PAC`, `SHO`, `PAS`, `DRI`, `DEF`,
+  `PHY`) além do overall principal.
+- A engine usa esses atributos no cálculo de ataque, meio, defesa, goleiro, foco de ataque,
+  escolha de destaques nos eventos e pênaltis.
+- Pênaltis não usam mais uma chance fixa: o cobrador é comparado ao goleiro.
+- Telas finais da Copa mostram o elenco montado e foram compactadas para facilitar o
+  compartilhamento.
+- A opção de gerenciar times foi removida da home do usuário comum e ficou restrita ao admin.
+- Termos, privacidade e novidades ficam disponíveis no rodapé da home.
 
 ## Como rodar em desenvolvimento
 
@@ -104,7 +125,19 @@ Escalar fora da posição reduz o rating efetivo. A penalidade é leve para posi
 média entre setores próximos e pesada para setores distantes ou goleiro improvisado.
 Jogadores podem ter `altPositions`, que também são consideradas na montagem.
 
-O overall do time considera rating efetivo por linha: defesa, meio, ataque e média geral.
+Além do `rating`, cada jogador pode ter atributos no estilo EA FC:
+
+- `pac`: velocidade.
+- `sho`: finalização/chute.
+- `pas`: passe.
+- `dri`: drible.
+- `def`: defesa.
+- `phy`: físico.
+
+Quando um atributo não é informado, o jogo usa o `rating` como fallback. A força do time
+considera o perfil certo para cada função: atacantes pesam mais `sho`, `dri` e `pac`; meias
+pesam mais `pas` e `dri`; defensores pesam mais `def` e `phy`; goleiros usam principalmente
+`def` e `phy`. A penalidade de posição também reduz esses atributos proporcionalmente.
 
 ## Formações e estratégia
 
@@ -155,7 +188,8 @@ O feed mostra eventos de jogo com ritmo próprio: gols e cartões pausam mais, l
 passam mais rápido e posse de bola preenche os minutos sem lance principal.
 
 Empates podem ir para pênaltis. A disputa mostra cobrador por cobrador, incluindo morte
-súbita quando necessário.
+súbita quando necessário. A chance de cada cobrança considera o perfil do cobrador contra o
+goleiro adversário.
 
 ## Copa do Mundo
 
@@ -173,6 +207,8 @@ O modo Copa do Mundo é uma campanha single-player com 48 seleções:
   maiores seleções de todos os tempos e dá um leve buff nos ratings — é o jogo mais difícil.
 - Pênaltis em empates no mata-mata.
 - Estatísticas acumuladas de gols e assistências na campanha.
+- Tela final com o elenco montado, destaques da campanha e rota do mata-mata para
+  compartilhar.
 
 O troféu usado na interface fica em:
 
@@ -186,17 +222,18 @@ A aplicação tem autenticação com usuário e senha:
 
 - O primeiro usuário cadastrado vira admin.
 - Usuários em `ADMIN_USERS` também viram admin.
-- Usuários comuns podem criar e editar seus próprios times.
-- Admins podem editar times oficiais.
+- Usuários comuns jogam, acompanham progresso, conquistas e leaderboard.
+- Admins podem criar, importar, editar e excluir times.
 - Times oficiais de clubes podem aparecer com alias genérico para usuários comuns.
-- Seleções e times do próprio usuário mantêm o nome real para quem tem permissão.
+- Seleções mantêm o nome real; clubes oficiais podem usar alias para evitar exposição
+  desnecessária de marcas para usuários comuns.
 
-A tela de gerenciamento permite criar, editar, excluir e importar times com jogadores.
-Cada time deve ter 11 titulares e pode ter banco de reservas.
+A tela de gerenciamento aparece apenas para administradores e permite criar, editar, excluir
+e importar times com jogadores. Cada time deve ter 11 titulares e pode ter banco de reservas.
 
 ## Importação por JSON
 
-Na tela de gerenciamento existe o botão **Baixar modelo**, que baixa:
+Na tela de gerenciamento de admin existe o botão **Baixar modelo**, que baixa:
 
 ```text
 client/public/import_teams_model.json.json
@@ -215,12 +252,28 @@ Formato resumido:
       "official": false,
       "alias": "Time Generico",
       "players": [
-        { "name": "Goleiro", "pos": "GK", "rating": 82 },
+        {
+          "name": "Goleiro",
+          "pos": "GK",
+          "rating": 82,
+          "pac": 70,
+          "sho": 30,
+          "pas": 75,
+          "dri": 65,
+          "def": 88,
+          "phy": 84
+        },
         {
           "name": "Atacante",
           "pos": "ST",
           "altPositions": ["CF"],
-          "rating": 85
+          "rating": 85,
+          "pac": 86,
+          "sho": 88,
+          "pas": 76,
+          "dri": 84,
+          "def": 38,
+          "phy": 80
         }
       ],
       "bench": [{ "name": "Reserva", "pos": "CM", "rating": 77 }]
@@ -229,7 +282,9 @@ Formato resumido:
 }
 ```
 
-`players` precisa ter exatamente 11 jogadores. `bench` é opcional.
+`players` precisa ter exatamente 11 jogadores. `bench` é opcional. Os atributos `pac`,
+`sho`, `pas`, `dri`, `def` e `phy` também são opcionais; quando faltam, o servidor gera
+valores derivados do rating, posição e nome do jogador.
 
 ## Conquistas
 
@@ -302,18 +357,19 @@ vez que o servidor inicia e é idempotente:
 - Cria tabelas que faltam com `CREATE TABLE IF NOT EXISTS` (inclui `user_xp_events`,
   `user_achievements`, etc.) — uma versão nova com tabelas novas as cria sozinha no Turso já
   existente, sem apagar dados.
-- Roda `migrateDb()` para colunas adicionadas em tabelas existentes (ex.: `alt_pos`), ignorando
-  o erro de coluna duplicada.
+- Roda `migrateDb()` para colunas adicionadas em tabelas existentes (ex.: `alt_pos`, `pac`,
+  `sho`, `pas`, `dri`, `def`, `phy`), ignorando o erro de coluna duplicada.
+- Preenche atributos ausentes de jogadores já existentes com valores derivados, sem apagar
+  jogadores ou times.
 - Re-semeia conquistas com `INSERT OR IGNORE` (novas conquistas entram; as existentes ficam).
 
 Pontos de atenção:
 
 - **Times**: o seed só roda quando a tabela `teams` está vazia. Times novos adicionados em
-  `data/teams.ts`/`worldcup.ts` **não** aparecem num banco já populado — adicione-os pela tela
-  de gerenciamento (CRUD) ou limpe a tabela.
+  `data/teams.ts`/`worldcup.ts` **não** aparecem num banco já populado — adicione-os pelo
+  painel de admin ou limpe a tabela.
 - **Alterar coluna de tabela existente** no futuro exige adicionar uma migração em `migrateDb()`,
-  no mesmo padrão do `alt_pos`. As features atuais (XP/leaderboard) usam tabela nova, então não
-  precisam disso.
+  no mesmo padrão do `alt_pos` e dos atributos de jogador.
 - O Turso persiste entre deploys; usuários existentes simplesmente começam com 0 XP quando a
   feature é publicada.
 
@@ -373,6 +429,9 @@ pnpm dev:client
 pnpm build
 pnpm start
 pnpm bot ABCD
+pnpm test:engine
+pnpm test:engine:balance
+pnpm test:engine:all
 pnpm exec tsc --noEmit
 pnpm exec tsx server/src/solo-test.ts
 pnpm exec tsx server/src/smoke-test.ts
@@ -388,6 +447,7 @@ shared/
   formations.ts        # formações e posições no campo
   mentalities.ts       # mentalidades e modificadores
   progression.ts       # XP por nível, títulos e desbloqueio do Hardcore
+  playerAttributes.ts  # geração/fallback de atributos estilo EA FC
   engine.ts            # força do time, eventos, partida e pênaltis
   data/
     teams.ts           # clubes oficiais usados no seed
@@ -401,6 +461,8 @@ server/src/
   db.ts                # libSQL/Turso, schema, seed e CRUD
   auth.ts              # cadastro, login, JWT e roles
   api.ts               # rotas HTTP
+  engine-property-test.ts # invariantes da engine
+  engine-balance-test.ts  # sanidade estatística do balanceamento
   bot.ts               # bot para testar PvP
   solo-test.ts         # teste headless solo
   smoke-test.ts        # teste headless PvP
@@ -420,6 +482,8 @@ client/
 ## Observações para desenvolvimento
 
 - Use **pnpm**.
+- A UI nova usa **Tailwind CSS** de forma incremental. A home já foi migrada para utilities;
+  telas antigas ainda podem usar `client/src/styles.css` enquanto a migração avança.
 - Tipos compartilhados ficam em `shared/types.ts`.
 - Strings de UI e narração ficam em português.
 - Comentários de código devem ser em inglês e só quando ajudarem.

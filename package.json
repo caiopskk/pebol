@@ -11,6 +11,9 @@
     "build": "vite build",
     "start": "tsx server/src/index.ts",
     "bot": "tsx server/src/bot.ts",
+    "test:engine": "tsx server/src/engine-property-test.ts",
+    "test:engine:balance": "tsx server/src/engine-balance-test.ts",
+    "test:engine:all": "pnpm run test:engine && pnpm run test:engine:balance",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -31,7 +34,10 @@
     "@types/express": "^4.17.21",
     "@types/jsonwebtoken": "^9.0.10",
     "@types/node": "^22.10.5",
+    "autoprefixer": "^10.4.21",
     "concurrently": "^9.1.2",
+    "postcss": "^8.5.6",
+    "tailwindcss": "^3.4.17",
     "tsx": "^4.19.2",
     "typescript": "^5.7.3",
     "vite": "^6.0.7"

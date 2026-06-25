@@ -1,0 +1,400 @@
+{
+  "observacoes": [
+    "Seleções historicamente fracas em Copas do Mundo, para dar variedade ao draft.",
+    "Ratings propositalmente baixos (~55-72) para contrastar com as seleções lendárias.",
+    "kind=national. Cada time tem exatamente 11 jogadores; bench é opcional.",
+    "Importante: o draft da campanha Copa do Mundo hoje lê as seleções do bundle (shared/data/worldcup.ts), não do banco. Importar este arquivo guarda as seleções no banco, mas elas só entram no sorteio do draft se também forem adicionadas a WC_DRAFT_TEAMS."
+  ],
+  "teams": [
+    {
+      "name": "El Salvador",
+      "season": "1982",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Luis Guevara Mora", "pos": "GK", "rating": 60 },
+        { "name": "Francisco Jovel", "pos": "RB", "altPositions": ["CB"], "rating": 57 },
+        { "name": "Ramón Fagoaga", "pos": "CB", "rating": 58 },
+        { "name": "Carlos Recinos", "pos": "CB", "rating": 55 },
+        { "name": "Joaquín Ventura", "pos": "LB", "rating": 56 },
+        { "name": "Norberto Huezo", "pos": "CDM", "rating": 60 },
+        { "name": "José María Rivas", "pos": "CM", "rating": 57 },
+        { "name": "Mágico González", "pos": "CAM", "altPositions": ["CF", "LW"], "rating": 74 },
+        { "name": "Ever Hernández", "pos": "RW", "rating": 57 },
+        { "name": "Luis Ramírez Zapata", "pos": "ST", "rating": 60 },
+        { "name": "Jaime Rodríguez", "pos": "LW", "rating": 58 }
+      ],
+      "bench": [
+        { "name": "Eduardo Hernández", "pos": "GK", "rating": 54 },
+        { "name": "José Jaime", "pos": "CB", "rating": 55 },
+        { "name": "Gilberto Aceituno", "pos": "CM", "rating": 55 },
+        { "name": "Francisco González", "pos": "ST", "rating": 56 }
+      ]
+    },
+    {
+      "name": "Zaire",
+      "season": "1974",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Kazadi Mwamba", "pos": "GK", "rating": 60 },
+        { "name": "Mwepu Ilunga", "pos": "RB", "rating": 56 },
+        { "name": "Bwanga Tshimen", "pos": "CB", "rating": 60 },
+        { "name": "Mukombo Mwanza", "pos": "CB", "rating": 57 },
+        { "name": "Lobilo Boba", "pos": "LB", "rating": 55 },
+        { "name": "Kilasu Massamba", "pos": "CDM", "rating": 56 },
+        { "name": "Kidumu Mantantu", "pos": "CM", "rating": 58 },
+        { "name": "Mayanga Maku", "pos": "CAM", "rating": 60 },
+        { "name": "Kembo Uba Kembo", "pos": "RW", "rating": 60 },
+        { "name": "Ndaye Mulamba", "pos": "ST", "altPositions": ["CF"], "rating": 70 },
+        { "name": "Kakoko Etepé", "pos": "LW", "rating": 59 }
+      ],
+      "bench": [
+        { "name": "Dimbi Tubilandu", "pos": "GK", "rating": 52 },
+        { "name": "Kibonge Mafu", "pos": "CB", "rating": 55 },
+        { "name": "Tshinabu Wa Munda", "pos": "CM", "rating": 55 },
+        { "name": "Kalala Ntumba", "pos": "ST", "rating": 56 }
+      ]
+    },
+    {
+      "name": "Haiti",
+      "season": "1974",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Henri Francillon", "pos": "GK", "rating": 62 },
+        { "name": "Wilner Nazaire", "pos": "RB", "rating": 56 },
+        { "name": "Arsène Auguste", "pos": "CB", "rating": 58 },
+        { "name": "Serge Ducoste", "pos": "CB", "rating": 57 },
+        { "name": "Eddy Antoine", "pos": "LB", "rating": 55 },
+        { "name": "Philippe Vorbe", "pos": "CDM", "altPositions": ["CM"], "rating": 62 },
+        { "name": "Fritz André", "pos": "CM", "rating": 56 },
+        { "name": "Guy François", "pos": "CAM", "rating": 58 },
+        { "name": "Roger Saint-Vil", "pos": "RW", "rating": 57 },
+        { "name": "Emmanuel Sanon", "pos": "ST", "altPositions": ["LW"], "rating": 70 },
+        { "name": "Guy Saint-Vil", "pos": "LW", "rating": 58 }
+      ],
+      "bench": [
+        { "name": "Hervé Borgella", "pos": "GK", "rating": 53 },
+        { "name": "Jean Herböld", "pos": "CB", "rating": 54 },
+        { "name": "Pierre Bayonne", "pos": "CM", "rating": 55 },
+        { "name": "Fritz Léandre", "pos": "ST", "rating": 55 }
+      ]
+    },
+    {
+      "name": "Arábia Saudita",
+      "season": "2002",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Mohammed Al-Deayea", "pos": "GK", "rating": 66 },
+        { "name": "Hussein Sulaimani", "pos": "RB", "rating": 60 },
+        { "name": "Redha Tukar", "pos": "CB", "rating": 60 },
+        { "name": "Abdullah Zubromawi", "pos": "CB", "rating": 59 },
+        { "name": "Mohammed Al-Jahani", "pos": "LB", "rating": 58 },
+        { "name": "Khamis Al-Owairan", "pos": "CDM", "rating": 60 },
+        { "name": "Nawaf Al-Temyat", "pos": "CM", "altPositions": ["CAM"], "rating": 64 },
+        { "name": "Mohammed Al-Shlhoub", "pos": "CAM", "rating": 63 },
+        { "name": "Talal Al-Meshal", "pos": "RW", "rating": 60 },
+        { "name": "Sami Al-Jaber", "pos": "ST", "altPositions": ["CF"], "rating": 68 },
+        { "name": "Obeid Al-Dosari", "pos": "LW", "rating": 59 }
+      ],
+      "bench": [
+        { "name": "Mabrouk Zaid", "pos": "GK", "rating": 58 },
+        { "name": "Abdulaziz Al-Khathran", "pos": "CB", "rating": 57 },
+        { "name": "Ibrahim Al-Shahrani", "pos": "CM", "rating": 57 },
+        { "name": "Hamzah Idris", "pos": "ST", "rating": 56 }
+      ]
+    },
+    {
+      "name": "China",
+      "season": "2002",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Jiang Jin", "pos": "GK", "rating": 60 },
+        { "name": "Sun Jihai", "pos": "RB", "altPositions": ["RM"], "rating": 66 },
+        { "name": "Fan Zhiyi", "pos": "CB", "rating": 66 },
+        { "name": "Li Weifeng", "pos": "CB", "rating": 60 },
+        { "name": "Wu Chengying", "pos": "LB", "rating": 56 },
+        { "name": "Li Tie", "pos": "CDM", "altPositions": ["CM"], "rating": 64 },
+        { "name": "Qi Hong", "pos": "CM", "rating": 60 },
+        { "name": "Ma Mingyu", "pos": "CAM", "rating": 58 },
+        { "name": "Yang Chen", "pos": "RW", "rating": 60 },
+        { "name": "Hao Haidong", "pos": "ST", "rating": 66 },
+        { "name": "Qu Bo", "pos": "LW", "rating": 57 }
+      ],
+      "bench": [
+        { "name": "Ou Chuliang", "pos": "GK", "rating": 54 },
+        { "name": "Du Wei", "pos": "CB", "rating": 56 },
+        { "name": "Shao Jiayi", "pos": "CM", "rating": 57 },
+        { "name": "Su Maozhen", "pos": "ST", "rating": 58 }
+      ]
+    },
+    {
+      "name": "Canadá",
+      "season": "1986",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Tino Lettieri", "pos": "GK", "rating": 60 },
+        { "name": "Bruce Wilson", "pos": "RB", "rating": 58 },
+        { "name": "Ian Bridge", "pos": "CB", "rating": 57 },
+        { "name": "Randy Ragan", "pos": "CB", "rating": 57 },
+        { "name": "Terry Felix", "pos": "LB", "rating": 55 },
+        { "name": "Mike Sweeney", "pos": "CDM", "rating": 56 },
+        { "name": "Gerry Gray", "pos": "CM", "rating": 56 },
+        { "name": "Carl Valentine", "pos": "CAM", "altPositions": ["RW"], "rating": 62 },
+        { "name": "David Norman", "pos": "RW", "rating": 56 },
+        { "name": "Igor Vrablic", "pos": "ST", "rating": 58 },
+        { "name": "Branko Šegota", "pos": "LW", "altPositions": ["ST"], "rating": 60 }
+      ],
+      "bench": [
+        { "name": "Paul Dolan", "pos": "GK", "rating": 53 },
+        { "name": "Bob Lenarduzzi", "pos": "CB", "rating": 58 },
+        { "name": "Dale Mitchell", "pos": "CM", "rating": 56 },
+        { "name": "George Pakos", "pos": "ST", "rating": 55 }
+      ]
+    },
+    {
+      "name": "Grécia",
+      "season": "1994",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Antonis Minou", "pos": "GK", "rating": 58 },
+        { "name": "Stratos Apostolakis", "pos": "RB", "rating": 60 },
+        { "name": "Stelios Manolas", "pos": "CB", "rating": 62 },
+        { "name": "Nikos Karageorgiou", "pos": "CB", "rating": 57 },
+        { "name": "Ioannis Kalitzakis", "pos": "LB", "rating": 57 },
+        { "name": "Nikos Tsiantakis", "pos": "CDM", "rating": 58 },
+        { "name": "Tasos Mitropoulos", "pos": "CM", "rating": 60 },
+        { "name": "Panagiotis Tsalouchidis", "pos": "CAM", "rating": 57 },
+        { "name": "Apostolos Charalambidis", "pos": "RW", "rating": 58 },
+        { "name": "Nikos Machlas", "pos": "ST", "rating": 64 },
+        { "name": "Dimitris Saravakos", "pos": "LW", "altPositions": ["CAM"], "rating": 62 }
+      ],
+      "bench": [
+        { "name": "Christos Karkamanis", "pos": "GK", "rating": 54 },
+        { "name": "Kostas Frantzeskos", "pos": "CB", "rating": 56 },
+        { "name": "Vasilios Dimitriadis", "pos": "CM", "rating": 57 },
+        { "name": "Alexis Alexoudis", "pos": "ST", "rating": 56 }
+      ]
+    },
+    {
+      "name": "Honduras",
+      "season": "2014",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Noel Valladares", "pos": "GK", "rating": 64 },
+        { "name": "Brayan Beckeles", "pos": "RB", "rating": 60 },
+        { "name": "Maynor Figueroa", "pos": "CB", "altPositions": ["LB"], "rating": 64 },
+        { "name": "Víctor Bernárdez", "pos": "CB", "rating": 62 },
+        { "name": "Emilio Izaguirre", "pos": "LB", "rating": 64 },
+        { "name": "Wilson Palacios", "pos": "CDM", "altPositions": ["CM"], "rating": 64 },
+        { "name": "Roger Espinoza", "pos": "CM", "rating": 62 },
+        { "name": "Óscar García", "pos": "CAM", "rating": 58 },
+        { "name": "Andy Najar", "pos": "RW", "altPositions": ["RB"], "rating": 62 },
+        { "name": "Carlo Costly", "pos": "ST", "rating": 60 },
+        { "name": "Jerry Bengtson", "pos": "LW", "altPositions": ["ST"], "rating": 60 }
+      ],
+      "bench": [
+        { "name": "Donis Escober", "pos": "GK", "rating": 56 },
+        { "name": "Juan Carlos García", "pos": "LB", "rating": 57 },
+        { "name": "Luis Garrido", "pos": "CM", "rating": 57 },
+        { "name": "Jorge Claros", "pos": "CDM", "rating": 56 }
+      ]
+    },
+    {
+      "name": "Catar",
+      "season": "2022",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Saad Al-Sheeb", "pos": "GK", "rating": 64 },
+        { "name": "Pedro Miguel", "pos": "RB", "rating": 64 },
+        { "name": "Boualem Khoukhi", "pos": "CB", "rating": 65 },
+        { "name": "Bassam Al-Rawi", "pos": "CB", "rating": 63 },
+        { "name": "Abdelkarim Hassan", "pos": "LB", "altPositions": ["LWB"], "rating": 66 },
+        { "name": "Karim Boudiaf", "pos": "CDM", "rating": 64 },
+        { "name": "Assim Madibo", "pos": "CM", "rating": 62 },
+        { "name": "Hassan Al-Haydos", "pos": "CAM", "altPositions": ["RW"], "rating": 66 },
+        { "name": "Akram Afif", "pos": "RW", "altPositions": ["LW", "CF"], "rating": 72 },
+        { "name": "Almoez Ali", "pos": "ST", "altPositions": ["CF"], "rating": 70 },
+        { "name": "Ismaïl Mohamad", "pos": "LW", "rating": 62 }
+      ],
+      "bench": [
+        { "name": "Meshaal Barsham", "pos": "GK", "rating": 60 },
+        { "name": "Tarek Salman", "pos": "CB", "rating": 60 },
+        { "name": "Abdulaziz Hatem", "pos": "CM", "rating": 60 },
+        { "name": "Mohammed Muntari", "pos": "ST", "rating": 58 }
+      ]
+    },
+    {
+      "name": "Nova Zelândia",
+      "season": "1982",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Frank van Hattum", "pos": "GK", "rating": 58 },
+        { "name": "Adrian Elrick", "pos": "RB", "rating": 56 },
+        { "name": "Bobby Almond", "pos": "CB", "rating": 56 },
+        { "name": "Glen Dods", "pos": "CB", "rating": 56 },
+        { "name": "John Hill", "pos": "LB", "rating": 55 },
+        { "name": "Sam Malcolmson", "pos": "CDM", "rating": 56 },
+        { "name": "Brian Turner", "pos": "CM", "rating": 58 },
+        { "name": "Steve Sumner", "pos": "CAM", "altPositions": ["CM"], "rating": 62 },
+        { "name": "Grant Turner", "pos": "RW", "rating": 57 },
+        { "name": "Steve Wooddin", "pos": "ST", "rating": 60 },
+        { "name": "Wynton Rufer", "pos": "LW", "altPositions": ["ST", "CF"], "rating": 66 }
+      ],
+      "bench": [
+        { "name": "Richard Wilson", "pos": "GK", "rating": 53 },
+        { "name": "Ricki Herbert", "pos": "CB", "rating": 57 },
+        { "name": "Keith Mackay", "pos": "CM", "rating": 55 },
+        { "name": "Duncan Cole", "pos": "ST", "rating": 55 }
+      ]
+    },
+    {
+      "name": "Bolívia",
+      "season": "1994",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Carlos Trucco", "pos": "GK", "rating": 60 },
+        { "name": "José Melgar", "pos": "RB", "rating": 56 },
+        { "name": "Marco Sandy", "pos": "CB", "rating": 60 },
+        { "name": "Gustavo Quinteros", "pos": "CB", "rating": 58 },
+        { "name": "Juan Manuel Peña", "pos": "LB", "altPositions": ["CB"], "rating": 60 },
+        { "name": "Luis Cristaldo", "pos": "CDM", "rating": 57 },
+        { "name": "Julio César Baldivieso", "pos": "CM", "altPositions": ["CAM"], "rating": 62 },
+        { "name": "Marco Etcheverry", "pos": "CAM", "rating": 66 },
+        { "name": "Erwin Sánchez", "pos": "RW", "altPositions": ["CAM"], "rating": 64 },
+        { "name": "William Ramallo", "pos": "ST", "rating": 57 },
+        { "name": "Jaime Moreno", "pos": "LW", "altPositions": ["ST"], "rating": 62 }
+      ],
+      "bench": [
+        { "name": "José Rocabado", "pos": "GK", "rating": 54 },
+        { "name": "Miguel Rimba", "pos": "CB", "rating": 55 },
+        { "name": "Ramiro Castillo", "pos": "CM", "rating": 57 },
+        { "name": "Álvaro Peña", "pos": "ST", "rating": 55 }
+      ]
+    },
+    {
+      "name": "Trinidad e Tobago",
+      "season": "2006",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Shaka Hislop", "pos": "GK", "rating": 64 },
+        { "name": "Cyd Gray", "pos": "RB", "rating": 56 },
+        { "name": "Dennis Lawrence", "pos": "CB", "rating": 58 },
+        { "name": "Brent Sancho", "pos": "CB", "rating": 57 },
+        { "name": "Avery John", "pos": "LB", "rating": 55 },
+        { "name": "Chris Birchall", "pos": "CDM", "rating": 57 },
+        { "name": "Densill Theobald", "pos": "CM", "rating": 56 },
+        { "name": "Russell Latapy", "pos": "CAM", "rating": 64 },
+        { "name": "Carlos Edwards", "pos": "RW", "altPositions": ["RB"], "rating": 60 },
+        { "name": "Stern John", "pos": "ST", "rating": 62 },
+        { "name": "Dwight Yorke", "pos": "LW", "altPositions": ["CF", "CAM"], "rating": 70 }
+      ],
+      "bench": [
+        { "name": "Kelvin Jack", "pos": "GK", "rating": 56 },
+        { "name": "Marvin Andrews", "pos": "CB", "rating": 57 },
+        { "name": "Aurtis Whitley", "pos": "CM", "rating": 56 },
+        { "name": "Kenwyne Jones", "pos": "ST", "rating": 60 }
+      ]
+    },
+    {
+      "name": "Togo",
+      "season": "2006",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Kossi Agassa", "pos": "GK", "rating": 58 },
+        { "name": "Daré Nibombé", "pos": "RB", "altPositions": ["CB"], "rating": 56 },
+        { "name": "Massamesso Tchangai", "pos": "CB", "rating": 55 },
+        { "name": "Éric Akoto", "pos": "CB", "rating": 56 },
+        { "name": "Jean-Paul Abalo", "pos": "LB", "rating": 55 },
+        { "name": "Yao Junior Senaya", "pos": "CDM", "rating": 56 },
+        { "name": "Alaixys Romao", "pos": "CM", "rating": 58 },
+        { "name": "Moustapha Salifou", "pos": "CAM", "rating": 56 },
+        { "name": "Adékanmi Olufadé", "pos": "RW", "rating": 56 },
+        { "name": "Emmanuel Adebayor", "pos": "ST", "altPositions": ["CF"], "rating": 72 },
+        { "name": "Kader Coubadja", "pos": "LW", "rating": 57 }
+      ],
+      "bench": [
+        { "name": "Kodjovi Obilalé", "pos": "GK", "rating": 53 },
+        { "name": "Assimiou Touré", "pos": "CB", "rating": 56 },
+        { "name": "Chérif-Touré Mamam", "pos": "CM", "rating": 56 },
+        { "name": "Mohamed Kader", "pos": "ST", "rating": 57 }
+      ]
+    },
+    {
+      "name": "Coreia do Sul",
+      "season": "1954",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Hong Deok-yeong", "pos": "GK", "rating": 52 },
+        { "name": "Park Kyu-jeong", "pos": "RB", "rating": 52 },
+        { "name": "Kim Ji-seong", "pos": "CB", "rating": 52 },
+        { "name": "Han Chang-hwa", "pos": "CB", "rating": 52 },
+        { "name": "Park Jae-seung", "pos": "LB", "rating": 51 },
+        { "name": "Min Byung-dae", "pos": "CDM", "altPositions": ["CM"], "rating": 56 },
+        { "name": "Lee Jong-gap", "pos": "CM", "rating": 53 },
+        { "name": "Sung Nak-woon", "pos": "CAM", "rating": 54 },
+        { "name": "Woo Sang-kwon", "pos": "RW", "rating": 53 },
+        { "name": "Choi Jung-min", "pos": "ST", "rating": 54 },
+        { "name": "Chung Nam-sik", "pos": "LW", "rating": 53 }
+      ],
+      "bench": [
+        { "name": "Ham Heung-chul", "pos": "GK", "rating": 50 },
+        { "name": "Kang Chang-gi", "pos": "CB", "rating": 51 },
+        { "name": "Lee Soo-nam", "pos": "CM", "rating": 52 },
+        { "name": "Chung Kook-jin", "pos": "ST", "rating": 52 }
+      ]
+    },
+    {
+      "name": "Emirados Árabes Unidos",
+      "season": "1990",
+      "league": "Copa do Mundo",
+      "kind": "national",
+      "official": true,
+      "players": [
+        { "name": "Muhsin Musabah", "pos": "GK", "rating": 56 },
+        { "name": "Eisa Meer", "pos": "RB", "rating": 54 },
+        { "name": "Khalil Mubarak", "pos": "CB", "rating": 55 },
+        { "name": "Abdulrahman Mohamed", "pos": "CB", "rating": 54 },
+        { "name": "Yousuf Hussain", "pos": "LB", "rating": 54 },
+        { "name": "Nasser Khamis", "pos": "CDM", "rating": 55 },
+        { "name": "Mohammed Juma'a", "pos": "CM", "rating": 58 },
+        { "name": "Adnan Al-Talyani", "pos": "CAM", "altPositions": ["RW"], "rating": 62 },
+        { "name": "Ali Thani", "pos": "RW", "rating": 55 },
+        { "name": "Khalid Ismail", "pos": "ST", "rating": 58 },
+        { "name": "Fahad Khamees", "pos": "LW", "rating": 55 }
+      ],
+      "bench": [
+        { "name": "Faraj Saleh", "pos": "GK", "rating": 52 },
+        { "name": "Abdullah Sultan", "pos": "CB", "rating": 54 },
+        { "name": "Ahmed Abdullah", "pos": "CM", "rating": 55 },
+        { "name": "Zuhair Bakheet", "pos": "ST", "rating": 56 }
+      ]
+    }
+  ]
+}

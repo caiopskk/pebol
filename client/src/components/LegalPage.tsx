@@ -39,7 +39,7 @@ const COPY: Record<
       {
         title: "Times e conteúdo",
         body: [
-          "Times personalizados criados por usuários devem evitar conteúdo ofensivo, enganoso ou ilegal.",
+          "Times personalizados cadastrados no painel devem evitar conteúdo ofensivo, enganoso ou ilegal.",
           "Nomes de clubes, seleções, jogadores e competições podem aparecer como referência cultural do futebol dentro do jogo.",
         ],
       },
@@ -108,29 +108,37 @@ export function LegalPage({ kind, onBack }: LegalPageProps) {
 
   return (
     <motion.div
-      className="screen legal-screen"
+      className="min-h-screen bg-stadium-depth px-4 py-6 font-body text-pebol-text"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22 }}
     >
-      <section className="panel legal-panel">
-        <span className="cup-tag">Pebol</span>
-        <h1>{copy.title}</h1>
-        <p className="legal-updated">{copy.updated}</p>
-        <p className="legal-intro">{copy.intro}</p>
+      <section className="mx-auto max-w-3xl overflow-hidden rounded-2xl border border-white/10 bg-pebol-panel p-5 shadow-premium backdrop-blur-xl">
+        <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
+          Pebol
+        </span>
+        <h1 className="mt-2 font-display text-4xl font-black uppercase tracking-[0.02em] text-white">
+          {copy.title}
+        </h1>
+        <p className="mt-1 text-xs font-black uppercase tracking-[0.1em] text-pebol-gold">
+          {copy.updated}
+        </p>
+        <p className="mt-4 text-base leading-7 text-pebol-muted">{copy.intro}</p>
 
-        <div className="legal-sections">
+        <div className="mt-6 grid gap-4">
           {copy.sections.map((section) => (
-            <section key={section.title} className="legal-section">
-              <h2>{section.title}</h2>
+            <section key={section.title} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
+              <h2 className="font-display text-lg font-black text-white">{section.title}</h2>
               {section.body.map((paragraph) => (
-                <p key={paragraph}>{paragraph}</p>
+                <p key={paragraph} className="mt-2 text-sm leading-6 text-pebol-muted">
+                  {paragraph}
+                </p>
               ))}
             </section>
           ))}
         </div>
 
-        <button type="button" className="primary alt legal-back" onClick={onBack}>
+        <button type="button" className="mt-6 min-h-11 rounded-xl border border-white/10 bg-white/[0.055] px-5 py-2 font-display text-sm font-extrabold text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:border-pebol-blue/50 hover:bg-pebol-blue/15" onClick={onBack}>
           Voltar
         </button>
       </section>

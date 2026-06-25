@@ -58,27 +58,41 @@ export function CampaignSetup({
 
   return (
     <motion.div
-      className="screen cup-screen cup-setup-screen"
+      className="min-h-screen bg-stadium-depth px-4 py-5 font-body text-pebol-text sm:px-6 lg:px-8"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.2 }}
     >
-      <div className="cup-head">
-        <img className="cup-head-trophy" src="/world_cup_trophy.png" alt="" />
-        <div>
-          <span className="cup-tag">Modo Copa do Mundo</span>
-          <h1>Copa do Mundo 48 Seleções</h1>
-          <p>
-            Monte sua seleção, dispute 3 jogos de grupo e tente passar para o
-            mata-mata de 32 times até a final.
-          </p>
+      <div className="mx-auto grid max-w-6xl gap-4">
+        <div className="relative overflow-hidden rounded-lg border border-white/10 bg-pebol-panel p-5 shadow-premium backdrop-blur-xl">
+          <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(circle_at_15%_20%,rgba(255,209,102,.14),transparent_28%),radial-gradient(circle_at_90%_0%,rgba(0,255,135,.12),transparent_34%)]" />
+          <div className="relative flex flex-wrap items-center justify-between gap-4">
+            <div className="flex min-w-0 items-center gap-4">
+              <img className="h-20 w-16 object-contain drop-shadow-[0_0_28px_rgba(255,209,102,.28)]" src="/world_cup_trophy.png" alt="" />
+              <div className="min-w-0">
+                <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
+                  Modo Copa do Mundo
+                </span>
+                <h1 className="font-display text-2xl font-black uppercase tracking-[0.03em] text-white sm:text-3xl">
+                  Copa do Mundo 48 Seleções
+                </h1>
+                <p className="mt-1 max-w-3xl text-sm font-semibold leading-6 text-pebol-muted">
+                  Monte sua seleção, dispute 3 jogos de grupo e tente passar para o
+                  mata-mata de 32 times até a final.
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              className="min-h-10 rounded-lg border border-white/10 bg-white/[0.055] px-4 py-2 font-display text-sm font-extrabold text-slate-200 transition-all duration-300 hover:border-pebol-blue/50 hover:bg-pebol-blue/15"
+              onClick={onExit}
+            >
+              Sair
+            </button>
+          </div>
         </div>
-        <button type="button" className="ghost" onClick={onExit}>
-          Sair
-        </button>
-      </div>
 
-      <SetupBoard
+        <SetupBoard
           className="cup-setup-board"
           formation={formation}
           formationId={formationId}
@@ -127,7 +141,8 @@ export function CampaignSetup({
           onMentalityChange={onMentalityChange}
           onAttackFocusChange={onAttackFocusChange}
           onAction={onStart}
-      />
+        />
+      </div>
     </motion.div>
   );
 }

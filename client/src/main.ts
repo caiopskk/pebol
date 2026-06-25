@@ -107,6 +107,7 @@ import {
 } from "./components/CampaignEnd.js";
 import { TeamForm } from "./components/TeamForm.js";
 import { LegalPage } from "./components/LegalPage.js";
+import { UpdatesPage } from "./components/UpdatesPage.js";
 import {
   DEV_PREVIEWS,
   devPreviewFromHash,
@@ -120,7 +121,33 @@ let reactRoot: Root | null = null;
 let syncLiveUi: (() => void) | null = null;
 let cupDraftScrollTop = 0;
 const MATCH_SPEED_KEY = "pebol:match-speed";
+const THEME_KEY = "pebol:theme";
+type AppTheme = "dark" | "light";
+let currentTheme: AppTheme = readSavedTheme();
 let writeLockCount = 0;
+
+function readSavedTheme(): AppTheme {
+  const saved = localStorage.getItem(THEME_KEY);
+  if (saved === "dark" || saved === "light") return saved;
+  return window.matchMedia("(prefers-color-scheme: light)").matches
+    ? "light"
+    : "dark";
+}
+
+function applyTheme(theme: AppTheme) {
+  currentTheme = theme;
+  document.documentElement.dataset.theme = theme;
+  document.documentElement.dataset.resolvedTheme = theme;
+  localStorage.setItem(THEME_KEY, theme);
+}
+
+function toggleTheme() {
+  const next: AppTheme = currentTheme === "dark" ? "light" : "dark";
+  applyTheme(next);
+  render();
+}
+
+applyTheme(currentTheme);
 
 setWriteRequestLock({
   begin: () => {
@@ -136,20 +163,41 @@ setWriteRequestLock({
 function renderReact(node: ReactElement) {
   if (!reactRoot) reactRoot = createRoot(app);
   const preview = devPreviewKind();
-  const content = preview
-    ? createElement(
-        Fragment,
-        null,
-        createElement(DevPreviewChrome, { active: preview }),
-        node,
-      )
-    : node;
+  const content = createElement(
+    Fragment,
+    null,
+    createElement(ThemeSwitch),
+    preview ? createElement(DevPreviewChrome, { active: preview }) : null,
+    node,
+  );
   // MotionConfig is a context provider (no DOM wrapper), so the IDs/classes the
   // imperative live-match logic queries are unchanged. reducedMotion="user"
   // makes every screen honor prefers-reduced-motion.
   flushSync(() =>
     reactRoot!.render(
       createElement(MotionConfig, { reducedMotion: "user" }, content),
+    ),
+  );
+}
+
+function ThemeSwitch() {
+  const light = currentTheme === "light";
+  return createElement(
+    "button",
+    {
+      type: "button",
+      className: "theme-switch",
+      "aria-label": light ? "Ativar tema escuro" : "Ativar tema claro",
+      "aria-pressed": light,
+      title: light ? "Tema claro" : "Tema escuro",
+      onClick: toggleTheme,
+    },
+    createElement(
+      "span",
+      { className: "theme-switch-track", "aria-hidden": true },
+      createElement("span", { className: "theme-icon theme-icon-moon" }),
+      createElement("span", { className: "theme-icon theme-icon-sun" }),
+      createElement("span", { className: "theme-switch-thumb" }),
     ),
   );
 }
@@ -194,7 +242,14 @@ interface Local {
   account: AccountUser | null;
   accountProgress: UserProgress | null;
   leaderboard: LeaderboardEntry[] | null;
-  accountScreen: "login" | "admin" | "achievements" | "terms" | "privacy" | null;
+  accountScreen:
+    | "login"
+    | "admin"
+    | "achievements"
+    | "terms"
+    | "privacy"
+    | "updates"
+    | null;
   adminTeams: AdminTeam[] | null;
   adminTeamSearch: string;
   adminPlayerSearch: string;
@@ -377,6 +432,7 @@ function render() {
     else if (L.accountScreen === "admin") renderAdmin();
     else if (L.accountScreen === "terms" || L.accountScreen === "privacy")
       renderLegal(L.accountScreen);
+    else if (L.accountScreen === "updates") renderUpdates();
     else renderAchievements();
     return;
   }
@@ -476,6 +532,7 @@ function renderHome() {
       onOpenAchievements: () => void openAchievements(),
       onLogout: logout,
       onWorldCup: startCampaign,
+      onOpenUpdates: openUpdates,
       onOpenLegal: openLegal,
       onSoon: (mode) =>
         showToast(
@@ -666,6 +723,10 @@ function openLegal(kind: "terms" | "privacy") {
   L.accountScreen = kind;
   render();
 }
+function openUpdates() {
+  L.accountScreen = "updates";
+  render();
+}
 function closeAccount() {
   L.accountScreen = null;
   L.editingTeam = null;
@@ -792,6 +853,9 @@ function renderLogin() {
 }
 function renderLegal(kind: "terms" | "privacy") {
   renderReact(createElement(LegalPage, { kind, onBack: closeAccount }));
+}
+function renderUpdates() {
+  renderReact(createElement(UpdatesPage, { onBack: closeAccount }));
 }
 
 function canEditTeam(t: AdminTeam): boolean {
