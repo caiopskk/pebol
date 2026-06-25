@@ -37,11 +37,11 @@ const glass =
 const panel =
   `${glass} relative overflow-hidden rounded-2xl transition-all duration-300 ease-out`;
 const heading =
-  "font-display text-xl font-black uppercase tracking-[0.02em] text-pebol-text";
+  "font-display text-xl font-extrabold uppercase tracking-[0.015em] text-pebol-text";
 const primaryAction =
-  "relative isolate min-h-12 w-full overflow-hidden rounded-xl border border-pebol-accent/40 bg-gradient-to-r from-pebol-accent via-emerald-300 to-pebol-gold px-5 py-3 font-display text-sm font-black uppercase tracking-[0.08em] text-black shadow-glow transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_0_42px_rgba(0,255,135,.38)] active:translate-y-0";
+  "relative isolate min-h-12 w-full overflow-hidden rounded-xl border border-pebol-accent/40 bg-gradient-to-r from-pebol-accent via-emerald-300 to-pebol-gold px-5 py-3 font-display text-sm font-extrabold uppercase tracking-[0.07em] text-black shadow-glow transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_0_42px_rgba(0,255,135,.38)] active:translate-y-0";
 const secondaryAction =
-  "min-h-11 rounded-xl border border-white/10 bg-white/[0.055] px-4 py-2 font-display text-sm font-extrabold text-slate-200 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-pebol-blue/50 hover:bg-pebol-blue/15";
+  "min-h-11 rounded-xl border border-white/10 bg-white/[0.055] px-4 py-2 font-display text-sm font-bold text-slate-200 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-pebol-blue/50 hover:bg-pebol-blue/15";
 
 const modeCopy: Record<GameMode, { eyebrow: string; title: string; desc: string }> = {
   classico: {
@@ -113,27 +113,27 @@ function AccountProfile({
         <>
           <div className={`${panel} flex min-w-0 items-center gap-4 p-4`}>
             <div className="home-avatar-frame relative grid h-20 w-20 shrink-0 place-items-center rounded-2xl border border-pebol-accent/40 bg-gradient-to-br from-pebol-accent/25 via-pebol-blue/15 to-black shadow-glow">
-              <span className="home-avatar-initials font-display text-2xl font-black text-white">
+              <span className="home-avatar-initials font-display text-2xl font-extrabold text-white">
                 {initials(account.username)}
               </span>
-              <em className="home-level-badge absolute -bottom-2 rounded-full border border-pebol-gold/50 bg-black px-2 py-0.5 font-display text-[0.65rem] font-black not-italic text-pebol-gold">
+              <em className="home-level-badge absolute -bottom-2 rounded-full border border-pebol-gold/50 bg-black px-2 py-0.5 font-display text-[0.65rem] font-bold not-italic text-pebol-gold">
                 Nv. {level}
               </em>
             </div>
             <div className="min-w-0 flex-1">
-              <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
+              <span className="font-display text-xs font-extrabold uppercase tracking-[0.14em] text-pebol-accent">
                 Conta conectada
               </span>
-              <strong className="mt-1 block truncate font-display text-2xl font-black text-white">
+              <strong className="mt-1 block truncate font-display text-2xl font-extrabold text-white">
                 {account.username}
               </strong>
               <span className="block text-sm font-semibold text-pebol-muted">
                 {account.role === "admin" ? "Administrador" : "Usuário"} · {title}
               </span>
               <div className="mt-3">
-                <div className="mb-1 flex items-center justify-between gap-3 text-xs font-bold text-slate-300">
+                <div className="mb-1 flex items-center justify-between gap-3 text-xs font-medium text-slate-300">
                   <span>XP da temporada</span>
-                  <strong className="font-display text-pebol-gold">
+                  <strong className="font-display font-semibold text-pebol-gold">
                     {xp}/{nextXp}
                   </strong>
                 </div>
@@ -203,7 +203,7 @@ function RoomPanel({
             <button
               key={tab}
               type="button"
-              className={`rounded-lg px-3 py-2 font-display text-sm font-black uppercase tracking-[0.07em] transition-all duration-300 ease-out ${
+              className={`rounded-lg px-3 py-2 font-display text-sm font-extrabold uppercase tracking-[0.06em] transition-all duration-300 ease-out ${
                 roomTab === tab
                   ? "bg-pebol-accent text-black shadow-glow"
                   : "text-pebol-muted hover:bg-white/5 hover:text-white"
@@ -238,13 +238,13 @@ function RoomPanel({
                       if (!locked) setSelectedMode(mode);
                     }}
                   >
-                    <span className="mb-3 grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-black/30 font-display text-xs font-black text-pebol-gold">
+                    <span className="mb-3 grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-black/30 font-display text-xs font-bold text-pebol-gold">
                       {mode === "classico" ? "CL" : "HC"}
                     </span>
-                    <small className="font-display text-[0.65rem] font-black uppercase tracking-[0.12em] text-pebol-muted">
+                    <small className="font-display text-[0.65rem] font-extrabold uppercase tracking-[0.11em] text-pebol-muted">
                       {modeCopy[mode].eyebrow}
                     </small>
-                    <strong className="block font-display text-lg font-black text-white">
+                    <strong className="block font-display text-lg font-extrabold text-white">
                       {modeCopy[mode].title}
                     </strong>
                     <span className="mt-1 block text-xs font-semibold leading-snug text-pebol-muted">
@@ -293,11 +293,11 @@ function SecondaryModes({ solo, onSoon }: { solo: () => void; onSoon: HomeProps[
             className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.045] p-3 text-left transition-all duration-300 ease-out hover:border-pebol-accent/45 hover:bg-pebol-accent/10 hover:shadow-glow"
             onClick={mode.onClick}
           >
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-black/35 font-display text-xs font-black text-pebol-accent transition-all duration-300 group-hover:border-pebol-accent/60 group-hover:bg-pebol-accent/15">
+            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-black/35 font-display text-xs font-bold text-pebol-accent transition-all duration-300 group-hover:border-pebol-accent/60 group-hover:bg-pebol-accent/15">
               {mode.icon}
             </span>
             <span className="min-w-0">
-              <strong className="block truncate font-display text-base font-black text-white">
+              <strong className="block truncate font-display text-base font-extrabold text-white">
                 {mode.title}
               </strong>
               <em className="block text-xs font-semibold not-italic text-pebol-muted">
@@ -323,7 +323,7 @@ function WorldCupFeature({ onWorldCup }: { onWorldCup: () => void }) {
         alt="Troféu da Copa do Mundo"
       />
       <div className="relative z-20 flex h-full flex-col justify-center">
-        <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-gold">
+        <span className="font-display text-xs font-extrabold uppercase tracking-[0.14em] text-pebol-gold">
           Modo solo
         </span>
         <h2 className={`${heading} mt-2 text-3xl`}>Copa do Mundo</h2>
@@ -332,7 +332,7 @@ function WorldCupFeature({ onWorldCup }: { onWorldCup: () => void }) {
         </p>
         <ul className="mt-4 flex flex-wrap gap-2">
           {["48 seleções", "Grupo + mata-mata", "Campanha offline"].map((item) => (
-            <li key={item} className="rounded-full border border-pebol-gold/25 bg-pebol-gold/10 px-3 py-1 font-display text-xs font-black uppercase tracking-[0.06em] text-pebol-gold">
+            <li key={item} className="rounded-full border border-pebol-gold/25 bg-pebol-gold/10 px-3 py-1 font-display text-xs font-bold uppercase tracking-[0.05em] text-pebol-gold">
               {item}
             </li>
           ))}
@@ -352,7 +352,7 @@ function LeaderboardPanel({
   return (
     <motion.section variants={cardMotion} className={`${panel} flex min-h-full flex-col p-5`}>
       <div className="mb-4">
-        <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
+        <span className="font-display text-xs font-extrabold uppercase tracking-[0.14em] text-pebol-accent">
           Ranking
         </span>
         <h2 className={heading}>Leaderboard por nível</h2>
@@ -375,11 +375,11 @@ function LeaderboardPanel({
                   : "border-white/5 bg-white/[0.025]"
               }`}
             >
-              <span className={`home-rank-badge grid h-9 w-9 place-items-center rounded-xl border font-display text-sm font-black ${medalClass(rank)}`}>
+              <span className={`home-rank-badge grid h-9 w-9 place-items-center rounded-xl border font-display text-sm font-bold ${medalClass(rank)}`}>
                 {medalLabel(rank)}
               </span>
               <span className="min-w-0">
-                <strong className="block truncate font-display text-sm font-black text-white">
+                <strong className="home-leader-name block truncate font-display text-sm font-semibold text-white">
                   {p ? p.username : leaderboard === null ? "..." : "Vago"}
                 </strong>
                 <em className="block truncate text-xs font-semibold not-italic text-pebol-muted">
@@ -387,10 +387,10 @@ function LeaderboardPanel({
                 </em>
               </span>
               <span className="grid justify-items-end gap-1">
-                <strong className="rounded-full border border-pebol-accent/20 bg-pebol-accent/10 px-2 py-0.5 font-display text-xs font-black text-pebol-accent">
+                <strong className="home-leader-level rounded-full border border-pebol-accent/20 bg-pebol-accent/10 px-2 py-0.5 font-display text-xs font-bold text-pebol-accent">
                   Nv. {p ? p.level : "--"}
                 </strong>
-                <em className="text-xs font-black not-italic text-pebol-gold">
+                <em className="home-leader-xp text-xs font-semibold not-italic text-pebol-gold">
                   {p ? p.xp : "--"} XP
                 </em>
               </span>
@@ -492,7 +492,7 @@ export function Home({
           {import.meta.env.DEV ? (
             <motion.section variants={cardMotion} className={`${panel} p-4 xl:col-span-2`}>
               <div className="mb-3">
-                <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-blue">
+                <span className="font-display text-xs font-extrabold uppercase tracking-[0.14em] text-pebol-blue">
                   Dev
                 </span>
                 <h2 className={heading}>Previews rápidos</h2>
@@ -517,8 +517,8 @@ export function Home({
           ) : null}
         </div>
 
-        <motion.footer variants={cardMotion} className="flex flex-wrap items-center justify-center gap-3 pb-4 pt-1 text-xs font-bold text-pebol-faint">
-          <span className="font-display font-black uppercase tracking-[0.16em]">Pebol</span>
+        <motion.footer variants={cardMotion} className="flex flex-wrap items-center justify-center gap-3 pb-4 pt-1 text-xs font-medium text-pebol-faint">
+          <span className="font-display font-extrabold uppercase tracking-[0.14em]">Pebol</span>
           <button type="button" className="transition-colors duration-300 hover:text-pebol-accent" onClick={onOpenUpdates}>
             Novidades
           </button>

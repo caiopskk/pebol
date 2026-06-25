@@ -6226,6 +6226,26 @@ select option:checked {
 
 .home-level-badge {
   z-index: 2;
+  line-height: 1.15;
+  letter-spacing: 0;
+  font-weight: 700;
+}
+
+.home-rank-badge,
+.home-leader-level,
+.home-leader-xp,
+.home-leader-name {
+  letter-spacing: 0;
+  text-rendering: geometricPrecision;
+}
+
+.home-leader-name {
+  line-height: 1.2;
+}
+
+.home-leader-level,
+.home-leader-xp {
+  line-height: 1.15;
 }
 
 :root[data-resolved-theme="light"] .home-avatar-frame {
