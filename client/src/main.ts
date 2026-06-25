@@ -1325,8 +1325,22 @@ function campaignAvgNumber(): number {
   );
 }
 
-function awardStrongDraft(avg: number, sourceKey: string) {
-  if (avg >= 85) void awardAchievements(["strong_draft"], sourceKey);
+function awardDraftAchievements(
+  picks: SquadPick[],
+  formationId: string,
+  sourceKey: string,
+) {
+  if (picks.length < 11) return;
+  const strength = computeStrength(picks, formationId);
+  const ids: string[] = [];
+  if (strength.overall >= 85) ids.push("strong_draft");
+  if (strength.overall >= 90) ids.push("elite_draft");
+  if (strength.attack >= 90) ids.push("attack_90");
+  if (strength.midfield >= 90) ids.push("midfield_90");
+  if (strength.defense >= 90) ids.push("defense_90");
+  if (strength.attack >= 85 && strength.midfield >= 85 && strength.defense >= 85)
+    ids.push("balanced_squad");
+  if (ids.length) void awardAchievements(ids, sourceKey);
 }
 
 function campaignStrengthData(): CampaignStrengthData {
@@ -1692,8 +1706,12 @@ function renderCampaignDraft() {
         render();
       },
       onContinue: () => {
-        const avg = campaignAvgNumber();
-        awardStrongDraft(avg, `cup:draft:${c.runId}:${avg}`);
+        const strength = computeStrength(c.picks, c.formationId);
+        awardDraftAchievements(
+          c.picks,
+          c.formationId,
+          `cup:draft:${c.runId}:${strength.overall}-${strength.attack}-${strength.midfield}-${strength.defense}`,
+        );
         c.round = 0;
         campaignBeginRound();
         render();
@@ -2718,7 +2736,15 @@ function renderPreMatchClassic() {
   const you = me()!;
   const opp = opponent();
   const youOvr = picksOvr(you);
-  if (you.picks.length >= 11) awardStrongDraft(youOvr, `draft:${s.code}:${you.id}:${youOvr}`);
+  if (you.picks.length >= 11) {
+    const formationId = you.formationId ?? L.formationId;
+    const strength = computeStrength(you.picks, formationId);
+    awardDraftAchievements(
+      you.picks,
+      formationId,
+      `draft:${s.code}:${you.id}:${strength.overall}-${strength.attack}-${strength.midfield}-${strength.defense}`,
+    );
+  }
   const vsAI = s.players.some((p) => p.isAI);
   const hideRatings = s.mode === "hardcore";
   // dicas táticas (encaixe do foco) — ocultas no modo Hardcore

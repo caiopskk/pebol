@@ -297,6 +297,9 @@ As conquistas ficam no banco e são desbloqueadas por ações do usuário. Exemp
 - Hat-trick.
 - Três assistências em uma partida.
 - Time com overall alto.
+- Time com overall elite.
+- Time com ataque, meio ou defesa muito fortes.
+- Time equilibrado em todos os setores.
 - Vitória contra a máquina.
 - Vitória no modo Hardcore.
 - Criar time personalizado.
