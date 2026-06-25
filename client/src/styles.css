@@ -6347,13 +6347,15 @@ select option:checked {
   color: var(--gold);
 }
 
-:root[data-resolved-theme="light"] .home-brand-logo {
+:root[data-resolved-theme="light"] .home-brand-logo,
+:root[data-resolved-theme="light"] .auth-brand-logo {
   filter:
-    drop-shadow(0 1.35rem 1.65rem rgba(14, 35, 39, 0.16))
-    drop-shadow(0 0 1.7rem rgba(0, 169, 96, 0.18))
-    saturate(1.14)
-    contrast(1.08)
-    brightness(1.08);
+    drop-shadow(0 1.15rem 1.45rem rgba(14, 35, 39, 0.12))
+    drop-shadow(0 0 2.1rem rgba(0, 169, 96, 0.2))
+    saturate(1.22)
+    contrast(1.12)
+    brightness(1.24);
+  opacity: 0.98;
 }
 
 .home-avatar-frame {
