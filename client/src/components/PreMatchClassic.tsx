@@ -5,6 +5,7 @@ import type {
   Mentality,
   PlayerPublic,
 } from "../../../shared/types.js";
+import { gameModeLabel, isHardcoreMode, isWorldCupMode } from "../../../shared/gameMode.js";
 import { MENTALITIES } from "../../../shared/mentalities.js";
 import { ATTACK_FOCUS_OPTIONS } from "./SetupBoard.js";
 import { screenIn } from "../lib/motion.js";
@@ -29,6 +30,16 @@ interface PreMatchClassicProps {
   onSelectMentality: (mentality: Mentality) => void;
   onSelectFocus: (focus: AttackFocus) => void;
   onContinue: () => void;
+}
+
+function modeLabel(mode: GameMode) {
+  return gameModeLabel(mode);
+}
+
+function modePillClass(mode: GameMode) {
+  if (isHardcoreMode(mode)) return "border-red-300/35 bg-red-400/10 text-red-100";
+  if (isWorldCupMode(mode)) return "border-pebol-blue/35 bg-pebol-blue/10 text-slate-100";
+  return "border-pebol-blue/30 bg-pebol-blue/10 text-slate-200";
 }
 
 export function PreMatchClassic({
@@ -80,14 +91,8 @@ export function PreMatchClassic({
               Sala <strong className="text-white">{code}</strong>
             </div>
           )}
-          <div
-            className={`rounded-full border px-3 py-1 font-display text-xs font-black uppercase tracking-[0.14em] ${
-              mode === "hardcore"
-                ? "border-red-300/35 bg-red-400/10 text-red-100"
-                : "border-pebol-blue/30 bg-pebol-blue/10 text-slate-200"
-            }`}
-          >
-            {mode === "hardcore" ? "Modo Hardcore" : "Modo Clássico"}
+          <div className={`rounded-full border px-3 py-1 font-display text-xs font-black uppercase tracking-[0.14em] ${modePillClass(mode)}`}>
+            {modeLabel(mode)}
           </div>
           <button
             type="button"

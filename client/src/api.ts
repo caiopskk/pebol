@@ -35,6 +35,21 @@ export interface LeaderboardEntry extends UserProgress {
   username: string;
   rank: number;
 }
+export type FeedbackCategory = "suggestion" | "bug" | "balance" | "other";
+export interface FeedbackPayload {
+  category: FeedbackCategory;
+  message: string;
+  contact?: string;
+  page?: string;
+}
+export interface FeedbackEntry extends FeedbackPayload {
+  id: string;
+  userId: string;
+  username: string;
+  userAgent: string;
+  status: "new" | "reviewed" | "archived";
+  createdAt: number;
+}
 
 let token: string | null = localStorage.getItem("pebol_token");
 let writeRequestLock:
@@ -100,6 +115,12 @@ export const api = {
       method: "POST",
       body: JSON.stringify({ amount, reason, sourceKey }),
     }),
+  sendFeedback: (payload: FeedbackPayload) =>
+    req<{ feedback: { id: string; createdAt: number } }>("/api/feedback", {
+      method: "POST",
+      body: JSON.stringify(payload),
+    }),
+  listFeedback: () => req<{ feedback: FeedbackEntry[] }>("/api/feedback"),
   listTeams: () => req<{ teams: AdminTeam[] }>("/api/teams"),
   createTeam: (t: Partial<AdminTeam> & { official?: boolean }) =>
     req<{ team: AdminTeam }>("/api/teams", { method: "POST", body: JSON.stringify(t) }),

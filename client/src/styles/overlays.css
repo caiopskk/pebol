@@ -1,0 +1,252 @@
+/* ---------- Toast ---------- */
+.toast {
+  position: fixed;
+  bottom: 26px;
+  left: 50%;
+  width: max-content;
+  max-width: min(32rem, calc(100vw - 2rem));
+  background: var(--glass-2);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  padding: 12px 22px;
+  border-radius: var(--radius-sm);
+  font-size: 14px;
+  line-height: 1.35;
+  text-align: center;
+  z-index: 50;
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+}
+
+.write-lock {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1.25rem;
+  background: rgba(3, 6, 12, 0.16);
+  backdrop-filter: blur(0.125rem);
+  -webkit-backdrop-filter: blur(0.125rem);
+  opacity: 0;
+  visibility: hidden;
+  pointer-events: none;
+  transition:
+    opacity 0.12s ease,
+    visibility 0.12s ease;
+}
+
+.write-lock.active {
+  opacity: 1;
+  visibility: visible;
+  pointer-events: auto;
+}
+
+.write-lock-card {
+  width: 3.75rem;
+  height: 3.75rem;
+  display: grid;
+  place-items: center;
+  align-items: center;
+  padding: 0;
+  background:
+    radial-gradient(
+      4rem 4rem at 50% 20%,
+      rgba(31, 199, 125, 0.22),
+      transparent 70%
+    ),
+    var(--glass);
+  border: 1px solid var(--line-strong);
+  border-radius: 999px;
+  box-shadow: var(--shadow);
+}
+
+.write-spinner {
+  width: 1.75rem;
+  height: 1.75rem;
+  flex: 0 0 auto;
+  border: 0.1875rem solid rgba(255, 255, 255, 0.14);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: writeSpin 0.8s linear infinite;
+}
+
+@keyframes writeSpin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.notice-stack {
+  position: fixed;
+  right: 1.25rem;
+  bottom: 1.25rem;
+  z-index: 70;
+  width: min(24rem, calc(100vw - 2rem));
+  display: grid;
+  gap: 0.75rem;
+  pointer-events: none;
+}
+
+.achievement-pop {
+  width: 100%;
+  min-height: 5.75rem;
+  display: grid;
+  grid-template-columns: 3.25rem minmax(0, 1fr) auto;
+  gap: 0.875rem;
+  align-items: center;
+  padding: 0.875rem 1rem;
+  border: 1px solid rgba(31, 199, 125, 0.45);
+  border-left: 0.25rem solid var(--accent);
+  background:
+    radial-gradient(
+      18rem 8rem at 0% 0%,
+      rgba(31, 199, 125, 0.2),
+      transparent 72%
+    ),
+    rgba(10, 15, 25, 0.96);
+  box-shadow: 0 1rem 2.5rem rgba(0, 0, 0, 0.55);
+  backdrop-filter: blur(14px) saturate(1.2);
+  -webkit-backdrop-filter: blur(14px) saturate(1.2);
+  animation: achievementIn 0.32s ease;
+  pointer-events: auto;
+}
+
+.achievement-pop.leaving {
+  animation: achievementOut 0.28s ease forwards;
+}
+
+.achievement-pop-icon {
+  width: 3.25rem;
+  height: 3.25rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  color: #04130c;
+  font-size: 1.45rem;
+  font-weight: 900;
+  box-shadow: 0 0.75rem 1.5rem rgba(31, 199, 125, 0.22);
+}
+
+.achievement-pop-copy {
+  min-width: 0;
+}
+
+.achievement-pop-copy span {
+  display: block;
+  color: var(--accent);
+  font-size: 0.65rem;
+  font-weight: 900;
+  letter-spacing: 0.08rem;
+  text-transform: uppercase;
+}
+
+.achievement-pop-copy strong {
+  display: block;
+  margin-top: 0.1875rem;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text);
+  font-size: 0.98rem;
+}
+
+.achievement-pop-copy p {
+  margin: 0.25rem 0 0;
+  color: var(--muted);
+  font-size: 0.75rem;
+  line-height: 1.35;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+}
+
+.achievement-pop em {
+  align-self: start;
+  color: var(--gold);
+  font-size: 0.75rem;
+  font-style: normal;
+  font-weight: 900;
+  white-space: nowrap;
+}
+
+.xp-pop {
+  border-color: rgba(255, 206, 84, 0.5);
+  border-left-color: var(--gold);
+  background:
+    radial-gradient(
+      18rem 8rem at 0% 0%,
+      rgba(255, 206, 84, 0.18),
+      transparent 72%
+    ),
+    rgba(10, 15, 25, 0.96);
+}
+
+.xp-pop .achievement-pop-icon {
+  background: linear-gradient(135deg, var(--gold), #fff0a8);
+  color: #171004;
+  font-size: 0.9rem;
+}
+
+.xp-pop .achievement-pop-copy span,
+.xp-pop em {
+  color: var(--gold);
+}
+
+@keyframes achievementIn {
+  from {
+    opacity: 0;
+    transform: translateX(1.25rem) translateY(0.5rem);
+  }
+  to {
+    opacity: 1;
+    transform: translateX(0) translateY(0);
+  }
+}
+
+@keyframes achievementOut {
+  to {
+    opacity: 0;
+    transform: translateX(1.25rem) translateY(0.5rem);
+  }
+}
+
+:root[data-resolved-theme="light"] .achievement-pop {
+  border-color: rgba(0, 169, 96, 0.34);
+  border-left-color: #00a960;
+  background:
+    radial-gradient(
+      18rem 8rem at 0% 0%,
+      rgba(0, 169, 96, 0.13),
+      transparent 72%
+    ),
+    rgba(255, 255, 255, 0.94);
+  color: var(--strong-text);
+  box-shadow:
+    0 1rem 2.4rem rgba(15, 38, 42, 0.16),
+    inset 0 1px 0 rgba(255, 255, 255, 0.82);
+}
+
+:root[data-resolved-theme="light"] .achievement-pop-copy strong {
+  color: var(--strong-text);
+}
+
+:root[data-resolved-theme="light"] .achievement-pop-copy p {
+  color: #4e6470;
+}
+
+:root[data-resolved-theme="light"] .xp-pop {
+  border-color: rgba(184, 128, 16, 0.36);
+  border-left-color: #c48913;
+  background:
+    radial-gradient(
+      18rem 8rem at 0% 0%,
+      rgba(184, 128, 16, 0.13),
+      transparent 72%
+    ),
+    rgba(255, 255, 255, 0.94);
+}

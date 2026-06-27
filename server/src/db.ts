@@ -87,6 +87,21 @@ export interface LeaderboardEntry extends UserProgress {
   username: string;
   rank: number;
 }
+export type FeedbackCategory = "suggestion" | "bug" | "balance" | "other";
+export interface FeedbackInput {
+  category: FeedbackCategory;
+  message: string;
+  contact?: string;
+  page?: string;
+  userAgent?: string;
+}
+export interface FeedbackEntry extends FeedbackInput {
+  id: string;
+  userId: string;
+  username: string;
+  status: "new" | "reviewed" | "archived";
+  createdAt: number;
+}
 
 /** What a non-admin sees: official clubs get their generic alias; nationals and the
  *  user's own teams keep their real name. */
@@ -121,10 +136,17 @@ export async function initDb(): Promise<void> {
         id TEXT PRIMARY KEY, user_id TEXT NOT NULL, source_key TEXT NOT NULL,
         amount INTEGER NOT NULL, reason TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL,
         UNIQUE(user_id, source_key))`,
+      `CREATE TABLE IF NOT EXISTS feedback_messages (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, category TEXT NOT NULL,
+        message TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '',
+        page TEXT NOT NULL DEFAULT '', user_agent TEXT NOT NULL DEFAULT '',
+        status TEXT NOT NULL DEFAULT 'new', created_at INTEGER NOT NULL)`,
       `CREATE INDEX IF NOT EXISTS idx_players_team ON players(team_id)`,
       `CREATE INDEX IF NOT EXISTS idx_teams_owner ON teams(owner_id)`,
       `CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id)`,
       `CREATE INDEX IF NOT EXISTS idx_user_xp_events_user ON user_xp_events(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback_messages(created_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback_messages(user_id)`,
     ],
     "write",
   );
@@ -583,4 +605,85 @@ export async function getLeaderboard(limit = 10): Promise<LeaderboardEntry[]> {
       activityXp,
     };
   });
+}
+
+const FEEDBACK_CATEGORIES = new Set<FeedbackCategory>([
+  "suggestion",
+  "bug",
+  "balance",
+  "other",
+]);
+
+export function normalizeFeedbackInput(input: FeedbackInput): FeedbackInput {
+  const category = FEEDBACK_CATEGORIES.has(input.category)
+    ? input.category
+    : "other";
+  return {
+    category,
+    message: String(input.message ?? "").trim().slice(0, 2400),
+    contact: String(input.contact ?? "").trim().slice(0, 180),
+    page: String(input.page ?? "").trim().slice(0, 240),
+    userAgent: String(input.userAgent ?? "").trim().slice(0, 360),
+  };
+}
+
+export async function createFeedback(
+  userId: string,
+  input: FeedbackInput,
+): Promise<{ id: string; createdAt: number }> {
+  const feedback = normalizeFeedbackInput(input);
+  const id = randomUUID();
+  const createdAt = Date.now();
+  await db.execute({
+    sql: `INSERT INTO feedback_messages
+          (id,user_id,category,message,contact,page,user_agent,status,created_at)
+          VALUES (?,?,?,?,?,?,?,?,?)`,
+    args: [
+      id,
+      userId,
+      feedback.category,
+      feedback.message,
+      feedback.contact ?? "",
+      feedback.page ?? "",
+      feedback.userAgent ?? "",
+      "new",
+      createdAt,
+    ],
+  });
+  return { id, createdAt };
+}
+
+export async function getFeedbackCountForUser(userId: string): Promise<number> {
+  const result = await db.execute({
+    sql: "SELECT COUNT(*) AS total FROM feedback_messages WHERE user_id = ?",
+    args: [userId],
+  });
+  return Number(result.rows[0]?.total ?? 0);
+}
+
+export async function getFeedback(limit = 50): Promise<FeedbackEntry[]> {
+  const safeLimit = Math.max(1, Math.min(200, Math.round(Number(limit) || 50)));
+  const rows = (
+    await db.execute({
+      sql: `SELECT f.id, f.user_id, u.username, f.category, f.message, f.contact,
+                   f.page, f.user_agent, f.status, f.created_at
+            FROM feedback_messages f
+            JOIN users u ON u.id = f.user_id
+            ORDER BY f.created_at DESC
+            LIMIT ?`,
+      args: [safeLimit],
+    })
+  ).rows as unknown as Record<string, unknown>[];
+  return rows.map((row) => ({
+    id: String(row.id),
+    userId: String(row.user_id),
+    username: String(row.username),
+    category: String(row.category) as FeedbackCategory,
+    message: String(row.message),
+    contact: String(row.contact ?? ""),
+    page: String(row.page ?? ""),
+    userAgent: String(row.user_agent ?? ""),
+    status: String(row.status ?? "new") as FeedbackEntry["status"],
+    createdAt: Number(row.created_at),
+  }));
 }

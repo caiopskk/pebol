@@ -14,6 +14,7 @@
     "test:engine": "tsx server/src/engine-property-test.ts",
     "test:engine:balance": "tsx server/src/engine-balance-test.ts",
     "test:engine:all": "pnpm run test:engine && pnpm run test:engine:balance",
+    "test:achievements": "tsx client/src/achievement-rules-test.ts",
     "preview": "vite preview"
   },
   "dependencies": {

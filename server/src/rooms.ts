@@ -11,7 +11,9 @@ import type {
   HalftimeLineup,
   Position,
 } from "../../shared/types.js";
+import { isHardcoreMode, isWorldCupMode } from "../../shared/gameMode.js";
 import { TEAMS, getTeam } from "../../shared/data/teams.js";
+import { WC_DRAFT_TEAMS } from "../../shared/data/worldcup.js";
 import { getFormation } from "../../shared/formations.js";
 import { randomManager } from "../../shared/data/managers.js";
 import {
@@ -53,6 +55,10 @@ export function setTeamPool(teams: Team[]): void {
   teamPool = teams.length ? teams : TEAMS;
 }
 
+function draftPoolForMode(mode: GameMode): Team[] {
+  return isWorldCupMode(mode) ? WC_DRAFT_TEAMS : teamPool;
+}
+
 function genCode(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let code = "";
@@ -67,7 +73,7 @@ function genCode(): string {
 
 // Reroll allowance per mode: Clássico (PvP/PvE) gets 5, Hardcore stays at 3.
 function rerollsForMode(mode: GameMode): number {
-  return mode === "hardcore" ? 3 : 5;
+  return isHardcoreMode(mode) ? 3 : 5;
 }
 
 function newPlayer(
@@ -208,9 +214,10 @@ export function ready(room: Room, playerId: string) {
 }
 
 function drawTeam(room: Room): Team {
-  const pool = teamPool.filter((t) => !room.usedTeamIds.includes(t.id));
+  const draftPool = draftPoolForMode(room.mode);
+  const pool = draftPool.filter((t) => !room.usedTeamIds.includes(t.id));
   // recycle if the pool runs out (22 picks can exceed the team count)
-  const src = pool.length ? pool : teamPool;
+  const src = pool.length ? pool : draftPool;
   if (!pool.length) room.usedTeamIds = [];
   const team = src[Math.floor(Math.random() * src.length)];
   return team;
@@ -301,7 +308,7 @@ function advanceTurn(room: Room) {
 const HARDCORE_AI_SCALE = 1.025;
 
 function simInput(p: InternalPlayer, room: Room) {
-  const hardcoreAI = p.isAI && room.mode === "hardcore";
+  const hardcoreAI = p.isAI && isHardcoreMode(room.mode);
   return {
     id: p.id,
     name: p.name,
@@ -473,9 +480,10 @@ export function rematch(room: Room) {
 
 /** Build the public snapshot sent to clients (hides ratings in Hardcore mode). */
 export function toPublic(room: Room): RoomState {
-  const hide = room.mode === "hardcore" && room.phase === "draft";
+  const hide = isHardcoreMode(room.mode) && room.phase === "draft";
   const hasAI = room.players.some((p) => p.isAI);
-  const rerollsEnabled = isPvP(room) || (hasAI && room.mode === "classico");
+  const rerollsEnabled =
+    isPvP(room) || (hasAI && (room.mode === "classico" || room.mode === "worldcup"));
   const hiddenPlayer = (player: Player): Player => ({
     ...player,
     rating: 0,

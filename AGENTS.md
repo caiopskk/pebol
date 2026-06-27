@@ -9,9 +9,10 @@ lembrar como o jogo funciona, sem precisar reexplicar. (Para instruções de jog
 ## 1. O que é
 
 **Pebol** é um jogo web 1v1 de **draft de futebol** em tempo real. Dois jogadores — ou um
-jogador contra a máquina — sorteiam times reais do **Brasileirão** e da **UEFA Champions
-League**, montam um XI titular escolhendo um jogador por rodada, e os times se enfrentam
-numa **partida única** narrada ao vivo (com intervalo, cartões, pênaltis, etc.).
+jogador contra a máquina — sorteiam clubes reais do **Brasileirão** e da **UEFA Champions
+League** ou seleções históricas da **Copa do Mundo**, montam um XI titular escolhendo um
+jogador por rodada, e os times se enfrentam numa **partida única** narrada ao vivo (com
+intervalo, cartões, pênaltis, etc.).
 
 A graça: você não escolhe quem quer; o jogo sorteia um time por turno e você pega **um**
 jogador dele. Montar um time bom com sorteios aleatórios é o desafio.
@@ -38,6 +39,7 @@ jogador dele. Montar um time bom com sorteios aleatórios é o desafio.
 ```
 shared/                # código e dados usados por client E server
   types.ts             # TODOS os tipos (RoomState, MatchEvent, Team, etc.)
+  gameMode.ts          # helpers de modo: isWorldCupMode/isHardcoreMode/gameModeLabel
   formations.ts        # 10 formações (slots com x/y) + posLabel/posName (siglas PT)
   mentalities.ts       # 6 mentalidades (modificadores de ataque/defesa)
   engine.ts            # penalidade de posição, força do time, simulação da partida
@@ -52,14 +54,21 @@ server/src/
 client/
   index.html
   public/pebol_logo.png  # logo (servido em /pebol_logo.png pelo Vite)
-  src/main.ts          # TODA a UI (home, lobby, draft, partida ao vivo, intervalo, resultado)
+  src/main.ts          # orquestrador de estado/render; evitar colocar regra pura nova aqui
   src/net.ts           # conexão socket.io + wrappers de emit
   src/styles.css       # design system: dark UI + bento + glassmorphism atenuado
+  src/styles/          # módulos CSS extraídos de styles.css (ex: overlays/notices)
+  src/components/      # telas/componentes isolados (Home, Draft, Live, Result, Admin, etc.)
+  src/lib/             # helpers puros (lineup, campaignData, resultSummaryData, import, notices)
+  src/devPreviews*.ts  # rotas/fixtures/telas de preview de desenvolvimento
 ```
 
-`main.ts` é grande de propósito (toda a UI). A renderização é por `render()` que troca o
-`innerHTML` de `#app` conforme a fase; durante a partida ao vivo o `render()` é **bloqueado**
-(`if (L.playing) return`) pra não destruir a animação — atualizações vêm por `syncLiveUi`.
+`main.ts` ainda centraliza o estado global e a troca de telas, mas não deve voltar a ser o
+lugar de toda regra do client. Regra pura e transformação de dados vão para `client/src/lib/*`;
+telas e partes reutilizáveis vão para `client/src/components/*`; fixtures e atalhos de teste
+visual ficam em `client/src/devPreview*.ts`. Durante a partida ao vivo o `render()` é
+**bloqueado** (`if (L.playing) return`) pra não destruir a animação — atualizações vêm por
+`syncLiveUi`.
 
 ---
 
@@ -77,17 +86,26 @@ inteira (1º tempo, intervalo, 2º tempo, pênaltis, resumo) — reproduzida no 
   (`usedTeamIds`). Se o pool acabar (22 escolhas > 68 times não acontece, mas há fallback),
   recicla.
 - 22 turnos no total → 11 titulares por jogador.
+- A criação de sala separa **tipo de elenco** (Clubes ou Seleções) de **regra de jogo**
+  (Clássico ou Hardcore). Internamente isso vira `GameMode`: `classico`, `hardcore`,
+  `worldcup` ou `worldcup-hardcore`.
+- Use sempre os helpers de `shared/gameMode.ts` para regra de modo. Evite comparações soltas
+  como `mode === "hardcore"` quando o comportamento também vale para `worldcup-hardcore`.
+- O draft de clubes online lê o pool oficial do banco. O draft PvP/PvE de seleções usa
+  `WC_DRAFT_TEAMS` (seleções históricas), mas isso **não** é a campanha da Copa; é a mesma
+  partida única do modo clássico usando outro pool de jogadores.
 - **Reroll**: cada jogador tem "atualizações" pra descartar o time sorteado e sortear outro
   (`rerollTeam`). Quantidade por modo (`rerollsForMode`): **Clássico = 5**, **Hardcore = 3**.
-  Habilitado em PvP e no solo Clássico (`rerollsEnabled` em `toPublic`); a IA não rerolla.
-  A Copa do Mundo segue a mesma regra pelo modo da campanha (`CampaignMode`): Normal = 5,
-  Hardcore = 3 (definido em `c.rerollsRemaining` ao iniciar o draft, no handler `cup-start`).
-- **Modo Hardcore** (`mode: "hardcore"`): os ratings ficam **ocultos** durante o draft (o servidor
-  zera os ratings no snapshot, não é só esconder no CSS). No `classico` ficam visíveis. Desbloqueia
-  no **nível 5** (`HARDCORE_UNLOCK_LEVEL`). **Contra a máquina**, a IA ainda recebe um buff de
-  força (`HARDCORE_AI_SCALE = 1.04` em `rooms.ts` → `SimInput.strengthScale`, aplicado em
-  `makeSide`): vitória em times iguais cai de ~50% para ~40% — mais difícil, não impossível.
-  Em PvP o buff não se aplica (seria injusto).
+  Em PvP vale para clubes e seleções. No solo contra IA, o snapshot expõe reroll nos modos
+  clássicos (`classico`/`worldcup`); a IA não rerolla.
+  A campanha da Copa segue regra própria (`CampaignMode`): Normal = 5, Hardcore = 3
+  (definido em `c.rerollsRemaining` ao iniciar o draft, no handler `cup-start`).
+- **Modo Hardcore** (`isHardcoreMode(mode)`): os ratings ficam **ocultos** durante o draft (o
+  servidor zera os ratings no snapshot, não é só esconder no CSS). Nos modos clássicos ficam
+  visíveis. Desbloqueia no **nível 5** (`HARDCORE_UNLOCK_LEVEL`). **Contra a máquina**, a IA
+  ainda recebe um buff de força (`HARDCORE_AI_SCALE = 1.04` em `rooms.ts` →
+  `SimInput.strengthScale`, aplicado em `makeSide`): vitória em times iguais cai de ~50% para
+  ~40% — mais difícil, não impossível. Em PvP o buff não se aplica (seria injusto).
 - **IA (modo solo)**: na vez dela, `driveAI` (em `index.ts`) espera **~3s** (pra dar pra
   acompanhar) e chama `aiPick`, que escolhe o melhor jogador para o slot de menor penalidade.
 
@@ -212,9 +230,9 @@ possession, halftime, fulltime, penalty, info`.
 
 ### 4.8 Ritmo da reprodução
 
-`eventDelay()` e `TICK_BASE_MS` em `main.ts` controlam quanto tempo o feed pausa em cada
-evento. O "1x" atual já é rápido (era o "2x" antigo). **PvP fica travado em 1x**; o solo
-permite 1x/1.5x/2x. Gols pausam mais (~2s), posse passa rápido (~340ms).
+`eventDelay()` e `TICK_BASE_MS` controlam quanto tempo o feed pausa em cada evento. O "1x"
+atual já é rápido (era o "2x" antigo). **PvP fica travado em 1x**; o solo permite
+1x/1.5x/2x. Gols pausam mais (~2s), posse passa rápido (~340ms).
 
 ### 4.9 Resultado
 
@@ -225,8 +243,9 @@ escalações. "Jogar de novo" (`rematch`) volta ao lobby mantendo formação/men
 ### 4.10 Modo Copa do Mundo (campanha)
 
 Modo single-player em formato **Copa 48 seleções** totalmente **client-side** (não usa
-socket/sala). Código em `main.ts` (seção "World Cup campaign", `L.campaign`), dados em
-`shared/data/worldcup.ts`, simulação em `simulateGauntletMatch` (engine).
+socket/sala). O estado fica em `L.campaign`; telas vivem nos componentes `Campaign*`;
+cálculos/derivações de UI ficam em `client/src/lib/campaignData.ts`; dados vêm de
+`shared/data/worldcup.ts`; simulação vem de `simulateGauntletMatch` (engine).
 
 - **Objetivo**: passar por 3 jogos de fase de grupos e depois vencer 5 jogos de mata-mata
   (16-avos, oitavas, quartas, semifinal, final). No mata-mata, **empate OU derrota = game
@@ -303,17 +322,22 @@ o client conecta na mesma origem. Em dev o client conecta direto em `:3001`.
 Os times agora vivem num banco **libSQL/Turso** (SQLite-compatível). Em dev, sem env vars,
 cai num arquivo local `data/pebol.db`; em produção (Render) use as env vars.
 
-- `server/src/db.ts` — conexão, schema (`users`, `teams`, `players`), **seed** a partir dos
-  times hardcoded (clubes de `teams.ts` como `kind='club'`; seleções de `worldcup.ts` como
-  `kind='national'`) só se a tabela estiver vazia, e funções de CRUD. Times com
-  `owner_id IS NULL` são **oficiais** (só admin edita); com `owner_id` são do usuário.
+- `server/src/db.ts` — conexão, schema (`users`, `teams`, `players`, conquistas e
+  `feedbacks`), **seed** a partir dos times hardcoded (clubes de `teams.ts` como
+  `kind='club'`; seleções de `worldcup.ts` como `kind='national'`) só se a tabela estiver
+  vazia, e funções de CRUD. Times com `owner_id IS NULL` são **oficiais** (só admin edita);
+  com `owner_id` são do usuário.
 - `server/src/auth.ts` — signup/login com **bcryptjs + JWT**. Papéis `user`/`admin`. O
   **primeiro** usuário registrado vira admin (e qualquer nome em `ADMIN_USERS`).
 - `server/src/api.ts` — rotas: `POST /api/auth/signup|login`, `GET /api/me`, e CRUD
-  `GET/POST/PUT/DELETE /api/teams[/:id]` com autorização (oficial→admin; do usuário→dono).
+  `GET/POST/PUT/DELETE /api/teams[/:id]` com autorização (oficial→admin; do usuário→dono),
+  conquistas/progresso e feedback.
   Registradas **antes** do fallback SPA (que exclui `/api` e `/socket.io`).
 - O draft **online 1v1** lê os clubes oficiais do banco (`rooms.ts` `setTeamPool`, recarregado
   por `refreshTeamCache` no startup e quando um time oficial muda).
+- Feedback de usuário fica salvo no banco com limite de **3 feedbacks por usuário** para
+  evitar flood. Usuário autenticado envia pela tela de feedback; admin visualiza no painel
+  `AdminFeedbacks`. A listagem/admin deve continuar protegida por papel `admin`.
 
 **Env vars (produção / Render):**
 
@@ -334,6 +358,8 @@ Real-time não dá pra validar só com "buildou". Exercite o fluxo.
 
 ```bash
 npx tsc --noEmit                                  # valida shared+server+client
+pnpm test:engine:all                              # property + balance test da engine
+pnpm test:achievements                            # combinações de modo PvP/seleções/conquistas
 node_modules/.bin/tsx server/src/index.ts &       # sobe o backend :3001
 node_modules/.bin/tsx server/src/solo-test.ts     # humano + IA, partida completa
 node_modules/.bin/tsx server/src/smoke-test.ts    # PvP, 2 clientes headless
@@ -349,9 +375,12 @@ tipos de evento e se `secondHalfReady` virou true.
 - Depois do draft o resultado só tem o 1º tempo (`secondHalfReady:false`); é preciso emitir
   `halftimeReady` (com a escalação) pra disparar o 2º tempo.
 
-**Verificação visual (navegador):** use as ferramentas `preview_*`. O backend (`:3001`)
-precisa estar rodando à parte; o preview só sobe o Vite (lê `.claude/launch.json` →
-`pnpm dev:client`). Para chegar ao ao vivo num teste automatizado: dirija o draft clicando
+**Verificação visual (navegador):** use as rotas de preview (`/#preview-*`) e os botões de
+"Previews rápidos" em ambiente dev. O backend (`:3001`) precisa estar rodando à parte; o
+preview só sobe o Vite (lê `.claude/launch.json` → `pnpm dev:client`). Os previews vivem em
+`client/src/devPreviews.ts`, `devPreviewFixtures.ts`, `devPreviewScreens.ts` e
+`devPreviewChrome.ts`; ao adicionar uma tela ou modal novo, crie fixture e rota de preview
+também. Para chegar ao ao vivo num teste automatizado: dirija o draft clicando
 `.pl-item.clickable` + `.you-board .slot.empty.open` por turno (em chunks, porque o cap de
 30s do eval não cobre os ~35s do draft). No ao vivo, `.spd[data-spd="2"]` acelera (solo);
 detecte o intervalo pelo `#half-panel` deixar de ser `hidden`; `#skip` pula pro resumo.
@@ -408,8 +437,17 @@ ataque). Copie uma existente e ajuste as coordenadas.
 ## 9. Regras de ouro ao editar
 
 - Tipo novo → `shared/types.ts`, importado dos dois lados.
+- Modo de jogo novo ou regra de modo → atualize `shared/gameMode.ts` e use os helpers no
+  client/server. Não espalhe comparações de string por `main.ts`, `rooms.ts` ou componentes.
 - Mexeu na simulação/engine → rode `solo-test.ts` **e** `smoke-test.ts` + confira o ao vivo
   no navegador, e reinicie o backend.
 - Mantenha os eventos coerentes: nada de citar quem saiu de campo (use `availSide`).
+- Tela/modal novo → adicione preview de dev, inclusive estados de tema claro/escuro quando
+  houver risco visual.
+- UI nova → prefira componente isolado em `client/src/components/*`. Cálculo de dados,
+  seleção de listas, importação, montagem de elenco e derivação de resumo devem ficar em
+  `client/src/lib/*`, com funções puras quando possível.
+- `main.ts` deve continuar encolhendo: ele pode orquestrar estado, eventos globais e troca de
+  tela, mas não deve receber novas ilhas grandes de marcação ou regra de negócio.
 - `npx tsc --noEmit` antes de considerar pronto.
 - Commit/push só quando pedido.

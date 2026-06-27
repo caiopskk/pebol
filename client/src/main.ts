@@ -39,18 +39,18 @@ import {
   wcOpponentTeam,
   WC_LADDER,
 } from "../../shared/data/worldcup.js";
+import { isHardcoreMode, isWorldCupMode } from "../../shared/gameMode.js";
 import {
   api,
   setToken,
   getToken,
-  setWriteRequestLock,
   type AccountUser,
   type AdminTeam,
   type AchievementProgress,
+  type FeedbackEntry,
   type LeaderboardEntry,
   type UserProgress,
 } from "./api.js";
-import { ACHIEVEMENT_COPY } from "../../shared/achievements.js";
 import { HARDCORE_UNLOCK_LEVEL } from "../../shared/progression.js";
 import {
   onRoomUpdate,
@@ -70,13 +70,14 @@ import { Home } from "./components/Home.js";
 import { Login } from "./components/Login.js";
 import { Achievements } from "./components/Achievements.js";
 import { AdminTeams } from "./components/AdminTeams.js";
+import { AdminFeedbacks } from "./components/AdminFeedbacks.js";
 import { Lobby } from "./components/Lobby.js";
 import { CampaignSetup } from "./components/CampaignSetup.js";
 import { Draft } from "./components/Draft.js";
 import { PreMatchClassic } from "./components/PreMatchClassic.js";
 import { TacticBannerList, type BannerSpec } from "./components/TacticBanner.js";
 import type { PitchSlot } from "./components/Pitch.js";
-import { Overlays, overlays } from "./components/Overlays.js";
+import { Overlays } from "./components/Overlays.js";
 import { liveStore, halftimeStore } from "./lib/liveStore.js";
 import type {
   HalftimeOptions,
@@ -84,17 +85,11 @@ import type {
 } from "./components/LiveStage.js";
 import type {
   CampaignStatusData,
-  BracketRoundData,
   TeamStrengthData,
-  CampaignStrengthData,
-  CampaignSquadRow,
 } from "./components/CupStatus.js";
 import { LiveMatchShell } from "./components/LiveMatchShell.js";
 import {
   ResultSummary,
-  type LeaderCardData,
-  type LogEventItem,
-  type StrengthRow,
 } from "./components/ResultSummary.js";
 import { ATTACK_FOCUS_OPTIONS } from "./components/SetupBoard.js";
 import { CampaignDraft, type CampaignDraftPlayer } from "./components/CampaignDraft.js";
@@ -103,16 +98,89 @@ import { CampaignMatchShell } from "./components/CampaignMatchShell.js";
 import {
   CampaignGameOver,
   CampaignVictory,
-  type CampaignJourneyLeader,
 } from "./components/CampaignEnd.js";
 import { TeamForm } from "./components/TeamForm.js";
 import { LegalPage } from "./components/LegalPage.js";
 import { UpdatesPage } from "./components/UpdatesPage.js";
+import { FeedbackPage } from "./components/FeedbackPage.js";
+import { initializeTheme, ThemeSwitch } from "./components/ThemeSwitch.js";
 import {
-  DEV_PREVIEWS,
   devPreviewFromHash,
   type DevPreviewKind,
 } from "./devPreviews.js";
+import {
+  CARD_ALERT_HIDE_MS,
+  DevPreviewChrome,
+  GOAL_ALERT_HIDE_MS,
+} from "./devPreviewChrome.js";
+import {
+  previewCampaignEndState,
+  previewCampaignPicks,
+  previewCampaignState,
+} from "./devPreviewFixtures.js";
+import {
+  renderCampaignMatchPreview,
+  renderPenaltyModalPreview,
+  renderSubstitutionModalPreview,
+} from "./devPreviewScreens.js";
+import type {
+  CampaignMode,
+  CampaignState,
+} from "./campaignTypes.js";
+import {
+  ALL_POS,
+  parseAltPositionsInput,
+  parseImportedTeams,
+  playerPosText,
+  teamFullName,
+} from "./lib/teamImport.js";
+import {
+  applyIntervalSubstitution as applyIntervalSubstitutionBase,
+  buildIntervalBench,
+  buildPitchSlots as buildPitchSlotsBase,
+  type BuildPitchOpts,
+  reassignPicksToFormation,
+  swapLineupSlots,
+} from "./lib/lineup.js";
+import { readSavedMatchSpeed, saveMatchSpeed } from "./lib/matchSpeed.js";
+import {
+  configureWriteLock,
+  queueAchievementNotice,
+  queueXpNotice,
+  showToast,
+  type XpNotice,
+} from "./lib/overlayController.js";
+import {
+  computeLeaders,
+  eventLogParts,
+  initials,
+  leaderCardData,
+  strengthRow,
+} from "./lib/resultSummaryData.js";
+import {
+  campaignAvgNumber,
+  campaignJourneyLeadersData,
+  campaignMatchAchievementIds,
+  campaignQualificationLabel,
+  campaignRank,
+  campaignSquadRowsData,
+  campaignStageLabel,
+  campaignStatusData,
+  campaignStrengthData,
+  bestThirdQualifies,
+  collectCampaignJourneyStats,
+  groupTableSorted,
+  knockoutBracketData,
+  recordGroupMatch,
+  setupCampaignGroup,
+  setupKnockoutPath,
+  simulateOtherGroupFixture,
+  teamAvg,
+} from "./lib/campaignData.js";
+import {
+  draftAchievementIds,
+  regularMatchAchievementAwards,
+} from "./lib/achievementRules.js";
 
 const app = document.getElementById("app")!;
 const overlaysRoot = createRoot(document.getElementById("overlays")!);
@@ -120,45 +188,9 @@ overlaysRoot.render(createElement(Overlays));
 let reactRoot: Root | null = null;
 let syncLiveUi: (() => void) | null = null;
 let cupDraftScrollTop = 0;
-const MATCH_SPEED_KEY = "pebol:match-speed";
-const THEME_KEY = "pebol:theme";
-type AppTheme = "dark" | "light";
-let currentTheme: AppTheme = readSavedTheme();
-let writeLockCount = 0;
 
-function readSavedTheme(): AppTheme {
-  const saved = localStorage.getItem(THEME_KEY);
-  if (saved === "dark" || saved === "light") return saved;
-  return window.matchMedia("(prefers-color-scheme: light)").matches
-    ? "light"
-    : "dark";
-}
-
-function applyTheme(theme: AppTheme) {
-  currentTheme = theme;
-  document.documentElement.dataset.theme = theme;
-  document.documentElement.dataset.resolvedTheme = theme;
-  localStorage.setItem(THEME_KEY, theme);
-}
-
-function toggleTheme() {
-  const next: AppTheme = currentTheme === "dark" ? "light" : "dark";
-  applyTheme(next);
-  render();
-}
-
-applyTheme(currentTheme);
-
-setWriteRequestLock({
-  begin: () => {
-    writeLockCount += 1;
-    overlays.setWriteLock(true);
-  },
-  end: () => {
-    writeLockCount = Math.max(0, writeLockCount - 1);
-    if (!writeLockCount) overlays.setWriteLock(false);
-  },
-});
+initializeTheme();
+configureWriteLock();
 
 function renderReact(node: ReactElement) {
   if (!reactRoot) reactRoot = createRoot(app);
@@ -167,7 +199,14 @@ function renderReact(node: ReactElement) {
     Fragment,
     null,
     createElement(ThemeSwitch),
-    preview ? createElement(DevPreviewChrome, { active: preview }) : null,
+    preview
+      ? createElement(DevPreviewChrome, {
+          active: preview,
+          onHome: goPreviewHome,
+          onAchievement: queueAchievementNotice,
+          onXp: queueXpNotice,
+        })
+      : null,
     node,
   );
   // MotionConfig is a context provider (no DOM wrapper), so the IDs/classes the
@@ -180,42 +219,14 @@ function renderReact(node: ReactElement) {
   );
 }
 
-function ThemeSwitch() {
-  const light = currentTheme === "light";
-  return createElement(
-    "button",
-    {
-      type: "button",
-      className: "theme-switch",
-      "aria-label": light ? "Ativar tema escuro" : "Ativar tema claro",
-      "aria-pressed": light,
-      title: light ? "Tema claro" : "Tema escuro",
-      onClick: toggleTheme,
-    },
-    createElement(
-      "span",
-      { className: "theme-switch-track", "aria-hidden": true },
-      createElement("span", { className: "theme-icon theme-icon-moon" }),
-      createElement("span", { className: "theme-icon theme-icon-sun" }),
-      createElement("span", { className: "theme-switch-thumb" }),
-    ),
-  );
-}
-
 function clearReactRoot() {
   if (!reactRoot) return;
   reactRoot.unmount();
   reactRoot = null;
 }
 
-function readSavedMatchSpeed(): number {
-  const saved = Number(localStorage.getItem(MATCH_SPEED_KEY));
-  return [1, 1.5, 2].includes(saved) ? saved : 1;
-}
-
 function setMatchSpeed(speed: number) {
-  L.matchSpeed = [1, 1.5, 2].includes(speed) ? speed : 1;
-  localStorage.setItem(MATCH_SPEED_KEY, String(L.matchSpeed));
+  L.matchSpeed = saveMatchSpeed(speed);
 }
 
 interface Local {
@@ -245,61 +256,20 @@ interface Local {
   accountScreen:
     | "login"
     | "admin"
+    | "admin-feedback"
     | "achievements"
     | "terms"
     | "privacy"
     | "updates"
+    | "feedback"
     | null;
   adminTeams: AdminTeam[] | null;
+  adminFeedback: FeedbackEntry[] | null;
   adminTeamSearch: string;
   adminPlayerSearch: string;
   editingTeam: AdminTeam | "new" | null;
   achievements: AchievementProgress[] | null;
   achievementAwardKeys: Set<string>;
-}
-
-type CampaignPhase =
-  | "setup"
-  | "draft"
-  | "preMatch"
-  | "match"
-  | "gameover"
-  | "victory";
-type CampaignMode = "normal" | "hardcore";
-interface CupGroupRow {
-  id: string;
-  name: string;
-  played: number;
-  wins: number;
-  draws: number;
-  losses: number;
-  gf: number;
-  ga: number;
-  points: number;
-}
-interface CampaignState {
-  phase: CampaignPhase;
-  mode: CampaignMode;
-  runId: string;
-  formationId: string;
-  mentality: Mentality;
-  attackFocus: AttackFocus;
-  round: number; // 0..7 — 3 group matches + 5 knockout rounds
-  picks: SquadPick[]; // your drafted XI
-  currentTeam: Team | null; // team drawn this draft round
-  usedTeamIds: string[];
-  selectedPlayer: string | null;
-  selectedPickSlotId: string | null; // when set, the user picked one of their fielded players to relocate
-  currentOpp: Team | null; // opponent for the current round
-  lastResult: GauntletResult | null;
-  rerollsRemaining: number;
-  campaignGoals: Record<string, number>;
-  campaignAssists: Record<string, number>;
-  groupTeams: Team[];
-  groupTable: CupGroupRow[];
-  groupQualified: boolean | null;
-  groupQualifiedLabel: string | null;
-  knockoutPath: Team[];
 }
 
 const L: Local = {
@@ -323,6 +293,7 @@ const L: Local = {
   leaderboard: null,
   accountScreen: null,
   adminTeams: null,
+  adminFeedback: null,
   adminTeamSearch: "",
   adminPlayerSearch: "",
   editingTeam: null,
@@ -338,23 +309,12 @@ onError((msg) => {
   showToast(msg);
 });
 
-let toastTimer: number | undefined;
-function showToast(msg: string) {
-  overlays.setToast(msg);
-  clearTimeout(toastTimer);
-  toastTimer = window.setTimeout(() => {
-    overlays.setToast(null);
-  }, 2600);
-}
-
 function me(): PlayerPublic | undefined {
   return L.state?.players.find((p) => p.id === L.youId);
 }
 function opponent(): PlayerPublic | undefined {
   return L.state?.players.find((p) => p.id !== L.youId);
 }
-
-type CampaignEndPreviewKind = "victory" | "gameover";
 
 function devPreviewKind(): DevPreviewKind | null {
   if (!import.meta.env.DEV) return null;
@@ -376,156 +336,6 @@ function goPreviewHome() {
   }
 }
 
-function DevPreviewChrome({ active }: { active: DevPreviewKind }) {
-  const current = DEV_PREVIEWS.find((preview) => preview.kind === active);
-  return createElement(
-    Fragment,
-    null,
-    createElement(
-      "div",
-      { className: "dev-preview-chrome" },
-      createElement(
-        "button",
-        {
-          type: "button",
-          className: "dev-preview-home",
-          onClick: goPreviewHome,
-        },
-        "Tela inicial",
-      ),
-      createElement(
-        "div",
-        { className: "dev-preview-current" },
-        createElement("span", null, "Preview"),
-        createElement("strong", null, current?.label ?? active),
-      ),
-      createElement(
-        "div",
-        { className: "dev-preview-links" },
-        DEV_PREVIEWS.map((preview) =>
-          createElement(
-            "button",
-            {
-              key: preview.kind,
-              type: "button",
-              className: preview.kind === active ? "active" : "",
-              onClick: () => {
-                location.hash = preview.hash;
-              },
-            },
-            preview.label,
-          ),
-        ),
-      ),
-    ),
-    createElement(PreviewNoticeControls),
-  );
-}
-
-let previewAlertTimer: number | undefined;
-const GOAL_ALERT_HIDE_MS = 1250;
-const CARD_ALERT_HIDE_MS = 1200;
-
-function triggerPreviewAlert(kind: "goal" | "yellow" | "red") {
-  clearTimeout(previewAlertTimer);
-  liveStore.hideGoal();
-  liveStore.hideCard();
-
-  const feedBase = { minute: 64, pos: "88-38" };
-  if (kind === "goal") {
-    liveStore.setBall({ left: 90, top: 48, transitionMs: 420, goal: true });
-    liveStore.showGoal("Messi");
-    liveStore.prependFeed({
-      ...feedBase,
-      type: "goal",
-      text: "Gol do Seu time! Messi bate colocado no canto.",
-    });
-    previewAlertTimer = window.setTimeout(() => liveStore.hideGoal(), GOAL_ALERT_HIDE_MS);
-    return;
-  }
-
-  if (kind === "yellow" || kind === "red") {
-    const cardKind = kind === "red" ? "red" : "yellow";
-    liveStore.showCard(
-      cardKind,
-      `${cardKind === "red" ? "Vermelho" : "Amarelo"}: Zidane`,
-    );
-    liveStore.prependFeed({
-      ...feedBase,
-      type: "card",
-      text: `${cardKind === "red" ? "Cartão vermelho" : "Cartão amarelo"} para Zidane por falta dura.`,
-      cardKind,
-    });
-    previewAlertTimer = window.setTimeout(() => liveStore.hideCard(), CARD_ALERT_HIDE_MS);
-    return;
-  }
-}
-
-function triggerPreviewNotice(kind: "achievement" | "xp" | "combo") {
-  if (kind === "achievement" || kind === "combo") {
-    queueAchievementNotice(kind === "combo" ? "world_champion" : "first_win");
-  }
-  if (kind === "xp" || kind === "combo") {
-    queueXpNotice({
-      amount: kind === "combo" ? 150 : 45,
-      reason: kind === "combo" ? "Título da Copa do Mundo" : "Preview de progresso",
-      level: kind === "combo" ? 12 : 4,
-      title: kind === "combo" ? "Capitão" : "Aspirante",
-    });
-  }
-}
-
-function PreviewNoticeControls() {
-  const buttons: Array<[string, Parameters<typeof triggerPreviewNotice>[0]]> = [
-    ["Conquista", "achievement"],
-    ["XP", "xp"],
-    ["Combo", "combo"],
-  ];
-  return createElement(
-    "div",
-    {
-      className: "preview-alert-controls",
-      "aria-label": "Disparar conquistas do preview",
-    },
-    createElement("span", null, "Conquistas"),
-    ...buttons.map(([label, kind]) =>
-      createElement(
-        "button",
-        {
-          key: kind,
-          type: "button",
-          onClick: () => triggerPreviewNotice(kind),
-        },
-        label,
-      ),
-    ),
-  );
-}
-
-function PreviewAlertControls() {
-  const buttons: Array<[string, Parameters<typeof triggerPreviewAlert>[0]]> = [
-    ["Gol", "goal"],
-    ["Amarelo", "yellow"],
-    ["Vermelho", "red"],
-  ];
-  return createElement(
-    "div",
-    { className: "preview-alert-controls", "aria-label": "Disparar alertas do preview" },
-    createElement("span", null, "Alertas"),
-    ...buttons.map(([label, kind]) =>
-      createElement(
-        "button",
-        {
-          key: kind,
-          type: "button",
-          onClick: () => triggerPreviewAlert(kind),
-        },
-        label,
-      ),
-    ),
-  );
-}
-
 // ---------------- Main render ----------------
 
 function render() {
@@ -539,9 +349,11 @@ function render() {
   if (L.accountScreen) {
     if (L.accountScreen === "login") renderLogin();
     else if (L.accountScreen === "admin") renderAdmin();
+    else if (L.accountScreen === "admin-feedback") renderAdminFeedback();
     else if (L.accountScreen === "terms" || L.accountScreen === "privacy")
       renderLegal(L.accountScreen);
     else if (L.accountScreen === "updates") renderUpdates();
+    else if (L.accountScreen === "feedback") renderFeedback();
     else renderAchievements();
     return;
   }
@@ -607,7 +419,7 @@ function renderHome() {
     const typedNameTrimmed = typedName.trim();
     const name = solo ? typedNameTrimmed || "Você" : typedNameTrimmed;
     if (!name) return showToast("Digite seu nome.");
-    if (mode === "hardcore" && !canUseHardcore())
+    if (isHardcoreMode(mode) && !canUseHardcore())
       return showToast(
         `Modo Hardcore desbloqueia no nível ${HARDCORE_UNLOCK_LEVEL}.`,
       );
@@ -642,6 +454,7 @@ function renderHome() {
       onLogout: logout,
       onWorldCup: startCampaign,
       onOpenUpdates: openUpdates,
+      onOpenFeedback: openFeedback,
       onOpenLegal: openLegal,
       onSoon: (mode) =>
         showToast(
@@ -652,108 +465,6 @@ function renderHome() {
 }
 
 // ---------------- Account + team admin (REST) ----------------
-
-const ALL_POS = [
-  "GK",
-  "RB",
-  "LB",
-  "CB",
-  "RWB",
-  "LWB",
-  "CDM",
-  "CM",
-  "CAM",
-  "RM",
-  "LM",
-  "RW",
-  "LW",
-  "CF",
-  "ST",
-];
-
-function playerPosText(p: Player): string {
-  return playerPositions(p).map(posLabel).join("/");
-}
-
-/** Team name with season appended, unless the name already contains it. */
-function teamFullName(team: { name: string; season?: string }): string {
-  if (!team.season || team.name.includes(team.season)) return team.name;
-  return `${team.name} ${team.season}`;
-}
-
-function parseAltPositionsInput(
-  value: string,
-  main: Player["pos"],
-): Player["pos"][] | undefined {
-  const alt = value
-    .split(/[,\s/]+/)
-    .map((pos) => pos.trim().toUpperCase())
-    .filter(Boolean)
-    .filter((pos): pos is Player["pos"] => ALL_POS.includes(pos))
-    .filter((pos, idx, arr) => pos !== main && arr.indexOf(pos) === idx);
-  return alt.length ? alt : undefined;
-}
-interface AchievementNotice {
-  id: string;
-  title: string;
-  description: string;
-  points: number;
-}
-interface XpNotice {
-  amount: number;
-  reason: string;
-  level: number;
-  title: string;
-}
-const achievementQueue: AchievementNotice[] = [];
-const xpQueue: XpNotice[] = [];
-let achievementNoticeTimer: number | undefined;
-let achievementNoticeActive = false;
-
-function queueAchievementNotice(id: string) {
-  const meta = ACHIEVEMENT_COPY[id] ?? {
-    title: "Conquista desbloqueada",
-    description: "Uma nova conquista foi adicionada ao seu perfil.",
-    points: 0,
-  };
-  achievementQueue.push({ id, ...meta });
-  showNextAchievementNotice();
-}
-
-function showNextAchievementNotice() {
-  if (achievementNoticeActive) return;
-  const notice = achievementQueue.shift();
-  if (!notice) return;
-  achievementNoticeActive = true;
-  overlays.setAchievement(notice);
-  clearTimeout(achievementNoticeTimer);
-  achievementNoticeTimer = window.setTimeout(() => {
-    overlays.setAchievement(null);
-    achievementNoticeActive = false;
-    showNextAchievementNotice();
-  }, 4200);
-}
-
-function queueXpNotice(notice: XpNotice) {
-  xpQueue.push(notice);
-  showNextXpNotice();
-}
-
-let xpNoticeActive = false;
-let xpNoticeTimer: number | undefined;
-function showNextXpNotice() {
-  if (xpNoticeActive) return;
-  const notice = xpQueue.shift();
-  if (!notice) return;
-  xpNoticeActive = true;
-  overlays.setXp(notice);
-  clearTimeout(xpNoticeTimer);
-  xpNoticeTimer = window.setTimeout(() => {
-    overlays.setXp(null);
-    xpNoticeActive = false;
-    showNextXpNotice();
-  }, 3200);
-}
 
 async function restoreSession() {
   if (!getToken()) return;
@@ -836,6 +547,10 @@ function openUpdates() {
   L.accountScreen = "updates";
   render();
 }
+function openFeedback() {
+  L.accountScreen = "feedback";
+  render();
+}
 function closeAccount() {
   L.accountScreen = null;
   L.editingTeam = null;
@@ -860,6 +575,7 @@ function logout() {
   L.accountProgress = null;
   L.accountScreen = null;
   L.adminTeams = null;
+  L.adminFeedback = null;
   render();
 }
 async function openAchievements() {
@@ -887,6 +603,12 @@ async function openAdmin() {
   render();
   await loadAdminTeams();
 }
+async function openAdminFeedback() {
+  L.accountScreen = "admin-feedback";
+  L.adminFeedback = null;
+  render();
+  await loadAdminFeedback();
+}
 async function loadAdminTeams() {
   try {
     const { teams } = await api.listTeams();
@@ -896,6 +618,16 @@ async function loadAdminTeams() {
     L.adminTeams = [];
   }
   if (L.accountScreen === "admin" && !L.editingTeam) render();
+}
+async function loadAdminFeedback() {
+  try {
+    const { feedback } = await api.listFeedback();
+    L.adminFeedback = feedback;
+  } catch (e) {
+    showToast((e as Error).message);
+    L.adminFeedback = [];
+  }
+  if (L.accountScreen === "admin-feedback") render();
 }
 
 async function awardAchievements(ids: string[], sourceKey: string) {
@@ -966,6 +698,24 @@ function renderLegal(kind: "terms" | "privacy") {
 function renderUpdates() {
   renderReact(createElement(UpdatesPage, { onBack: closeAccount }));
 }
+function renderFeedback() {
+  renderReact(
+    createElement(FeedbackPage, {
+      account: L.account,
+      onBack: closeAccount,
+      onLogin: openLogin,
+      onSubmit: async ({ category, message, contact }) => {
+        await api.sendFeedback({
+          category,
+          message,
+          contact,
+          page: location.pathname + location.hash,
+        });
+        showToast("Feedback enviado. Obrigado!");
+      },
+    }),
+  );
+}
 
 function canEditTeam(t: AdminTeam): boolean {
   if (!L.account) return false;
@@ -993,6 +743,7 @@ function renderAdmin() {
         L.adminTeamSearch = value;
       },
       onImportFile: (input) => void importTeamsFromFile(input),
+      onOpenFeedbacks: () => void openAdminFeedback(),
       onNewTeam: () => {
         L.adminPlayerSearch = "";
         L.editingTeam = "new";
@@ -1018,6 +769,17 @@ function renderAdmin() {
   );
 }
 
+function renderAdminFeedback() {
+  renderReact(
+    createElement(AdminFeedbacks, {
+      account: L.account,
+      feedback: L.adminFeedback,
+      onBack: () => void openAdmin(),
+      onHome: closeAccount,
+    }),
+  );
+}
+
 function blankTeam(): AdminTeam {
   return {
     id: "",
@@ -1034,85 +796,6 @@ function blankTeam(): AdminTeam {
     })),
     bench: [],
   };
-}
-
-type TeamImport = Partial<AdminTeam> & { official?: boolean };
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return !!v && typeof v === "object" && !Array.isArray(v);
-}
-
-function normalizeImportedPlayer(v: unknown, teamName: string): Player {
-  if (!isRecord(v)) throw new Error(`Jogador inválido em ${teamName}.`);
-  const name = String(v.name ?? "").trim();
-  const pos = String(v.pos ?? "").toUpperCase();
-  const rawAlt = Array.isArray(v.altPositions)
-    ? v.altPositions
-    : Array.isArray(v.positions)
-      ? v.positions.filter((p) => String(p).toUpperCase() !== pos)
-      : typeof v.altPositions === "string"
-        ? v.altPositions.split(/[,\s/]+/)
-        : [];
-  const rating = Math.round(Number(v.rating));
-  const attr = (key: "pac" | "sho" | "pas" | "dri" | "def" | "phy") => {
-    const raw = v[key] ?? v[key.toUpperCase()];
-    if (raw == null || raw === "") return undefined;
-    const value = Math.round(Number(raw));
-    if (!Number.isFinite(value) || value < 1 || value > 99)
-      throw new Error(`${key.toUpperCase()} inválido em ${teamName}: ${name || "jogador sem nome"}.`);
-    return value;
-  };
-  if (!name) throw new Error(`Há jogador sem nome em ${teamName}.`);
-  if (!ALL_POS.includes(pos))
-    throw new Error(`Posição inválida em ${teamName}: ${pos}.`);
-  if (!Number.isFinite(rating) || rating < 40 || rating > 99)
-    throw new Error(`Rating inválido em ${teamName}: ${name}.`);
-  const altPositions = rawAlt
-    .map((p) => String(p).trim().toUpperCase())
-    .filter((p): p is Player["pos"] => ALL_POS.includes(p))
-    .filter((p, idx, arr) => p !== pos && arr.indexOf(p) === idx);
-  return {
-    name,
-    pos: pos as Player["pos"],
-    altPositions: altPositions.length ? altPositions : undefined,
-    rating,
-    pac: attr("pac"),
-    sho: attr("sho"),
-    pas: attr("pas"),
-    dri: attr("dri"),
-    def: attr("def"),
-    phy: attr("phy"),
-  };
-}
-
-function normalizeImportedTeam(v: unknown, isAdmin: boolean): TeamImport {
-  if (!isRecord(v))
-    throw new Error("Cada item importado precisa ser um objeto de time.");
-  const name = String(v.name ?? "").trim();
-  if (!name) throw new Error("Todo time importado precisa de name.");
-  const playersRaw = Array.isArray(v.players) ? v.players : [];
-  if (playersRaw.length !== 11)
-    throw new Error(`${name} precisa ter exatamente 11 titulares em players.`);
-  const benchRaw = Array.isArray(v.bench) ? v.bench : [];
-  return {
-    name,
-    season: String(v.season ?? "").trim(),
-    league: String(v.league ?? "").trim(),
-    alias: String(v.alias ?? "").trim(),
-    kind: v.kind === "national" ? "national" : "club",
-    official: isAdmin ? v.official !== false : false,
-    players: playersRaw.map((p) => normalizeImportedPlayer(p, name)),
-    bench: benchRaw.map((p) => normalizeImportedPlayer(p, name)),
-  };
-}
-
-function parseImportedTeams(raw: unknown, isAdmin: boolean): TeamImport[] {
-  const source = Array.isArray(raw)
-    ? raw
-    : isRecord(raw) && Array.isArray(raw.teams)
-      ? raw.teams
-      : [raw];
-  return source.map((item) => normalizeImportedTeam(item, isAdmin));
 }
 
 async function importTeamsFromFile(input: HTMLInputElement) {
@@ -1173,7 +856,7 @@ function renderTeamForm() {
       initialPlayers: t.players,
       initialBench: t.bench ?? [],
       initialPlayerSearch: L.adminPlayerSearch,
-      positions: ALL_POS as Player["pos"][],
+      positions: [...ALL_POS],
       onCancel: () => {
         L.editingTeam = null;
         render();
@@ -1419,304 +1102,14 @@ function campaignPlace(slotId: string, player: Player) {
   render();
 }
 
-function campaignAvg(): string {
-  const c = L.campaign!;
-  if (!c.picks.length) return "";
-  const a = c.picks.reduce((s, p) => s + p.effectiveRating, 0) / c.picks.length;
-  return `OVR ${Math.round(a)}`;
-}
-
-function campaignAvgNumber(): number {
-  const c = L.campaign!;
-  if (!c.picks.length) return 0;
-  return Math.round(
-    c.picks.reduce((s, p) => s + p.effectiveRating, 0) / c.picks.length,
-  );
-}
-
 function awardDraftAchievements(
   picks: SquadPick[],
   formationId: string,
   sourceKey: string,
+  mode?: GameMode,
 ) {
-  if (picks.length < 11) return;
-  const strength = computeStrength(picks, formationId);
-  const ids: string[] = [];
-  if (strength.overall >= 85) ids.push("strong_draft");
-  if (strength.overall >= 90) ids.push("elite_draft");
-  if (strength.attack >= 90) ids.push("attack_90");
-  if (strength.midfield >= 90) ids.push("midfield_90");
-  if (strength.defense >= 90) ids.push("defense_90");
-  if (strength.attack >= 85 && strength.midfield >= 85 && strength.defense >= 85)
-    ids.push("balanced_squad");
+  const ids = draftAchievementIds(picks, formationId, mode);
   if (ids.length) void awardAchievements(ids, sourceKey);
-}
-
-function campaignStrengthData(): CampaignStrengthData {
-  const c = L.campaign!;
-  if (c.mode === "hardcore") return { state: "hidden" };
-  if (!c.picks.length) return { state: "empty" };
-  const s = computeStrength(c.picks, c.formationId);
-  return {
-    state: "ok",
-    overall: s.overall,
-    attack: s.attack,
-    midfield: s.midfield,
-    defense: s.defense,
-  };
-}
-
-function campaignSquadRowsData(): CampaignSquadRow[] {
-  const c = L.campaign!;
-  const hideRating = c.mode === "hardcore";
-  const f = getFormation(c.formationId)!;
-  const bySlot = new Map(c.picks.map((p) => [p.slotId, p]));
-  return f.slots.map((slot) => {
-    const pick = bySlot.get(slot.id);
-    return {
-      slotId: slot.id,
-      pos: posLabel(slot.pos),
-      name: pick?.player.name ?? null,
-      rating: pick ? pick.effectiveRating : null,
-      hideRating,
-    };
-  });
-}
-
-function addCampaignJourneyStats(r: GauntletResult) {
-  const c = L.campaign!;
-  for (const ev of r.timeline) {
-    if (ev.type !== "goal" || ev.side !== "home") continue;
-    if (ev.player) {
-      c.campaignGoals[ev.player] = (c.campaignGoals[ev.player] ?? 0) + 1;
-    }
-    if (ev.assist) {
-      c.campaignAssists[ev.assist] = (c.campaignAssists[ev.assist] ?? 0) + 1;
-    }
-  }
-}
-
-function campaignTopStat(source: Record<string, number>) {
-  return (
-    Object.entries(source).sort(
-      (a, b) => b[1] - a[1] || a[0].localeCompare(b[0]),
-    )[0] ?? null
-  );
-}
-
-function campaignJourneyLeadersData(): CampaignJourneyLeader[] {
-  const c = L.campaign!;
-  const scorer = campaignTopStat(c.campaignGoals);
-  const assist = campaignTopStat(c.campaignAssists);
-  return [
-    {
-      label: "Artilheiro da campanha",
-      name: scorer ? scorer[0] : null,
-      val: scorer
-        ? `${scorer[1]} gol${scorer[1] > 1 ? "s" : ""}`
-        : "Sem destaque",
-    },
-    {
-      label: "Garçom da campanha",
-      name: assist ? assist[0] : null,
-      val: assist
-        ? `${assist[1]} assistência${assist[1] > 1 ? "s" : ""}`
-        : "Sem destaque",
-    },
-  ];
-}
-
-function knockoutBracketData(): BracketRoundData[] {
-  const c = L.campaign!;
-  const rounds = ["16-avos", "Oitavas", "Quartas", "Semi", "Final"];
-  const currentIdx =
-    c.phase === "victory" ? rounds.length : Math.max(0, c.round - 3);
-  return rounds.map((label, idx) => {
-    const opp = c.knockoutPath[idx];
-    const state: BracketRoundData["state"] =
-      idx < currentIdx ? "done" : idx === currentIdx ? "next" : "";
-    const oppLabel =
-      idx === currentIdx && opp
-        ? `${opp.name}${opp.season ? ` ${opp.season}` : ""}`
-        : idx < currentIdx
-          ? "fase concluída"
-          : "adversário oculto";
-    return { label, state, oppLabel, showVs: idx === currentIdx };
-  });
-}
-
-function groupRow(team: Pick<Team, "id" | "name" | "season">): CupGroupRow {
-  return {
-    id: team.id,
-    name: teamFullName(team),
-    played: 0,
-    wins: 0,
-    draws: 0,
-    losses: 0,
-    gf: 0,
-    ga: 0,
-    points: 0,
-  };
-}
-
-function groupGoalDiff(row: CupGroupRow): number {
-  return row.gf - row.ga;
-}
-
-function groupTableSorted(rows = L.campaign!.groupTable): CupGroupRow[] {
-  return [...rows].sort(
-    (a, b) =>
-      b.points - a.points ||
-      groupGoalDiff(b) - groupGoalDiff(a) ||
-      b.gf - a.gf ||
-      a.name.localeCompare(b.name),
-  );
-}
-
-function updateGroupRow(id: string, gf: number, ga: number) {
-  const row = L.campaign!.groupTable.find((r) => r.id === id);
-  if (!row) return;
-  row.played++;
-  row.gf += gf;
-  row.ga += ga;
-  if (gf > ga) {
-    row.wins++;
-    row.points += 3;
-  } else if (gf === ga) {
-    row.draws++;
-    row.points += 1;
-  } else {
-    row.losses++;
-  }
-}
-
-function recordGroupMatch(
-  aId: string,
-  bId: string,
-  aGoals: number,
-  bGoals: number,
-) {
-  updateGroupRow(aId, aGoals, bGoals);
-  updateGroupRow(bId, bGoals, aGoals);
-}
-
-function teamAvg(team: Team): number {
-  return Math.round(
-    team.players.reduce((sum, p) => sum + p.rating, 0) /
-      Math.max(1, team.players.length),
-  );
-}
-
-function randomGroupScore(a: Team, b: Team): [number, number] {
-  const baseA =
-    0.85 + Math.max(-0.55, Math.min(0.75, (teamAvg(a) - teamAvg(b)) / 18));
-  const baseB =
-    0.85 + Math.max(-0.55, Math.min(0.75, (teamAvg(b) - teamAvg(a)) / 18));
-  const goals = (base: number) => {
-    const roll = Math.random() + Math.random() + Math.random();
-    return Math.max(0, Math.min(5, Math.floor(roll * base)));
-  };
-  return [goals(baseA), goals(baseB)];
-}
-
-function setupCampaignGroup() {
-  const c = L.campaign!;
-  if (c.groupTeams.length) return;
-  c.groupTeams = [0, 1, 2].map((i) => wcOpponentTeam(i, Math.random));
-  c.groupTable = [
-    groupRow({ id: "you", name: "Seu time", season: "" }),
-    ...c.groupTeams.map(groupRow),
-  ];
-}
-
-function simulateOtherGroupFixture(matchday: number) {
-  const c = L.campaign!;
-  const [a, b, d] = c.groupTeams;
-  const fixtures: Array<[Team, Team]> = [
-    [b, d],
-    [a, d],
-    [a, b],
-  ];
-  const fixture = fixtures[matchday];
-  if (!fixture) return;
-  const [ga, gb] = randomGroupScore(fixture[0], fixture[1]);
-  recordGroupMatch(fixture[0].id, fixture[1].id, ga, gb);
-}
-
-function campaignRank(): number {
-  return groupTableSorted().findIndex((row) => row.id === "you") + 1;
-}
-
-function bestThirdQualifies(row: CupGroupRow): boolean {
-  return row.points >= 4 || (row.points === 3 && groupGoalDiff(row) >= 0);
-}
-
-function campaignQualificationLabel(): string {
-  const sorted = groupTableSorted();
-  const youRow = sorted.find((row) => row.id === "you")!;
-  const rank = sorted.findIndex((row) => row.id === "you") + 1;
-  if (rank <= 2) return `${rank}º colocado do grupo`;
-  if (rank === 3 && bestThirdQualifies(youRow))
-    return "3º colocado entre os 8 melhores terceiros";
-  return `${rank}º colocado do grupo`;
-}
-
-function setupKnockoutPath() {
-  const c = L.campaign!;
-  if (c.knockoutPath.length) return;
-  c.knockoutPath = [3, 4, 5, 6, 7].map((round) =>
-    wcOpponentTeam(round, Math.random),
-  );
-}
-
-function campaignStageLabel(round = L.campaign!.round): string {
-  return WC_LADDER[round]?.label ?? "Copa do Mundo";
-}
-
-function campaignStatusData(): CampaignStatusData {
-  const c = L.campaign!;
-  if (!c.groupTable.length) return { kind: "empty" };
-  const inGroup = c.round < 3 || c.groupQualified === false;
-  if (inGroup) {
-    const rank = campaignRank();
-    const status =
-      c.groupQualified === null
-        ? `${rank}º no grupo neste momento`
-        : c.groupQualified
-          ? `Classificado: ${c.groupQualifiedLabel}`
-          : `Eliminado: ${c.groupQualifiedLabel}`;
-    return {
-      kind: "group",
-      table: {
-        status,
-        rows: groupTableSorted().map((row) => ({
-          id: row.id,
-          name: row.name,
-          played: row.played,
-          points: row.points,
-          goalDiff: groupGoalDiff(row),
-          gf: row.gf,
-        })),
-      },
-    };
-  }
-  if (!c.knockoutPath.length) return { kind: "empty" };
-  const rounds = ["16-avos", "Oitavas", "Quartas", "Semi", "Final"];
-  const currentIdx =
-    c.phase === "victory" ? rounds.length : Math.max(0, c.round - 3);
-  const bracket: BracketRoundData[] = rounds.map((label, idx) => {
-    const opp = c.knockoutPath[idx];
-    const state: BracketRoundData["state"] =
-      idx < currentIdx ? "done" : idx === currentIdx ? "next" : "";
-    const oppLabel =
-      idx === currentIdx && opp
-        ? `${opp.name}${opp.season ? ` ${opp.season}` : ""}`
-        : idx < currentIdx
-          ? "fase concluída"
-          : "adversário oculto";
-    return { label, state, oppLabel, showVs: idx === currentIdx };
-  });
-  return { kind: "knockout", bracket };
 }
 
 function renderCampaignDraft() {
@@ -1766,8 +1159,8 @@ function renderCampaignDraft() {
       : hideRatings
         ? "Escolha jogadores que encaixem no setor aberto. No Hardcore, os ratings ficam ocultos até o fim da campanha."
         : "Escolha jogadores que encaixem no setor aberto. Posição exata mantém o over cheio; adaptações próximas perdem um pouco.";
-  const strength = campaignStrengthData();
-  const squadRows = campaignSquadRowsData();
+  const strength = campaignStrengthData(c);
+  const squadRows = campaignSquadRowsData(c);
 
   const selectedPick = c.selectedPickSlotId
     ? c.picks.find((p) => p.slotId === c.selectedPickSlotId)
@@ -1858,10 +1251,10 @@ function campaignRelocate(fromSlotId: string, toSlotId: string) {
 function campaignBeginRound() {
   const c = L.campaign!;
   if (c.round < 3) {
-    setupCampaignGroup();
+    setupCampaignGroup(c);
     c.currentOpp = c.groupTeams[c.round];
   } else {
-    setupKnockoutPath();
+    setupKnockoutPath(c);
     c.currentOpp = c.knockoutPath[c.round - 3];
   }
   c.phase = "preMatch";
@@ -1898,10 +1291,10 @@ function renderCampaignPreMatch() {
     createElement(CampaignPreMatch, {
       ladderLabel: ladder.label,
       progressRound: c.round,
-      status: campaignStatusData(),
+      status: campaignStatusData(c),
       banners,
       youFormation: c.formationId,
-      youOvrText: hideRatings ? "OVR ??" : `OVR ${campaignAvgNumber()}`,
+      youOvrText: hideRatings ? "OVR ??" : `OVR ${campaignAvgNumber(c.picks)}`,
       youMentalityLabel: mentalityLabel(c.mentality),
       youFocusLabel: attackFocusLabel(c.attackFocus),
       oppName: teamFullName(opp),
@@ -1930,39 +1323,6 @@ function renderCampaignPreMatch() {
   );
 }
 
-function campaignMatchAchievementIds(r: GauntletResult): string[] {
-  const ids: string[] = [];
-  const playerGoals = new Map<string, number>();
-  const playerAssists = new Map<string, number>();
-  let youHalfGoals = 0;
-  let oppHalfGoals = 0;
-  let youRedCard = false;
-  for (const ev of r.timeline) {
-    if (ev.type === "card" && ev.card === "red" && ev.side === "home")
-      youRedCard = true;
-    if (ev.type !== "goal") continue;
-    if (ev.minute <= 45) {
-      if (ev.side === "home") youHalfGoals++;
-      else if (ev.side === "away") oppHalfGoals++;
-    }
-    if (ev.side !== "home") continue;
-    if (ev.player)
-      playerGoals.set(ev.player, (playerGoals.get(ev.player) ?? 0) + 1);
-    if (ev.assist)
-      playerAssists.set(ev.assist, (playerAssists.get(ev.assist) ?? 0) + 1);
-  }
-  const totalAssists = [...playerAssists.values()].reduce((sum, n) => sum + n, 0);
-  if (r.youGoals > 0) ids.push("first_goal");
-  if (r.outcome === "win") ids.push("first_win");
-  if (r.outcome === "win" && r.oppGoals === 0) ids.push("clean_sheet");
-  if ([...playerGoals.values()].some((n) => n >= 3)) ids.push("hat_trick");
-  if (totalAssists >= 3) ids.push("assist_master");
-  if (r.outcome === "win" && r.youGoals - r.oppGoals >= 3) ids.push("big_win");
-  if (r.outcome === "win" && youHalfGoals < oppHalfGoals) ids.push("comeback_win");
-  if (r.outcome === "win" && youRedCard) ids.push("red_card_win");
-  return ids;
-}
-
 function campaignAdvance() {
   const c = L.campaign!;
   L.playing = false;
@@ -1979,20 +1339,20 @@ function campaignAdvance() {
     matchIds.push("cup_hardcore_first_win");
   if (matchIds.length)
     void awardAchievements(matchIds, `cup:match:${c.runId}:${c.round}`);
-  addCampaignJourneyStats(r);
+  collectCampaignJourneyStats(r, c.campaignGoals, c.campaignAssists);
   if (c.round < 3) {
-    recordGroupMatch("you", c.currentOpp!.id, r.youGoals, r.oppGoals);
-    simulateOtherGroupFixture(c.round);
+    recordGroupMatch(c.groupTable, "you", c.currentOpp!.id, r.youGoals, r.oppGoals);
+    simulateOtherGroupFixture(c, c.round);
     if (c.round < 2) {
       c.round++;
       campaignBeginRound();
     } else {
-      const sorted = groupTableSorted();
+      const sorted = groupTableSorted(c.groupTable);
       const rank = sorted.findIndex((row) => row.id === "you") + 1;
       const youRow = sorted.find((row) => row.id === "you")!;
       c.groupQualified =
         rank <= 2 || (rank === 3 && bestThirdQualifies(youRow));
-      c.groupQualifiedLabel = campaignQualificationLabel();
+      c.groupQualifiedLabel = campaignQualificationLabel(c);
       if (c.groupQualified) {
         const ids = ["group_escape"];
         if (youRow.wins === 3) ids.push("perfect_group");
@@ -2007,7 +1367,7 @@ function campaignAdvance() {
           `cup:group:${r.youGoals}-${r.oppGoals}:${Date.now()}`,
         );
         c.round = 3;
-        setupKnockoutPath();
+        setupKnockoutPath(c);
         campaignBeginRound();
       } else {
         c.phase = "gameover";
@@ -2255,8 +1615,8 @@ function renderCampaignGameOver() {
     ? `Pênaltis ${r.penaltyScore[r.youId]} x ${r.penaltyScore[r.oppId]}`
     : null;
   const status: CampaignStatusData = fellInGroup
-    ? campaignStatusData()
-    : { kind: "knockout", bracket: knockoutBracketData() };
+    ? campaignStatusData(c)
+    : { kind: "knockout", bracket: knockoutBracketData(c) };
   renderReact(
     createElement(CampaignGameOver, {
       title,
@@ -2265,8 +1625,8 @@ function renderCampaignGameOver() {
       oppGoals: r.oppGoals,
       oppName: r.oppName,
       penaltyLabel,
-      journeyLeaders: campaignJourneyLeadersData(),
-      squadRows: campaignSquadRowsData(),
+      journeyLeaders: campaignJourneyLeadersData(c),
+      squadRows: campaignSquadRowsData(c),
       status,
       progressRound: completed,
       onRetry: () => startCampaign(),
@@ -2280,534 +1640,12 @@ function renderCampaignVictory() {
   renderReact(
     createElement(CampaignVictory, {
       groupLabel: c.groupQualifiedLabel ?? "líder do grupo",
-      journeyLeaders: campaignJourneyLeadersData(),
-      squadRows: campaignSquadRowsData(),
-      bracket: knockoutBracketData(),
+      journeyLeaders: campaignJourneyLeadersData(c),
+      squadRows: campaignSquadRowsData(c),
+      bracket: knockoutBracketData(c),
       progressRound: 8,
       onRetry: () => startCampaign(),
       onHome: goHome,
-    }),
-  );
-}
-
-function previewSquadRows(): CampaignSquadRow[] {
-  return [
-    ["GOL", "Buffon", 90],
-    ["LD", "Cafu", 89],
-    ["ZAG", "Beckenbauer", 91],
-    ["ZAG", "Cannavaro", 88],
-    ["LE", "Roberto Carlos", 90],
-    ["MC", "Xavi", 91],
-    ["MC", "Zidane", 92],
-    ["MEI", "Maradona", 93],
-    ["PD", "Messi", 94],
-    ["CA", "Ronaldo", 93],
-    ["PE", "Ronaldinho", 91],
-  ].map(([pos, name, rating], idx) => ({
-    slotId: `preview-${idx}`,
-    pos: String(pos),
-    name: String(name),
-    rating: Number(rating),
-    hideRating: false,
-  }));
-}
-
-function previewJourneyLeaders(): CampaignJourneyLeader[] {
-  return [
-    { label: "Artilheiro", name: "Ronaldo", val: "7 gols" },
-    { label: "Assistência", name: "Messi", val: "5 assistências" },
-    { label: "Craque da campanha", name: "Zidane", val: "OVR 92" },
-  ];
-}
-
-function previewBracket(): BracketRoundData[] {
-  return [
-    { label: "16-avos", state: "done", oppLabel: "México 1986", showVs: true },
-    { label: "Oitavas", state: "done", oppLabel: "Holanda 1974", showVs: true },
-    { label: "Quartas", state: "done", oppLabel: "França 1998", showVs: true },
-    { label: "Semifinal", state: "done", oppLabel: "Argentina 1986", showVs: true },
-    { label: "Final", state: "done", oppLabel: "Brasil 1970", showVs: true },
-  ];
-}
-
-function previewRng(seed = 0) {
-  const values = [0.12, 0.44, 0.73, 0.27, 0.91, 0.58, 0.36, 0.82];
-  let i = seed;
-  return () => values[i++ % values.length];
-}
-
-function previewCampaignPicks(count = 11): SquadPick[] {
-  const formation = getFormation("4-3-3")!;
-  const used = new Set<string>();
-  const pool = WC_DRAFT_TEAMS.flatMap((team) =>
-    team.players.map((player) => ({ team, player })),
-  ).sort((a, b) => b.player.rating - a.player.rating);
-
-  return formation.slots.slice(0, count).map((slot) => {
-    const found =
-      pool.find(
-        ({ team, player }) =>
-          !used.has(`${team.id}:${player.name}`) &&
-          playerPositions(player).some((pos) => groupOf(pos) === groupOf(slot.pos)),
-      ) ??
-      pool.find(({ team, player }) => !used.has(`${team.id}:${player.name}`)) ??
-      pool[0];
-    used.add(`${found.team.id}:${found.player.name}`);
-    return {
-      slotId: slot.id,
-      player: found.player,
-      fromTeamId: found.team.id,
-      effectiveRating: effectiveRating(found.player, slot.pos),
-    };
-  });
-}
-
-function previewDraftTeam(picks: SquadPick[]): Team {
-  const formation = getFormation("4-3-3")!;
-  const filled = new Set(picks.map((pick) => pick.slotId));
-  const openGroups = new Set(
-    formation.slots
-      .filter((slot) => !filled.has(slot.id))
-      .map((slot) => groupOf(slot.pos)),
-  );
-  return (
-    WC_DRAFT_TEAMS.find((team) =>
-      team.players.some((player) =>
-        playerPositions(player).some((pos) => openGroups.has(groupOf(pos))),
-      ),
-    ) ?? WC_DRAFT_TEAMS[0]
-  );
-}
-
-function previewGroupRows(groupTeams: Team[]): CupGroupRow[] {
-  return [
-    {
-      id: "you",
-      name: "Seu time",
-      played: 2,
-      wins: 1,
-      draws: 1,
-      losses: 0,
-      gf: 4,
-      ga: 2,
-      points: 4,
-    },
-    {
-      ...groupRow(groupTeams[0]),
-      played: 2,
-      wins: 1,
-      draws: 0,
-      losses: 1,
-      gf: 3,
-      ga: 3,
-      points: 3,
-    },
-    {
-      ...groupRow(groupTeams[1]),
-      played: 2,
-      wins: 0,
-      draws: 2,
-      losses: 0,
-      gf: 2,
-      ga: 2,
-      points: 2,
-    },
-    {
-      ...groupRow(groupTeams[2]),
-      played: 2,
-      wins: 0,
-      draws: 1,
-      losses: 1,
-      gf: 1,
-      ga: 3,
-      points: 1,
-    },
-  ];
-}
-
-function previewCompletedGroupRows(groupTeams: Team[]): CupGroupRow[] {
-  return [
-    {
-      id: "you",
-      name: "Seu time",
-      played: 3,
-      wins: 2,
-      draws: 1,
-      losses: 0,
-      gf: 7,
-      ga: 3,
-      points: 7,
-    },
-    {
-      ...groupRow(groupTeams[0]),
-      played: 3,
-      wins: 2,
-      draws: 0,
-      losses: 1,
-      gf: 5,
-      ga: 4,
-      points: 6,
-    },
-    {
-      ...groupRow(groupTeams[1]),
-      played: 3,
-      wins: 1,
-      draws: 1,
-      losses: 1,
-      gf: 4,
-      ga: 4,
-      points: 4,
-    },
-    {
-      ...groupRow(groupTeams[2]),
-      played: 3,
-      wins: 0,
-      draws: 0,
-      losses: 3,
-      gf: 2,
-      ga: 7,
-      points: 0,
-    },
-  ];
-}
-
-function previewCampaignState(kind: Extract<DevPreviewKind, "cup-setup" | "cup-draft" | "cup-prematch">): CampaignState {
-  const picks = kind === "cup-draft" ? previewCampaignPicks(7) : previewCampaignPicks();
-  const groupTeams = [0, 1, 2].map((round) => wcOpponentTeam(round, previewRng(round)));
-  const knockoutPath = [3, 4, 5, 6, 7].map((round) =>
-    wcOpponentTeam(round, previewRng(round)),
-  );
-  const groupTable = previewGroupRows(groupTeams);
-
-  return {
-    phase:
-      kind === "cup-setup"
-        ? "setup"
-        : kind === "cup-draft"
-          ? "draft"
-          : "preMatch",
-    mode: "normal",
-    runId: "cup:preview",
-    formationId: "4-3-3",
-    mentality: "pressao",
-    attackFocus: "meio",
-    round: kind === "cup-prematch" ? 2 : 0,
-    picks: kind === "cup-setup" ? [] : picks,
-    currentTeam: kind === "cup-draft" ? previewDraftTeam(picks) : null,
-    usedTeamIds: picks.map((pick) => pick.fromTeamId),
-    selectedPlayer: null,
-    selectedPickSlotId: null,
-    currentOpp: kind === "cup-prematch" ? groupTeams[2] : null,
-    lastResult: null,
-    rerollsRemaining: 4,
-    campaignGoals: { Ronaldo: 3, Messi: 2, Zidane: 1 },
-    campaignAssists: { Messi: 3, Xavi: 2 },
-    groupTeams,
-    groupTable,
-    groupQualified: null,
-    groupQualifiedLabel: null,
-    knockoutPath,
-  };
-}
-
-function previewCampaignEndState(kind: CampaignEndPreviewKind): CampaignState {
-  const picks = previewCampaignPicks();
-  const groupTeams = [0, 1, 2].map((round) => wcOpponentTeam(round, previewRng(round)));
-  const knockoutPath = [3, 4, 5, 6, 7].map((round) =>
-    wcOpponentTeam(round, previewRng(round)),
-  );
-  const isVictory = kind === "victory";
-  const lastOpp = knockoutPath[3] ?? groupTeams[2];
-
-  return {
-    phase: isVictory ? "victory" : "gameover",
-    mode: "normal",
-    runId: `cup:preview:${kind}`,
-    formationId: "4-3-3",
-    mentality: "pressao",
-    attackFocus: "meio",
-    round: isVictory ? 8 : 6,
-    picks,
-    currentTeam: null,
-    usedTeamIds: picks.map((pick) => pick.fromTeamId),
-    selectedPlayer: null,
-    selectedPickSlotId: null,
-    currentOpp: null,
-    lastResult: isVictory
-      ? null
-      : {
-          youId: "you",
-          oppId: lastOpp.id,
-          oppName: teamFullName(lastOpp),
-          timeline: [],
-          youGoals: 2,
-          oppGoals: 3,
-          outcome: "loss",
-          shootout: null,
-          penaltyScore: null,
-          winnerId: lastOpp.id,
-        },
-    rerollsRemaining: 0,
-    campaignGoals: { Ronaldo: 7, Messi: 3, Zidane: 1 },
-    campaignAssists: { Messi: 5, Xavi: 2 },
-    groupTeams,
-    groupTable: previewCompletedGroupRows(groupTeams),
-    groupQualified: true,
-    groupQualifiedLabel: "líder do grupo",
-    knockoutPath,
-  };
-}
-
-function previewHalftimeOptions(): HalftimeOptions {
-  return {
-    formations: FORMATIONS.map((f) => ({ id: f.id, name: f.name })),
-    mentalities: MENTALITIES.map((m) => ({ id: m.id, name: m.name })),
-    focuses: ATTACK_FOCUS_OPTIONS.map((f) => ({ id: f.id, name: f.name })),
-  };
-}
-
-function noopHalftimeCallbacks(): HalftimeCallbacks {
-  return {
-    onFormationChange: () => {},
-    onMentalityChange: () => {},
-    onFocusChange: () => {},
-    onSlotClick: () => {},
-    onReserveClick: () => {},
-    onContinue: () => {},
-    onBackgroundClick: () => {},
-  };
-}
-
-function renderPenaltyModalPreview() {
-  L.campaign = null;
-  liveStore.reset();
-  halftimeStore.reset();
-  liveStore.setScore(2, 2);
-  liveStore.setMinute(90);
-  liveStore.setHalfLabel("Pênaltis");
-  liveStore.setBall({ left: 86, top: 50, transitionMs: 700 });
-  liveStore.addGoal("you", 18, "Ronaldo", "Zidane");
-  liveStore.addGoal("opp", 42, "Maradona", null);
-  liveStore.addGoal("you", 71, "Messi", "Xavi");
-  liveStore.addGoal("opp", 88, "Kempes", "Burruchaga");
-  liveStore.prependFeed({
-    minute: 90,
-    type: "penalty",
-    text: "Disputa empatada. Messi caminha para a cobrança decisiva.",
-    pos: "88-34",
-  });
-  liveStore.prependFeed({
-    minute: 90,
-    type: "fulltime",
-    text: "Fim do tempo normal: 2 x 2. A semifinal vai para os pênaltis.",
-    pos: null,
-  });
-  liveStore.openShootout();
-  const kicks: Array<["you" | "opp", string, boolean]> = [
-    ["you", "Ronaldo", true],
-    ["opp", "Maradona", true],
-    ["you", "Ronaldinho", false],
-    ["opp", "Batistuta", false],
-    ["you", "Zidane", true],
-    ["opp", "Kempes", true],
-    ["you", "Xavi", true],
-    ["opp", "Burruchaga", true],
-    ["you", "Cafu", true],
-    ["opp", "Passarella", true],
-  ];
-  for (const [side, taker, scored] of kicks) {
-    const id = liveStore.appendKick(side, taker);
-    liveStore.resolveKick(side, id, scored);
-  }
-  liveStore.setSuddenDeath();
-  liveStore.appendKick("you", "Messi");
-
-  renderReact(
-    createElement(CampaignMatchShell, {
-      ladderLabel: "Semifinal",
-      oppName: "Argentina 1986",
-      oppFlagName: "Argentina",
-      oppInitials: "AR",
-      speedOptions: [1, 1.5, 2],
-      activeSpeed: 1,
-      showPause: true,
-      onSpeedChange: setMatchSpeed,
-      onTogglePause: (paused) => liveStore.setPaused(paused),
-      onSkip: () => {},
-    }),
-  );
-}
-
-function renderCampaignMatchPreview() {
-  L.campaign = null;
-  liveStore.reset();
-  halftimeStore.reset();
-  liveStore.setScore(2, 1);
-  liveStore.setMinute(64);
-  liveStore.setHalfLabel("2º Tempo");
-  liveStore.setBall({ left: 62, top: 44, transitionMs: 700 });
-  liveStore.addGoal("you", 18, "Ronaldo", "Zidane");
-  liveStore.addGoal("opp", 39, "Trejo", "Hugo Sánchez");
-  liveStore.addGoal("you", 58, "Messi", "Xavi");
-  liveStore.prependFeed({
-    minute: 64,
-    type: "possession",
-    text: "Seu time troca passes pelo meio e controla o ritmo.",
-    pos: "62-44",
-  });
-  liveStore.prependFeed({
-    minute: 61,
-    type: "chance",
-    text: "Quase! Messi recebe entre linhas e finaliza rente à trave.",
-    pos: "88-38",
-  });
-  liveStore.prependFeed({
-    minute: 58,
-    type: "goal",
-    text: "Gol do Seu time! Messi vira o jogo depois de passe de Xavi.",
-    pos: "94-35",
-  });
-  liveStore.prependFeed({
-    minute: 39,
-    type: "goal",
-    text: "México empata com Trejo após contra-ataque rápido.",
-    pos: "91-32",
-  });
-
-  renderReact(
-    createElement(
-      Fragment,
-      null,
-      createElement(PreviewAlertControls),
-      createElement(CampaignMatchShell, {
-        ladderLabel: "Fase de grupos - Jogo 3",
-        oppName: "México 1986",
-        oppFlagName: "México",
-        oppInitials: "MX",
-        speedOptions: [1, 1.5, 2],
-        activeSpeed: 2,
-        showPause: true,
-        onSpeedChange: setMatchSpeed,
-        onTogglePause: (paused) => liveStore.setPaused(paused),
-        onSkip: () => {},
-      }),
-    ),
-  );
-}
-
-function renderSubstitutionModalPreview() {
-  L.campaign = null;
-  liveStore.reset();
-  halftimeStore.reset();
-  liveStore.setScore(1, 1);
-  liveStore.setMinute(45);
-  liveStore.setHalfLabel("Intervalo");
-  liveStore.setBall({ left: 50, top: 50, transitionMs: 700 });
-  liveStore.addGoal("you", 24, "Ronaldo", "Messi");
-  liveStore.addGoal("opp", 39, "Cruyff", "Neeskens");
-  liveStore.prependFeed({
-    minute: 45,
-    type: "halftime",
-    text: "Intervalo: hora de ajustar formação, foco e substituições.",
-    pos: null,
-  });
-  liveStore.prependFeed({
-    minute: 39,
-    type: "goal",
-    text: "Gol da Holanda 1974. Cruyff empata antes do intervalo.",
-    pos: "92-34",
-  });
-
-  const formation = getFormation("4-3-3")!;
-  const picks = previewCampaignPicks();
-  const selectedSlotId = formation.slots[8]?.id ?? formation.slots[0].id;
-  const pitchSlots = buildPitchSlots(formation, picks, {
-    showPos: true,
-    selectedSubId: selectedSlotId,
-  });
-  halftimeStore.set({
-    open: true,
-    formationId: "4-3-3",
-    mentality: "pressao",
-    attackFocus: "meio",
-    subStatus:
-      "Messi selecionado. Clique em outro jogador para trocar de posição, ou escolha um reserva.",
-    subCountLabel: "Substituições 2/5 · Prontos 0/2",
-    continueLabel: "Voltar para o jogo",
-    continueDisabled: false,
-    continueDone: false,
-    controlsDisabled: false,
-    locked: false,
-    hideRatings: false,
-    focusBanner: {
-      kind: "good",
-      text: "Foco encaixado: seu elenco rende melhor pelo meio. Lados 88 · Meio 92 · OVR 91.",
-    },
-    pitchSlots,
-    reserves: [
-      {
-        name: "Cristiano Ronaldo",
-        posGroup: "att",
-        posText: "PE/CA",
-        rating: 92,
-        teamLabel: "Portugal 2016",
-        selected: false,
-        disabled: false,
-      },
-      {
-        name: "Iniesta",
-        posGroup: "mid",
-        posText: "MC/MEI",
-        rating: 91,
-        teamLabel: "Espanha 2010",
-        selected: true,
-        disabled: false,
-      },
-      {
-        name: "Maldini",
-        posGroup: "def",
-        posText: "LE/ZAG",
-        rating: 90,
-        teamLabel: "Itália 2006",
-        selected: false,
-        disabled: false,
-      },
-      {
-        name: "Neuer",
-        posGroup: "gk",
-        posText: "GOL",
-        rating: 89,
-        teamLabel: "Alemanha 2014",
-        selected: false,
-        disabled: true,
-      },
-      {
-        name: "Kaká",
-        posGroup: "mid",
-        posText: "MEI",
-        rating: 88,
-        teamLabel: "Brasil 2002",
-        selected: false,
-        disabled: false,
-      },
-    ],
-  });
-
-  renderReact(
-    createElement(LiveMatchShell, {
-      youInitials: "VC",
-      opponentInitials: "HO",
-      youName: "Seu time",
-      opponentName: "Holanda 1974",
-      speedOptions: [1, 1.5, 2],
-      activeSpeed: 1,
-      vsAI: true,
-      showPause: true,
-      halftimeOptions: previewHalftimeOptions(),
-      halftimeCallbacks: noopHalftimeCallbacks(),
-      onSpeedChange: setMatchSpeed,
-      onTogglePause: (paused) => liveStore.setPaused(paused),
-      onSkip: () => {},
     }),
   );
 }
@@ -2818,17 +1656,26 @@ function renderDevPreview(kind: DevPreviewKind) {
   L.playing = false;
   L.accountScreen = null;
   lastCampaignPhase = null;
+  const previewContext = { renderReact, setMatchSpeed, buildPitchSlots };
 
   if (kind === "penalty-modal") {
-    renderPenaltyModalPreview();
+    L.campaign = null;
+    renderPenaltyModalPreview(previewContext);
+    return;
+  }
+  if (kind === "penalty-sudden") {
+    L.campaign = null;
+    renderPenaltyModalPreview(previewContext, { suddenDeath: true });
     return;
   }
   if (kind === "cup-match") {
-    renderCampaignMatchPreview();
+    L.campaign = null;
+    renderCampaignMatchPreview(previewContext);
     return;
   }
   if (kind === "substitution-modal") {
-    renderSubstitutionModalPreview();
+    L.campaign = null;
+    renderSubstitutionModalPreview(previewContext);
     return;
   }
 
@@ -2848,52 +1695,6 @@ function renderDevPreview(kind: DevPreviewKind) {
     L.campaign.selectedPlayer = [...campaignSelectable()][0] ?? null;
   }
   renderCampaign();
-}
-
-function renderCampaignEndPreview(kind: CampaignEndPreviewKind) {
-  if (kind === "victory") {
-    renderReact(
-      createElement(CampaignVictory, {
-        groupLabel: "líder do grupo",
-        journeyLeaders: previewJourneyLeaders(),
-        squadRows: previewSquadRows(),
-        bracket: previewBracket(),
-        progressRound: 8,
-        onRetry: () => {
-          location.hash = "";
-          startCampaign();
-        },
-        onHome: () => {
-          location.hash = "";
-          goHome();
-        },
-      }),
-    );
-    return;
-  }
-
-  renderReact(
-    createElement(CampaignGameOver, {
-      title: "Eliminado na semifinal",
-      detail: "Resultado contra Argentina 1986: 2 x 3 (derrota).",
-      youGoals: 2,
-      oppGoals: 3,
-      oppName: "Argentina 1986",
-      penaltyLabel: null,
-      journeyLeaders: previewJourneyLeaders(),
-      squadRows: previewSquadRows(),
-      status: { kind: "knockout", bracket: previewBracket() },
-      progressRound: 6,
-      onRetry: () => {
-        location.hash = "";
-        startCampaign();
-      },
-      onHome: () => {
-        location.hash = "";
-        goHome();
-      },
-    }),
-  );
 }
 
 // ---------------- Lobby / Setup ----------------
@@ -3015,10 +1816,11 @@ function renderPreMatchClassic() {
       you.picks,
       formationId,
       `draft:${s.code}:${you.id}:${strength.overall}-${strength.attack}-${strength.midfield}-${strength.defense}`,
+      s.mode,
     );
   }
   const vsAI = s.players.some((p) => p.isAI);
-  const hideRatings = s.mode === "hardcore";
+  const hideRatings = isHardcoreMode(s.mode);
   // dicas táticas (encaixe do foco) — ocultas no modo Hardcore
   const banners: BannerSpec[] = [];
   if (hideRatings) {
@@ -3080,104 +1882,16 @@ function teamStrengthData(p: PlayerPublic | undefined): TeamStrengthData {
   };
 }
 
-// ---------------- Pitch ----------------
-
-interface BuildPitchOpts {
-  /** Overrides global hardcore detection (e.g. ignore in result screen). */
-  forceHideRatings?: boolean;
-  /** Always show ratings even in hardcore mode (e.g. end-of-game reveal). */
-  forceShowRatings?: boolean;
-  /** Show position tag chip above the dot. */
-  showPos?: boolean;
-  /** Open-slot ids (highlights empty slots for selection). */
-  openSlotIds?: Set<string>;
-  /** Currently-selected sub source slot id. */
-  selectedSubId?: string | null;
-}
-
 function buildPitchSlots(
-  formation: ReturnType<typeof getFormation> & {},
+  formation: NonNullable<ReturnType<typeof getFormation>>,
   picks: PlayerPublic["picks"],
   opts: BuildPitchOpts = {},
 ): PitchSlot[] {
-  const bySlot = new Map(picks.map((p) => [p.slotId, p]));
   const hideGlobal = !!L.state?.hideRatings || L.campaign?.mode === "hardcore";
-  const hideRating =
-    opts.forceShowRatings ? false : opts.forceHideRatings ?? hideGlobal;
-  return formation.slots.map((slot) => {
-    const pick = bySlot.get(slot.id);
-    const filled = !!pick;
-    return {
-      id: slot.id,
-      pos: slot.pos,
-      x: slot.x,
-      y: slot.y,
-      label: filled ? lastName(pick!.player.name) : posLabel(slot.pos),
-      filled,
-      rating: pick?.effectiveRating,
-      penalty:
-        !!pick && pick.effectiveRating < pick.player.rating,
-      hideRating,
-      showPos: opts.showPos,
-      open: !filled && opts.openSlotIds?.has(slot.id),
-      selectedSub: filled && opts.selectedSubId === slot.id,
-    };
+  return buildPitchSlotsBase(formation, picks, {
+    ...opts,
+    hideRatingsGlobal: hideGlobal,
   });
-}
-
-function reassignPicksToFormation(player: PlayerPublic, formationId: string) {
-  const formation = getFormation(formationId);
-  if (!formation || player.picks.length !== formation.slots.length) return null;
-
-  const before =
-    player.picks.reduce((sum, pick) => sum + pick.effectiveRating, 0) /
-    Math.max(1, player.picks.length);
-  const remaining = [...player.picks];
-  const next = formation.slots.map((slot) => {
-    let bestIdx = 0;
-    let bestRating = -Infinity;
-    for (let i = 0; i < remaining.length; i++) {
-      const rating = effectiveRating(remaining[i].player, slot.pos);
-      if (rating > bestRating) {
-        bestRating = rating;
-        bestIdx = i;
-      }
-    }
-    const [pick] = remaining.splice(bestIdx, 1);
-    return {
-      ...pick,
-      slotId: slot.id,
-      effectiveRating: effectiveRating(pick.player, slot.pos),
-    };
-  });
-  player.formationId = formationId;
-  player.picks = next;
-  const after =
-    next.reduce((sum, pick) => sum + pick.effectiveRating, 0) /
-    Math.max(1, next.length);
-  return Math.round((after - before) * 10) / 10;
-}
-
-function shuffled<T>(items: T[]): T[] {
-  return [...items].sort(() => Math.random() - 0.5);
-}
-
-function buildIntervalBench(
-  player: PlayerPublic,
-): Array<Player & { fromTeamId: string }> {
-  const pickedNames = new Set(player.picks.map((pick) => pick.player.name));
-  const byName = new Map<string, Player & { fromTeamId: string }>();
-  for (const pick of player.picks) {
-    const team = getTeam(pick.fromTeamId);
-    for (const reserve of team?.bench ?? []) {
-      if (pickedNames.has(reserve.name)) continue;
-      byName.set(`${pick.fromTeamId}:${reserve.name}`, {
-        ...reserve,
-        fromTeamId: pick.fromTeamId,
-      });
-    }
-  }
-  return shuffled([...byName.values()]).slice(0, 12);
 }
 
 function applyIntervalSubstitution(
@@ -3186,71 +1900,19 @@ function applyIntervalSubstitution(
   reserveName: string,
   bench = L.intervalBench ?? [],
 ) {
+  const result = applyIntervalSubstitutionBase(
+    player,
+    outSlotId,
+    reserveName,
+    bench,
+  );
+  if (!result) return null;
   const reserve = bench.find((p) => p.name === reserveName);
-  const pickIdx = player.picks.findIndex((pick) => pick.slotId === outSlotId);
-  const formation = player.formationId
-    ? getFormation(player.formationId)
-    : null;
-  const slot = formation?.slots.find((s) => s.id === outSlotId);
-  if (!reserve || pickIdx < 0 || !slot) return null;
-
-  const outgoing = player.picks[pickIdx];
-  const nextRating = effectiveRating(reserve, slot.pos);
-  player.picks[pickIdx] = {
-    ...outgoing,
-    player: reserve,
-    fromTeamId: reserve.fromTeamId,
-    effectiveRating: nextRating,
-  };
   if (bench === L.intervalBench) {
     L.intervalBench =
-      L.intervalBench?.filter((p) => p.name !== reserve.name) ?? null;
+      L.intervalBench?.filter((p) => p.name !== reserve?.name) ?? null;
   }
-  return {
-    out: outgoing.player.name,
-    in: reserve.name,
-    delta: nextRating - outgoing.effectiveRating,
-  };
-}
-
-function swapLineupSlots(player: PlayerPublic, slotA: string, slotB: string) {
-  if (slotA === slotB) return null;
-  const formation = player.formationId
-    ? getFormation(player.formationId)
-    : null;
-  const pickA = player.picks.find((pick) => pick.slotId === slotA);
-  const pickB = player.picks.find((pick) => pick.slotId === slotB);
-  const formationSlotA = formation?.slots.find((slot) => slot.id === slotA);
-  const formationSlotB = formation?.slots.find((slot) => slot.id === slotB);
-  if (!pickA || !pickB || !formationSlotA || !formationSlotB) return null;
-
-  const oldTotal = pickA.effectiveRating + pickB.effectiveRating;
-  const nextA = {
-    ...pickB,
-    slotId: slotA,
-    effectiveRating: effectiveRating(pickB.player, formationSlotA.pos),
-  };
-  const nextB = {
-    ...pickA,
-    slotId: slotB,
-    effectiveRating: effectiveRating(pickA.player, formationSlotB.pos),
-  };
-  player.picks = player.picks.map((pick) =>
-    pick.slotId === slotA ? nextA : pick.slotId === slotB ? nextB : pick,
-  );
-  const delta = nextA.effectiveRating + nextB.effectiveRating - oldTotal;
-  return {
-    a: pickA.player.name,
-    b: pickB.player.name,
-    delta,
-  };
-}
-
-function lastName(full: string): string {
-  const parts = full.split(" ");
-  return parts.length > 1 && parts[parts.length - 1].length > 2
-    ? parts[parts.length - 1]
-    : full;
+  return result;
 }
 
 // ---------------- Result ----------------
@@ -3800,196 +2462,16 @@ function renderLiveMatch() {
   schedule(700);
 }
 
-interface Leader {
-  name: string;
-  val: string;
-  side: "you" | "opp";
-}
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length >= 2)
-    return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-  return name.slice(0, 1).toUpperCase();
-}
-
-// Derive match leaders (top scorer, top assist, man of the match) from the timeline.
-function computeLeaders(r: MatchResult, youId: string) {
-  const goals = new Map<string, number>();
-  const assists = new Map<string, number>();
-  const sideOf = new Map<string, "you" | "opp">();
-  const tag = (sd: "home" | "away" | null) =>
-    (sd === "home" ? r.homeId : r.awayId) === youId ? "you" : "opp";
-
-  for (const e of r.timeline) {
-    if (e.type !== "goal") continue;
-    if (e.player) {
-      goals.set(e.player, (goals.get(e.player) ?? 0) + 1);
-      sideOf.set(e.player, tag(e.side));
-    }
-    if (e.assist) {
-      assists.set(e.assist, (assists.get(e.assist) ?? 0) + 1);
-      sideOf.set(e.assist, tag(e.side));
-    }
-  }
-
-  const top = (m: Map<string, number>, unit: string): Leader | null => {
-    let best: [string, number] | null = null;
-    for (const e of m) if (!best || e[1] > best[1]) best = e;
-    return best
-      ? {
-          name: best[0],
-          val: `${best[1]} ${unit}${best[1] > 1 ? "s" : ""}`,
-          side: sideOf.get(best[0])!,
-        }
-      : null;
-  };
-
-  const scorer = top(goals, "gol");
-  const assist = top(assists, "assistência");
-
-  // man of the match: top scorer on the winning side, else its best-rated player
-  const winnerSide: "you" | "opp" = r.winnerId === youId ? "you" : "opp";
-  let motm: Leader | null = null;
-  let motmGoals = 0;
-  for (const [name, n] of goals) {
-    if (sideOf.get(name) !== winnerSide) continue;
-    if (n > motmGoals) {
-      motmGoals = n;
-      motm = { name, val: `${n} gol${n > 1 ? "s" : ""}`, side: winnerSide };
-    }
-  }
-  if (!motm) {
-    const winner = L.state!.players.find((p) =>
-      winnerSide === "you" ? p.id === youId : p.id !== youId,
-    );
-    const best = [...(winner?.picks ?? [])].sort(
-      (a, b) => b.effectiveRating - a.effectiveRating,
-    )[0];
-    if (best)
-      motm = {
-        name: best.player.name,
-        val: `${best.effectiveRating} de over`,
-        side: winnerSide,
-      };
-  }
-
-  return { scorer, assist, motm };
-}
-
 function awardRegularMatchAchievements() {
   const s = L.state;
   if (!s?.result || !L.youId) return;
-  const r = s.result;
-  if (!r.winnerId) return;
   const you = me();
   const opp = opponent();
   if (!you || !opp) return;
-  const key = `match:${s.code}:${r.timeline.length}:${r.goals[you.id]}-${r.goals[opp.id]}:${r.winnerId}:${r.penaltyScore?.[you.id] ?? ""}-${r.penaltyScore?.[opp.id] ?? ""}`;
-  const ids: string[] = [];
-  const youWon = r.winnerId === you.id;
-  const playerGoals = new Map<string, number>();
-  const playerAssists = new Map<string, number>();
-  let youHalfGoals = 0;
-  let oppHalfGoals = 0;
-  let youRedCard = false;
-  for (const ev of r.timeline) {
-    const pid =
-      ev.side === "home" ? r.homeId : ev.side === "away" ? r.awayId : "";
-    if (ev.type === "card" && ev.card === "red" && pid === you.id)
-      youRedCard = true;
-    if (ev.type !== "goal") continue;
-    if (ev.minute <= 45) {
-      if (pid === you.id) youHalfGoals++;
-      else if (pid === opp.id) oppHalfGoals++;
-    }
-    if (pid !== you.id) continue;
-    if (ev.player)
-      playerGoals.set(ev.player, (playerGoals.get(ev.player) ?? 0) + 1);
-    if (ev.assist)
-      playerAssists.set(ev.assist, (playerAssists.get(ev.assist) ?? 0) + 1);
-  }
-  const yourGoals = r.goals[you.id] ?? 0;
-  const oppGoals = r.goals[opp.id] ?? 0;
-  if (yourGoals > 0) ids.push("first_goal");
-  if (youWon) ids.push("first_win");
-  if (youWon && oppGoals === 0) ids.push("clean_sheet");
-  if (youWon && r.penaltyScore) ids.push("penalty_win");
-  const totalAssists = [...playerAssists.values()].reduce((sum, n) => sum + n, 0);
-  if ([...playerGoals.values()].some((n) => n >= 3)) ids.push("hat_trick");
-  if (totalAssists >= 3) ids.push("assist_master");
-  const avg = you.picks.length
-    ? you.picks.reduce((sum, p) => sum + p.effectiveRating, 0) /
-      you.picks.length
-    : 0;
-  if (avg >= 85) ids.push("strong_draft");
-  if (youWon && opp.isAI) ids.push("beat_machine");
-  if (youWon && s.mode === "hardcore") ids.push("hardcore_win");
-  if (youWon && yourGoals - oppGoals >= 3) ids.push("big_win");
-  if (youWon && youHalfGoals < oppHalfGoals) ids.push("comeback_win");
-  if (youWon && youRedCard) ids.push("red_card_win");
-  const xp = 25 + (youWon ? 25 : 0) + (r.penaltyScore ? 10 : 0);
-  void grantXp(
-    xp,
-    youWon ? "Partida vencida" : "Partida concluída",
-    `xp:${key}`,
-  );
-  void awardAchievements(ids, key);
-}
-
-function leaderCardData(label: string, data: Leader | null): LeaderCardData {
-  return {
-    label,
-    name: data?.name ?? null,
-    val: data ? data.val : "Sem destaque",
-    initials: data ? initials(data.name) : null,
-    side: data?.side ?? null,
-  };
-}
-
-function eventLogParts(
-  r: MatchResult,
-  you: PlayerPublic,
-  opp: PlayerPublic,
-): { important: LogEventItem[]; full: LogEventItem[] } {
-  const sideName = (side: "home" | "away" | null) => {
-    if (side === "home") return r.homeId === you.id ? you.name : opp.name;
-    if (side === "away") return r.awayId === you.id ? you.name : opp.name;
-    return "";
-  };
-  const importantTypes = new Set<MatchEvent["type"]>([
-    "goal",
-    "card",
-    "injury",
-    "halftime",
-    "fulltime",
-  ]);
-  let nextId = 1;
-  const toItem = (ev: MatchEvent): LogEventItem => ({
-    id: nextId++,
-    type: ev.type,
-    cardKind: ev.type === "card" ? (ev.card === "red" ? "red" : "yellow") : undefined,
-    minute: Math.min(ev.minute, 90),
-    text: ev.text,
-    teamLabel: sideName(ev.side),
-  });
-  const penaltyItems: LogEventItem[] = (r.shootout ?? []).map((kick) => {
-    const pid = kick.side === "home" ? r.homeId : r.awayId;
-    const team = pid === you.id ? you.name : opp.name;
-    return {
-      id: nextId++,
-      type: "penalty",
-      minute: "PEN" as const,
-      text: `Pênalti de ${kick.taker} (${team}): ${kick.scored ? "no gol!" : "defendido!"}`,
-      teamLabel: "",
-    };
-  });
-  const important = r.timeline.filter((ev) => importantTypes.has(ev.type)).map(toItem);
-  const full = r.timeline.map(toItem);
-  return {
-    important: [...important, ...penaltyItems],
-    full: [...full, ...penaltyItems],
-  };
+  const awards = regularMatchAchievementAwards(s, you, opp);
+  if (!awards) return;
+  void grantXp(awards.xp, awards.xpReason, `xp:${awards.key}`);
+  void awardAchievements(awards.ids, awards.key);
 }
 
 function renderSummary() {
@@ -4002,7 +2484,7 @@ function renderSummary() {
   const outcome = youWon ? "win" : "lose";
   const ys = r.strengths[you.id];
   const os = r.strengths[opp.id];
-  const { scorer, assist, motm } = computeLeaders(r, you.id);
+  const { scorer, assist, motm } = computeLeaders(r, you.id, s.players);
   const logParts = eventLogParts(r, you, opp);
 
   renderReact(
@@ -4043,10 +2525,6 @@ function renderSummary() {
       onHome: goHome,
     }),
   );
-}
-
-function strengthRow(label: string, a: number, b: number, bold = false): StrengthRow {
-  return { label, a, b, bold };
 }
 
 // ---------------- util ----------------

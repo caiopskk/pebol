@@ -23,6 +23,7 @@ interface HomeProps {
   onLogout: () => void;
   onWorldCup: () => void;
   onOpenUpdates: () => void;
+  onOpenFeedback: () => void;
   onOpenLegal: (kind: "terms" | "privacy") => void;
   onSoon: (mode: "carreira" | "liga") => void;
 }
@@ -43,18 +44,43 @@ const primaryAction =
 const secondaryAction =
   "min-h-11 rounded-xl border border-white/10 bg-white/[0.055] px-4 py-2 font-display text-sm font-bold text-slate-200 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-pebol-blue/50 hover:bg-pebol-blue/15";
 
-const modeCopy: Record<GameMode, { eyebrow: string; title: string; desc: string }> = {
+type RoomPool = "clubs" | "worldcup";
+type RoomRule = "classico" | "hardcore";
+
+const poolCopy: Record<RoomPool, { badge: string; eyebrow: string; title: string; desc: string }> = {
+  clubs: {
+    badge: "CL",
+    eyebrow: "Elencos oficiais",
+    title: "Clubes",
+    desc: "Draft com clubes do Brasileirão e Champions.",
+  },
+  worldcup: {
+    badge: "CP",
+    eyebrow: "Seleções históricas",
+    title: "Seleções",
+    desc: "Draft com seleções históricas da Copa.",
+  },
+};
+
+const ruleCopy: Record<RoomRule, { badge: string; eyebrow: string; title: string; desc: string }> = {
   classico: {
+    badge: "CL",
     eyebrow: "Draft aberto",
     title: "Clássico",
     desc: "Ratings visíveis e 5 atualizações.",
   },
   hardcore: {
+    badge: "HC",
     eyebrow: "Risco alto",
     title: "Hardcore",
     desc: "Ratings ocultos, 3 atualizações.",
   },
 };
+
+function composeGameMode(pool: RoomPool, rule: RoomRule): GameMode {
+  if (pool === "worldcup") return rule === "hardcore" ? "worldcup-hardcore" : "worldcup";
+  return rule;
+}
 
 function initials(name: string) {
   const parts = name.trim().split(/\s+/).filter(Boolean);
@@ -172,8 +198,10 @@ function AccountProfile({
 }
 
 function RoomPanel({
-  selectedMode,
-  setSelectedMode,
+  selectedPool,
+  setSelectedPool,
+  selectedRule,
+  setSelectedRule,
   roomTab,
   setRoomTab,
   savedName,
@@ -183,8 +211,10 @@ function RoomPanel({
   submitCreate,
   submitJoin,
 }: {
-  selectedMode: GameMode;
-  setSelectedMode: (mode: GameMode) => void;
+  selectedPool: RoomPool;
+  setSelectedPool: (pool: RoomPool) => void;
+  selectedRule: RoomRule;
+  setSelectedRule: (rule: RoomRule) => void;
   roomTab: "create" | "join";
   setRoomTab: (tab: "create" | "join") => void;
   savedName: string;
@@ -219,36 +249,67 @@ function RoomPanel({
           <form className={`col-start-1 row-start-1 ${roomTab === "create" ? "" : "pointer-events-none invisible opacity-0"}`} onSubmit={submitCreate}>
             <label htmlFor="c-name">Seu nome</label>
             <input ref={createNameRef} id="c-name" name="name" maxLength={20} placeholder="Insira seu nome" defaultValue={savedName} className="rounded-xl" />
-            <label>Modo de jogo</label>
-            <div className="mb-4 grid grid-cols-2 gap-3">
-              {(["classico", "hardcore"] as GameMode[]).map((mode) => {
-                const locked = mode === "hardcore" && !hardcoreUnlocked;
+            <label>Tipo de elenco</label>
+            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+              {(["clubs", "worldcup"] as RoomPool[]).map((pool) => {
                 return (
                   <button
-                    key={mode}
+                    key={pool}
+                    type="button"
+                    title={poolCopy[pool].title}
+                    className={`group rounded-2xl border p-3 text-left transition-all duration-300 ease-out ${
+                      selectedPool === pool
+                        ? "border-pebol-accent bg-pebol-accent/15 shadow-glow"
+                        : "border-white/10 bg-white/[0.045] hover:-translate-y-1 hover:border-pebol-blue/50 hover:bg-pebol-blue/10"
+                    }`}
+                    onClick={() => setSelectedPool(pool)}
+                  >
+                    <span className="mb-3 grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-black/30 font-display text-xs font-bold text-pebol-gold">
+                      {poolCopy[pool].badge}
+                    </span>
+                    <small className="font-display text-[0.65rem] font-extrabold uppercase tracking-[0.11em] text-pebol-muted">
+                      {poolCopy[pool].eyebrow}
+                    </small>
+                    <strong className="block font-display text-lg font-extrabold text-white">
+                      {poolCopy[pool].title}
+                    </strong>
+                    <span className="mt-1 block text-xs font-semibold leading-snug text-pebol-muted">
+                      {poolCopy[pool].desc}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <label>Modo de jogo</label>
+            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+              {(["classico", "hardcore"] as RoomRule[]).map((rule) => {
+                const locked = rule === "hardcore" && !hardcoreUnlocked;
+                return (
+                  <button
+                    key={rule}
                     type="button"
                     disabled={locked}
-                    title={locked ? hardcoreLockText : modeCopy[mode].title}
+                    title={locked ? hardcoreLockText : ruleCopy[rule].title}
                     className={`group rounded-2xl border p-3 text-left transition-all duration-300 ease-out ${
-                      selectedMode === mode
+                      selectedRule === rule
                         ? "border-pebol-accent bg-pebol-accent/15 shadow-glow"
                         : "border-white/10 bg-white/[0.045] hover:-translate-y-1 hover:border-pebol-blue/50 hover:bg-pebol-blue/10"
                     } ${locked ? "cursor-not-allowed opacity-50" : ""}`}
                     onClick={() => {
-                      if (!locked) setSelectedMode(mode);
+                      if (!locked) setSelectedRule(rule);
                     }}
                   >
                     <span className="mb-3 grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-black/30 font-display text-xs font-bold text-pebol-gold">
-                      {mode === "classico" ? "CL" : "HC"}
+                      {ruleCopy[rule].badge}
                     </span>
                     <small className="font-display text-[0.65rem] font-extrabold uppercase tracking-[0.11em] text-pebol-muted">
-                      {modeCopy[mode].eyebrow}
+                      {ruleCopy[rule].eyebrow}
                     </small>
                     <strong className="block font-display text-lg font-extrabold text-white">
-                      {modeCopy[mode].title}
+                      {ruleCopy[rule].title}
                     </strong>
                     <span className="mt-1 block text-xs font-semibold leading-snug text-pebol-muted">
-                      {locked ? hardcoreLockText : modeCopy[mode].desc}
+                      {locked ? hardcoreLockText : ruleCopy[rule].desc}
                     </span>
                   </button>
                 );
@@ -345,6 +406,40 @@ function WorldCupFeature({ onWorldCup }: { onWorldCup: () => void }) {
   );
 }
 
+function FeedbackCallout({ onOpenFeedback }: { onOpenFeedback: () => void }) {
+  return (
+    <motion.aside
+      variants={cardMotion}
+      whileHover={{ y: -2 }}
+      className={`${panel} p-4`}
+    >
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_90%_20%,rgba(0,255,135,.14),transparent_34%),linear-gradient(135deg,rgba(58,134,212,.1),transparent_52%)]" />
+      <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+        <div className="min-w-0">
+          <span className="font-display text-xs font-extrabold uppercase tracking-[0.14em] text-pebol-accent">
+            Sua opinião
+          </span>
+          <h2 className="mt-1 font-display text-xl font-extrabold uppercase tracking-[0.015em] text-pebol-text">
+            Ajude a melhorar o Pebol
+          </h2>
+          <p className="mt-1 text-sm font-medium leading-6 text-pebol-muted">
+            Sugestões, bugs e balanceamento entram direto no painel de feedback.
+          </p>
+        </div>
+        <motion.button
+          whileHover={{ y: -2 }}
+          whileTap={{ scale: 0.985 }}
+          type="button"
+          className={`${primaryAction} sm:max-w-[13rem]`}
+          onClick={onOpenFeedback}
+        >
+          Enviar feedback
+        </motion.button>
+      </div>
+    </motion.aside>
+  );
+}
+
 function LeaderboardPanel({
   leaderboard,
   account,
@@ -417,12 +512,15 @@ export function Home({
   onLogout,
   onWorldCup,
   onOpenUpdates,
+  onOpenFeedback,
   onOpenLegal,
   onSoon,
 }: HomeProps) {
-  const [selectedMode, setSelectedMode] = useState<GameMode>("classico");
+  const [selectedPool, setSelectedPool] = useState<RoomPool>("clubs");
+  const [selectedRule, setSelectedRule] = useState<RoomRule>("classico");
   const [roomTab, setRoomTab] = useState<"create" | "join">("create");
   const createNameRef = useRef<HTMLInputElement>(null);
+  const selectedMode = composeGameMode(selectedPool, selectedRule);
 
   const submitCreate = (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
@@ -460,8 +558,10 @@ export function Home({
         <div className="grid gap-4 xl:grid-cols-[minmax(19rem,1fr)_minmax(24rem,1.18fr)_minmax(20rem,1fr)] xl:items-stretch">
           <div className="grid gap-4">
             <RoomPanel
-              selectedMode={selectedMode}
-              setSelectedMode={setSelectedMode}
+              selectedPool={selectedPool}
+              setSelectedPool={setSelectedPool}
+              selectedRule={selectedRule}
+              setSelectedRule={setSelectedRule}
               roomTab={roomTab}
               setRoomTab={setRoomTab}
               savedName={savedName}
@@ -491,6 +591,7 @@ export function Home({
               </div>
             </motion.div>
             <WorldCupFeature onWorldCup={onWorldCup} />
+            <FeedbackCallout onOpenFeedback={onOpenFeedback} />
           </div>
 
           <LeaderboardPanel leaderboard={leaderboard} account={account} />
@@ -527,6 +628,9 @@ export function Home({
           <span className="font-display font-extrabold uppercase tracking-[0.14em]">Pebol</span>
           <button type="button" className="transition-colors duration-300 hover:text-pebol-accent" onClick={onOpenUpdates}>
             Novidades
+          </button>
+          <button type="button" className="transition-colors duration-300 hover:text-pebol-accent" onClick={onOpenFeedback}>
+            Feedback
           </button>
           <button type="button" className="transition-colors duration-300 hover:text-pebol-accent" onClick={() => onOpenLegal("terms")}>
             Termos de Uso

@@ -50,7 +50,7 @@ export type Mentality =
   | "pressao"
   | "posse"
   | "contra_ataque";
-export type GameMode = "classico" | "hardcore";
+export type GameMode = "classico" | "hardcore" | "worldcup" | "worldcup-hardcore";
 
 /** Attacking focus: where the team channels its attack. Rewards the matching
  * part of the squad (wide players for "lados", the spine for "meio"). */

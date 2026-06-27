@@ -3,6 +3,8 @@ import { fileURLToPath } from "node:url";
 import path from "node:path";
 import express from "express";
 import { Server } from "socket.io";
+import type { GameMode } from "../../shared/types.js";
+import { isHardcoreMode } from "../../shared/gameMode.js";
 import type {
   AckResult,
   Mentality,
@@ -98,13 +100,13 @@ io.on("connection", (socket) => {
     async (
       data: {
         name: string;
-        mode: "classico" | "hardcore";
+        mode: GameMode;
         solo?: boolean;
         token?: string | null;
       },
       cb: (r: AckResult) => void,
     ) => {
-      if (data.mode === "hardcore") {
+      if (isHardcoreMode(data.mode)) {
         const user = userFromToken(data.token || undefined);
         if (!user) {
           cb?.({

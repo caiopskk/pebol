@@ -7,6 +7,11 @@ export const DEV_PREVIEWS = [
   { kind: "cup-gameover", label: "Derrota", hash: "#preview-cup-gameover" },
   { kind: "penalty-modal", label: "Pênaltis", hash: "#preview-penalty-modal" },
   {
+    kind: "penalty-sudden",
+    label: "Morte súbita",
+    hash: "#preview-penalty-sudden",
+  },
+  {
     kind: "substitution-modal",
     label: "Substituições",
     hash: "#preview-substitution-modal",

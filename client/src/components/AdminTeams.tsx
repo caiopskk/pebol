@@ -15,6 +15,7 @@ interface AdminTeamsProps {
   canEditTeam: (team: AdminTeam) => boolean;
   onSearchCommit: (value: string) => void;
   onImportFile: (input: HTMLInputElement) => void;
+  onOpenFeedbacks: () => void;
   onNewTeam: () => void;
   onEditTeam: (team: AdminTeam) => void;
   onDeleteTeam: (team: AdminTeam) => void;
@@ -55,6 +56,7 @@ export function AdminTeams({
   canEditTeam,
   onSearchCommit,
   onImportFile,
+  onOpenFeedbacks,
   onNewTeam,
   onEditTeam,
   onDeleteTeam,
@@ -128,6 +130,13 @@ export function AdminTeams({
                 Novo time
               </button>
               <button
+                id="adm-feedback"
+                className="min-h-11 rounded-lg border border-pebol-accent/35 bg-pebol-accent/10 px-4 py-2 font-display text-sm font-extrabold text-pebol-accent transition-all duration-300 hover:-translate-y-0.5 hover:bg-pebol-accent/15"
+                onClick={onOpenFeedbacks}
+              >
+                Feedbacks
+              </button>
+              <button
                 id="adm-back"
                 className="min-h-11 rounded-lg border border-white/10 bg-white/[0.055] px-4 py-2 font-display text-sm font-extrabold text-slate-200 transition-all duration-300 hover:border-pebol-blue/50 hover:bg-pebol-blue/15"
                 onClick={onBack}
@@ -152,8 +161,8 @@ export function AdminTeams({
           </label>
           <span className="text-sm font-bold text-pebol-muted">
             {teams
-              ? `${filteredTeams?.length ?? 0} de ${teams.length} times`
-              : "Carregando times"}
+              ? `${filteredTeams?.length ?? 0} de ${teams.length} elencos`
+              : "Carregando elencos"}
           </span>
         </div>
 

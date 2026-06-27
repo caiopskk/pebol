@@ -13,8 +13,13 @@ import {
   grantExperience,
   getUserProgress,
   getLeaderboard,
+  createFeedback,
+  getFeedback,
+  getFeedbackCountForUser,
+  normalizeFeedbackInput,
   maskTeamName,
   type DbTeam,
+  type FeedbackInput,
   type TeamInput,
 } from "./db.js";
 
@@ -29,6 +34,13 @@ const VALID_POS = new Set([
   "GK", "RB", "LB", "CB", "RWB", "LWB", "CDM", "CM", "CAM", "RM", "LM", "RW", "LW", "CF", "ST",
 ]);
 const PLAYER_ATTRIBUTES = ["pac", "sho", "pas", "dri", "def", "phy"] as const;
+const FEEDBACK_CATEGORY_LABELS = new Set([
+  "suggestion",
+  "bug",
+  "balance",
+  "other",
+]);
+const MAX_FEEDBACK_PER_USER = 3;
 
 function validateTeam(t: TeamInput): string | null {
   if (!t || typeof t.name !== "string" || !t.name.trim()) return "Nome do time é obrigatório.";
@@ -51,6 +63,17 @@ function validateTeam(t: TeamInput): string | null {
 
 function canEdit(t: DbTeam, u: AuthUser): boolean {
   return t.ownerId ? t.ownerId === u.id : u.role === "admin";
+}
+
+function validateFeedback(input: FeedbackInput): string | null {
+  if (!FEEDBACK_CATEGORY_LABELS.has(String(input.category)))
+    return "Tipo de feedback invÃ¡lido.";
+  const normalized = normalizeFeedbackInput(input);
+  if (normalized.message.length < 10)
+    return "Escreva pelo menos 10 caracteres.";
+  if (normalized.message.length > 2400)
+    return "Mensagem muito longa.";
+  return null;
 }
 
 function requireAdminUser(req: AuthRequest, res: Response): AuthUser | null {
@@ -106,6 +129,32 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
       return res.status(400).json({ error: "XP inválido." });
     const r = await grantExperience(req.authUser!.id, sourceKey, amount, reason);
     res.json(r);
+  });
+
+  app.post("/api/feedback", requireAuth, async (req: AuthRequest, res) => {
+    const body = {
+      category: String(req.body?.category ?? "other"),
+      message: String(req.body?.message ?? ""),
+      contact: String(req.body?.contact ?? ""),
+      page: String(req.body?.page ?? ""),
+      userAgent: req.get("user-agent") ?? String(req.body?.userAgent ?? ""),
+    } as FeedbackInput;
+    const err = validateFeedback(body);
+    if (err) return res.status(400).json({ error: err });
+    const sentCount = await getFeedbackCountForUser(req.authUser!.id);
+    if (sentCount >= MAX_FEEDBACK_PER_USER) {
+      return res.status(429).json({
+        error: "Você já enviou 3 feedbacks. Obrigado por ajudar o Pebol.",
+      });
+    }
+    const feedback = await createFeedback(req.authUser!.id, body);
+    res.json({ feedback });
+  });
+
+  app.get("/api/feedback", requireAuth, async (req: AuthRequest, res) => {
+    const u = requireAdminUser(req, res);
+    if (!u) return;
+    res.json({ feedback: await getFeedback(Number(req.query.limit) || 50) });
   });
 
   app.get("/api/teams", async (req: AuthRequest, res) => {

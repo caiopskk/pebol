@@ -1,5 +1,6 @@
 import type { Player, PlayerPublic, RoomState, Team } from "../../../shared/types.js";
 import { groupOf } from "../../../shared/formations.js";
+import { isWorldCupMode } from "../../../shared/gameMode.js";
 import { TacticBanner, type BannerSpec } from "./TacticBanner.js";
 import { TeamStrengthCard, type TeamStrengthData } from "./CupStatus.js";
 import { Pitch, type PitchSlot } from "./Pitch.js";
@@ -91,6 +92,11 @@ export function Draft({
     ? "Sua vez de escolher"
     : `Vez de ${opponent?.name ?? "adversário"}`;
 
+  const drawnTeamLabel =
+    isWorldCupMode(state.mode) ? "Seleção sorteada" : "Time sorteado";
+  const rerollLabel =
+    isWorldCupMode(state.mode) ? "Atualizar seleção" : "Atualizar time";
+
   return (
     <div className="screen draft">
       <div className="topbar">
@@ -143,7 +149,7 @@ export function Draft({
           className={`draw-panel classic-draw ${yourTurn ? "your-turn" : ""}`}
         >
           <div className="draw-head">
-            <span className="draw-label">Time sorteado</span>
+            <span className="draw-label">{drawnTeamLabel}</span>
             <h2>{team ? `${team.name} ${team.season}` : "—"}</h2>
             <span className="draw-league">{team?.league ?? ""}</span>
             {state.pvpRerollsEnabled ? (
@@ -153,7 +159,7 @@ export function Draft({
                 disabled={!yourTurn || (you.rerollsRemaining ?? 0) <= 0}
                 onClick={onReroll}
               >
-                Atualizar time ({you.rerollsRemaining ?? 0})
+                {rerollLabel} ({you.rerollsRemaining ?? 0})
               </button>
             ) : null}
           </div>
