@@ -10,7 +10,7 @@ export function PauseButton({ onToggle }: { onToggle: (paused: boolean) => void 
   return (
     <button
       type="button"
-      className={`ghost pause-btn ${paused ? "paused" : ""}`.trim()}
+      className={`ghost pause-btn min-h-9 rounded-lg ${paused ? "paused" : ""}`.trim()}
       onClick={() => onToggle(!paused)}
     >
       {paused ? "Continuar" : "Pausar"}
@@ -53,16 +53,25 @@ export function PenaltyLabel() {
 
 export function BallSprite({ children }: { children: ReactNode }) {
   const s = useLiveState();
+  const transitionMs = Math.max(420, s.ball.transitionMs);
+  const ballKey = [
+    Math.round(s.ball.left * 10),
+    Math.round(s.ball.top * 10),
+    s.ball.goal ? "goal" : "move",
+  ].join("-");
   return (
     <div
       className={`bf-ball ${s.ball.goal ? "goal" : ""}`.trim()}
       style={{
         left: `${s.ball.left}%`,
         top: `${s.ball.top}%`,
-        transitionDuration: `${s.ball.transitionMs}ms`,
+        transitionDuration: `${transitionMs}ms`,
+        ["--ball-travel-ms" as string]: `${transitionMs}ms`,
       }}
     >
-      {children}
+      <div key={ballKey} className="bf-ball-core">
+        {children}
+      </div>
     </div>
   );
 }
@@ -90,15 +99,15 @@ export function CardOverlay() {
 export function EventFeed() {
   const s = useLiveState();
   return (
-    <ul className="event-feed">
+    <ul className="event-feed grid gap-2">
       {s.feed.map((ev) => (
         <li
           key={ev.id}
-          className={`ev ${ev.type}${ev.cardKind ? ` ${ev.cardKind}` : ""}`}
+          className={`ev grid min-h-10 grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-3 py-2 ${ev.type}${ev.cardKind ? ` ${ev.cardKind}` : ""}`}
         >
-          <span className="ev-min">{Math.min(ev.minute, 90)}'</span>
-          <span className="ev-tx">{ev.text}</span>
-          {ev.pos ? <span className="ev-pos">{ev.pos}</span> : null}
+          <span className="ev-min font-display text-xs font-black text-pebol-muted">{Math.min(ev.minute, 90)}'</span>
+          <span className="ev-tx min-w-0 text-sm font-semibold">{ev.text}</span>
+          {ev.pos ? <span className="ev-pos font-display text-xs font-black uppercase text-pebol-muted">{ev.pos}</span> : null}
         </li>
       ))}
     </ul>
@@ -110,9 +119,9 @@ export function ScoreboardGoals({ side }: { side: "you" | "opp" }) {
   const s = useLiveState();
   const goals = s.goals.filter((g) => g.side === side);
   return (
-    <ul className={`sb-goals ${side}${goals.length === 0 ? " empty" : ""}`}>
+    <ul className={`sb-goals ${side}${goals.length === 0 ? " empty" : ""} grid gap-1`}>
       {goals.map((g) => (
-        <li key={g.id}>
+        <li key={g.id} className="min-w-0">
           <span className="sbg-min">{g.minute}'</span>
           <span className="sbg-scorer">{g.scorer}</span>
           {g.assister ? <span className="sbg-assist">({g.assister})</span> : null}
@@ -125,7 +134,7 @@ export function ScoreboardGoals({ side }: { side: "you" | "opp" }) {
 function KickRow({ kick }: { kick: { id: number; taker: string; scored: boolean; pending: boolean } }) {
   const cls = kick.pending ? "pending" : kick.scored ? "made" : "missed";
   return (
-    <li className={`pen-kick ${cls}`}>
+    <li className={`pen-kick ${cls} grid min-h-10 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-3 py-2`}>
       <span className="pen-mark" aria-hidden="true" />
       <strong>{kick.taker}</strong>
       <span className="pen-result">
@@ -300,15 +309,15 @@ function ReserveItem({
   return (
     <li>
       <button
-        className={`reserve-option ${item.selected ? "selected" : ""}`.trim()}
+        className={`reserve-option grid min-h-10 w-full grid-cols-[minmax(4.5rem,auto)_minmax(0,1fr)_minmax(0,.8fr)_2.5rem] items-center gap-2 rounded-lg border px-3 py-2 text-left ${item.selected ? "selected" : ""}`.trim()}
         disabled={item.disabled}
         onClick={() => onClick(item.name)}
       >
         <span className={`pl-pos pos-${item.posGroup}`} title={item.posText}>
           {item.posText}
         </span>
-        <span className="pl-name">{item.name}</span>
-        <span className="pl-team">{item.teamLabel}</span>
+        <span className="pl-name min-w-0 truncate">{item.name}</span>
+        <span className="pl-team min-w-0 truncate">{item.teamLabel}</span>
         {item.disabled && !item.selected ? null : null}
         {item.rating ? (
           <span className={`pl-rt ${item.disabled ? "hidden" : ""}`.trim()}>
@@ -342,7 +351,7 @@ export function HalftimePanel({
         callbacks.onBackgroundClick();
       }}
     >
-      <div className="halftime-card">
+      <div className="halftime-card max-h-[92vh] overflow-auto rounded-lg">
         <div className="section-head">
           <div>
             <span className="half-kicker">Intervalo</span>
@@ -350,7 +359,7 @@ export function HalftimePanel({
           </div>
           <span>{h.subCountLabel}</span>
         </div>
-        <div className="half-controls">
+        <div className="half-controls grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <label>
             Formação
             <select
@@ -399,8 +408,8 @@ export function HalftimePanel({
         {h.focusBanner ? (
           <TacticBanner kind={h.focusBanner.kind}>{h.focusBanner.text}</TacticBanner>
         ) : null}
-        <div className="halftime-squad">
-          <div className="half-field-box">
+        <div className="halftime-squad grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,.9fr)]">
+          <div className="half-field-box min-w-0 rounded-lg">
             <div className={`half-pitch ${h.locked ? "locked" : ""}`.trim()}>
               <Pitch
                 slots={h.pitchSlots}
@@ -413,9 +422,9 @@ export function HalftimePanel({
             </div>
             <p className="sub-status">{h.subStatus}</p>
           </div>
-          <div className="half-reserve-box">
+          <div className="half-reserve-box min-w-0 rounded-lg">
             <span className="half-box-title">Reservas disponíveis</span>
-            <ul className="reserve-list">
+            <ul className="reserve-list grid gap-2">
               {h.reserves.map((r) => (
                 <ReserveItem key={r.name} item={r} onClick={callbacks.onReserveClick} />
               ))}

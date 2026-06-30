@@ -9,7 +9,7 @@ export function TacticBanner({
   kind: BannerKind;
   children: ReactNode;
 }) {
-  return <div className={`tactic-banner ${kind}`}>{children}</div>;
+  return <div className={`tactic-banner ${kind} text-center`}>{children}</div>;
 }
 
 export interface BannerSpec {

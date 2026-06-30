@@ -40,6 +40,9 @@ const categories: Array<{
   },
 ];
 
+const feedbackFieldClass =
+  "mb-4 block w-full rounded-xl border border-white/10 bg-black/25 px-3 py-2 font-body text-sm font-semibold text-pebol-text outline-none transition-all duration-300 placeholder:text-pebol-faint focus:border-pebol-accent/60 focus:ring-2 focus:ring-pebol-accent/15";
+
 export function FeedbackPage({
   account,
   onBack,
@@ -76,7 +79,7 @@ export function FeedbackPage({
 
   return (
     <motion.div
-      className="min-h-screen bg-stadium-depth px-4 py-6 font-body text-pebol-text"
+      className="min-h-screen px-4 py-6 font-body text-pebol-text"
       initial={{ opacity: 0, y: 12 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.22 }}
@@ -93,9 +96,6 @@ export function FeedbackPage({
             Use este espaço para mandar sugestões, reportar problemas de interface
             ou comentar sobre balanceamento. O feedback fica salvo junto da sua conta
             para eu conseguir acompanhar o contexto.
-          </p>
-          <p className="mt-3 text-sm font-semibold leading-6 text-pebol-muted">
-            Cada conta pode enviar até 3 feedbacks.
           </p>
           <div className="mt-6 rounded-2xl border border-white/10 bg-white/[0.045] p-4">
             <strong className="font-display text-sm font-extrabold uppercase tracking-[0.12em] text-pebol-gold">
@@ -117,7 +117,7 @@ export function FeedbackPage({
         </div>
 
         <form
-          className="feedback-form overflow-hidden rounded-2xl border border-white/10 bg-pebol-panel p-5 shadow-premium backdrop-blur-xl"
+          className="overflow-hidden rounded-2xl border border-white/10 bg-pebol-panel p-5 shadow-premium backdrop-blur-xl"
           onSubmit={submit}
         >
           {!account ? (
@@ -167,7 +167,7 @@ export function FeedbackPage({
               <label htmlFor="feedback-message">Mensagem</label>
               <textarea
                 id="feedback-message"
-                className="feedback-textarea min-h-48 resize-y rounded-xl"
+                className={`${feedbackFieldClass} min-h-48 resize-y`}
                 maxLength={2400}
                 placeholder="Conte o que você percebeu, onde aconteceu e o que esperava que fosse diferente."
                 value={message}
@@ -180,7 +180,7 @@ export function FeedbackPage({
               <label htmlFor="feedback-contact">Contato opcional</label>
               <input
                 id="feedback-contact"
-                className="feedback-input rounded-xl"
+                className={feedbackFieldClass}
                 maxLength={180}
                 placeholder="Discord, e-mail ou outro contato se quiser retorno"
                 value={contact}
@@ -212,4 +212,3 @@ export function FeedbackPage({
     </motion.div>
   );
 }
-

@@ -21,6 +21,7 @@ import {
   ready,
   readyPreMatch,
   pick,
+  repositionPick,
   rerollTeam,
   readyHalftime,
   rematch,
@@ -90,7 +91,7 @@ function driveAI(code: string) {
     if (!r || !isAITurn(r)) return;
     aiPick(r);
     broadcast(code);
-    driveAI(code); // caso a IA tenha turnos consecutivos
+    driveAI(code); // if the multiple picks in a row
   }, 3000);
 }
 
@@ -193,6 +194,16 @@ io.on("connection", (socket) => {
     }
     broadcast(room.code);
     driveAI(room.code); // after the human, let the AI take its turn
+  });
+
+  socket.on("repositionPick", (data: { fromSlotId: string; toSlotId: string }) => {
+    const room = findRoomBySocket(socket.id);
+    if (!room) return;
+    const player = room.players.find((p) => p.socketId === socket.id);
+    if (!player) return;
+    const err = repositionPick(room, player.id, data.fromSlotId, data.toSlotId);
+    if (err) socket.emit("errorMsg", err);
+    broadcast(room.code);
   });
 
   socket.on("rerollTeam", () => {

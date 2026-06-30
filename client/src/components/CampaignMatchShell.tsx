@@ -43,7 +43,7 @@ export function CampaignMatchShell({
   const [speed, setSpeed] = useState(activeSpeed);
   return (
     <motion.div
-      className="screen live cup-match"
+      className="live live-shell cup-match min-h-screen bg-transparent font-body text-pebol-text"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}

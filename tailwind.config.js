@@ -27,8 +27,14 @@ export default {
         glow: "var(--shadow-glow)",
         goldGlow: "var(--shadow-gold-glow)",
       },
+      borderRadius: {
+        pebol: "0.5rem",
+      },
       backgroundImage: {
         "stadium-depth": "var(--app-background)",
+        glass: "linear-gradient(180deg, rgb(255 255 255 / 0.075), rgb(255 255 255 / 0.035))",
+        "accent-gold":
+          "linear-gradient(135deg, rgb(var(--color-pebol-accent)), rgb(var(--color-pebol-gold)))",
         "pitch-lines":
           "linear-gradient(var(--pitch-line) 1px, transparent 1px), linear-gradient(90deg, var(--pitch-line-soft) 1px, transparent 1px)",
       },

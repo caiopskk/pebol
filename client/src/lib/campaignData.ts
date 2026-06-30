@@ -111,7 +111,7 @@ export function knockoutBracketData(c: CampaignState): BracketRoundData[] {
     const state: BracketRoundData["state"] =
       idx < currentIdx ? "done" : idx === currentIdx ? "next" : "";
     const oppLabel =
-      idx === currentIdx && opp
+      opp && idx <= currentIdx
         ? `${opp.name}${opp.season ? ` ${opp.season}` : ""}`
         : idx < currentIdx
           ? "fase concluída"

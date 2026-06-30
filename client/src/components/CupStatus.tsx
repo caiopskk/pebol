@@ -17,13 +17,26 @@ const PROGRESS_LABELS = ["G1", "G2", "G3", "32", "16", "QF", "SF", "F"];
 
 export function CupProgress({ won }: CupProgressProps) {
   return (
-    <div className="cup-progress">
+    <div className="my-2 flex flex-wrap justify-center gap-2">
       {PROGRESS_LABELS.map((label, i) => (
         <span
           key={label}
-          className={`cup-cell ${i < won ? "done" : ""} ${i === won ? "next" : ""}`}
+          className={`grid h-9 w-9 place-items-center rounded-lg border font-display text-sm font-black ${
+            i < won
+              ? "border-transparent bg-gradient-to-br from-pebol-accent to-pebol-accent2 text-black"
+              : i === won
+                ? "border-pebol-gold text-pebol-gold shadow-[0_0_0_1px_var(--gold)]"
+                : "border-white/10 bg-white/[0.05] text-pebol-faint"
+          }`}
         >
-          {i < won ? <span className="cup-cell-mark" aria-hidden="true" /> : label}
+          {i < won ? (
+            <span
+              className="h-3.5 w-3.5 rounded-full bg-black/85 shadow-[inset_0_0_0_.28rem_var(--accent),0_0_0_1px_rgba(4,19,12,.22)]"
+              aria-hidden="true"
+            />
+          ) : (
+            label
+          )}
         </span>
       ))}
     </div>
@@ -37,47 +50,75 @@ export interface GroupTableProps {
 
 export function GroupTable({ rows, status }: GroupTableProps) {
   return (
-    <section className="cup-status cup-group-status">
-      <div className="section-head compact">
-        <h3>Grupo A</h3>
-        <span>{status}</span>
+    <section className="rounded-lg border border-white/10 bg-pebol-panel/90 p-4 shadow-premium backdrop-blur-xl">
+      <div className="mb-3 flex items-end justify-between gap-3">
+        <h3 className="font-display text-base font-black text-white">Grupo A</h3>
+        <span className="text-right text-xs font-black text-pebol-muted">{status}</span>
       </div>
-      <table className="cup-table">
-        <thead>
-          <tr>
-            <th>#</th>
-            <th>Time</th>
-            <th>J</th>
-            <th>Pts</th>
-            <th>SG</th>
-            <th>GP</th>
-          </tr>
-        </thead>
-        <tbody>
-          {rows.map((row, idx) => (
-            <tr
-              key={row.id}
-              className={`${row.id === "you" ? "you" : ""} ${idx < 2 ? "qualify" : ""}`.trim()}
-            >
-              <td>
-                <span className="cup-pos-dot">{idx + 1}</span>
-              </td>
-              <td>{row.name}</td>
-              <td>{row.played}</td>
-              <td>
-                <strong>{row.points}</strong>
-              </td>
-              <td>
-                {row.goalDiff >= 0 ? "+" : ""}
-                {row.goalDiff}
-              </td>
-              <td>{row.gf}</td>
+      <div className="overflow-x-auto">
+        <table className="w-full min-w-full border-collapse text-sm">
+          <thead>
+            <tr className="border-b border-white/10">
+              <th className="w-12 px-2 py-2 text-center font-display text-[0.68rem] font-black uppercase tracking-[0.08em] text-pebol-muted sm:w-14 sm:px-3">
+                #
+              </th>
+              <th className="px-2 py-2 text-left font-display text-[0.68rem] font-black uppercase tracking-[0.08em] text-pebol-muted sm:px-3">
+                Time
+              </th>
+              <th className="px-2 py-2 text-center font-display text-[0.68rem] font-black uppercase tracking-[0.08em] text-pebol-muted sm:px-3">
+                J
+              </th>
+              <th className="px-2 py-2 text-center font-display text-[0.68rem] font-black uppercase tracking-[0.08em] text-pebol-muted sm:px-3">
+                Pts
+              </th>
+              <th className="px-2 py-2 text-center font-display text-[0.68rem] font-black uppercase tracking-[0.08em] text-pebol-muted sm:px-3">
+                SG
+              </th>
+              <th className="px-2 py-2 text-center font-display text-[0.68rem] font-black uppercase tracking-[0.08em] text-pebol-muted sm:px-3">
+                GP
+              </th>
             </tr>
-          ))}
-        </tbody>
-      </table>
-      <div className="cup-group-legend">
-        <span className="cup-zone-chip qualify" />
+          </thead>
+          <tbody>
+            {rows.map((row, idx) => {
+              const isYou = row.id === "you";
+              const qualifies = idx < 2;
+              return (
+                <tr
+                  key={row.id}
+                  className={`border-b border-white/10 last:border-b-0 ${
+                    isYou ? "bg-pebol-accent/14 shadow-[inset_3px_0_0_var(--accent)]" : ""
+                  } ${qualifies ? "text-white" : "text-pebol-soft"}`}
+                >
+                  <td className="px-2 py-4 text-center sm:px-3">
+                    <span
+                      className={`inline-grid h-6 w-6 place-items-center rounded-full text-xs font-black ${
+                        qualifies
+                          ? "bg-pebol-accent/18 text-pebol-accent"
+                          : "bg-white/10 text-pebol-soft"
+                      }`}
+                    >
+                      {idx + 1}
+                    </span>
+                  </td>
+                  <td className="px-2 py-4 font-black sm:px-3">{row.name}</td>
+                  <td className="px-2 py-4 text-center font-bold sm:px-3">{row.played}</td>
+                  <td className="px-2 py-4 text-center sm:px-3">
+                    <strong>{row.points}</strong>
+                  </td>
+                  <td className="px-2 py-4 text-center font-bold sm:px-3">
+                    {row.goalDiff >= 0 ? "+" : ""}
+                    {row.goalDiff}
+                  </td>
+                  <td className="px-2 py-4 text-center font-bold sm:px-3">{row.gf}</td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      <div className="mt-3 flex items-center gap-2 text-xs font-semibold text-pebol-muted">
+        <span className="h-3 w-3 shrink-0 rounded-[3px] border border-pebol-accent bg-pebol-accent/15" />
         Os 2 primeiros avançam às oitavas; melhores terceiros também.
       </div>
     </section>
@@ -94,31 +135,63 @@ export interface BracketRoundData {
 export function KnockoutBracket({ rounds }: { rounds: BracketRoundData[] }) {
   const champion = rounds.every((r) => r.state === "done");
   return (
-    <section className="cup-status cup-bracket-status">
-      <div className="section-head compact">
-        <h3>Chaveamento</h3>
-        <span>Mata-mata</span>
+    <section className="rounded-lg border border-white/10 bg-pebol-panel/90 p-4 shadow-premium backdrop-blur-xl">
+      <div className="mb-3 flex items-end justify-between gap-3">
+        <h3 className="font-display text-base font-black text-white">Chaveamento</h3>
+        <span className="text-right text-xs font-black text-pebol-muted">Mata-mata</span>
       </div>
-      <ol className="cup-ladder">
+      <ol className="grid gap-2">
         {rounds.map((r) => (
-          <li key={r.label} className={`ladder-node ${r.state}`.trim()}>
-            <span className="ladder-mark" aria-hidden="true" />
-            <div className="ladder-card">
-              <span className="ladder-round">{r.label}</span>
-              <div className="ladder-match">
-                <strong className="ladder-you">Seu time</strong>
-                <span className="ladder-vs">{r.showVs ? "vs" : ""}</span>
-                <em className="ladder-opp">{r.oppLabel}</em>
+          <li key={r.label} className="grid grid-cols-[1.15rem_minmax(0,1fr)] gap-2">
+            <span
+              className={`mt-5 h-3 w-3 rounded-full border ${
+                r.state === "done"
+                  ? "border-pebol-accent bg-pebol-accent shadow-[0_0_0_4px_rgba(0,255,136,.10)]"
+                  : r.state === "next"
+                    ? "border-pebol-gold bg-pebol-gold shadow-[0_0_0_4px_rgba(255,211,67,.10)]"
+                    : "border-white/20 bg-white/10"
+              }`}
+              aria-hidden="true"
+            />
+            <div
+              className={`rounded-lg border border-l-2 bg-black/20 p-3 ${
+                r.state === "done"
+                  ? "border-white/10 border-l-pebol-accent"
+                  : r.state === "next"
+                    ? "border-pebol-gold/55 border-l-pebol-gold"
+                    : "border-white/10 border-l-white/20"
+              }`}
+            >
+              <span className="font-display text-[0.68rem] font-black uppercase tracking-[0.08em] text-pebol-muted">
+                {r.label}
+              </span>
+              <div className="mt-1 flex min-w-0 flex-wrap items-baseline gap-x-2 gap-y-1 text-sm">
+                <strong className="text-white">Seu time</strong>
+                <span className="font-display text-xs font-black uppercase text-pebol-gold">{r.showVs ? "vs" : ""}</span>
+                <em className="not-italic text-pebol-soft">{r.oppLabel}</em>
               </div>
             </div>
           </li>
         ))}
-        <li className={`ladder-node trophy ${champion ? "done" : ""}`.trim()}>
-          <span className="ladder-mark" aria-hidden="true" />
-          <div className="ladder-card ladder-final">
-            <span className="ladder-round">Título</span>
-            <div className="ladder-match">
-              <strong className="ladder-you">Campeão do Mundo</strong>
+        <li className="grid grid-cols-[1.15rem_minmax(0,1fr)] gap-2">
+          <span
+            className={`mt-5 h-3 w-3 rounded-full border ${
+              champion
+                ? "border-pebol-accent bg-pebol-accent shadow-[0_0_0_4px_rgba(0,255,136,.10)]"
+                : "border-pebol-gold bg-pebol-gold shadow-[0_0_0_4px_rgba(255,211,67,.10)]"
+            }`}
+            aria-hidden="true"
+          />
+          <div
+            className={`rounded-lg border border-l-2 bg-black/20 p-3 ${
+              champion ? "border-white/10 border-l-pebol-accent" : "border-pebol-gold/55 border-l-pebol-gold"
+            }`}
+          >
+            <span className="font-display text-[0.68rem] font-black uppercase tracking-[0.08em] text-pebol-gold">
+              Título
+            </span>
+            <div className="mt-1 text-sm">
+              <strong className="text-white">Campeão do Mundo</strong>
             </div>
           </div>
         </li>
@@ -185,14 +258,35 @@ export interface CampaignSquadRow {
   hideRating: boolean;
 }
 
-export function CampaignSquadRows({ rows }: { rows: CampaignSquadRow[] }) {
+export function CampaignSquadRows({
+  rows,
+  compact = false,
+}: {
+  rows: CampaignSquadRow[];
+  compact?: boolean;
+}) {
   return (
-    <ol className="cup-squad-list">
+    <ol className={`grid ${compact ? "grid-cols-2 gap-1" : "gap-1.5"}`}>
       {rows.map((r) => (
-        <li key={r.slotId} className={r.name ? "filled" : "empty"}>
-          <span>{r.pos}</span>
-          <strong>{r.name ?? "--"}</strong>
-          <em>{r.name ? (r.hideRating ? "??" : r.rating) : "--"}</em>
+        <li
+          key={r.slotId}
+          className={`grid items-center rounded-lg border border-l-2 bg-black/20 ${
+            compact ? "grid-cols-[1.8rem_minmax(0,1fr)_1.8rem] gap-1" : "grid-cols-[2.25rem_minmax(0,1fr)_2.5rem] gap-2"
+          } ${
+            compact ? "min-h-7 px-2.5 py-1.5" : "min-h-9 px-3 py-2"
+          } ${
+            r.name ? "border-white/10 border-l-pebol-gold/75" : "border-white/10 border-l-white/20"
+          }`}
+        >
+          <span className={`font-display font-black uppercase text-pebol-muted ${compact ? "text-[0.62rem]" : "text-xs tracking-[0.08em]"}`}>
+            {r.pos}
+          </span>
+          <strong className={`min-w-0 truncate font-black text-white ${compact ? "text-xs" : "text-sm"}`}>
+            {r.name ?? "--"}
+          </strong>
+          <em className={`text-right font-black not-italic text-pebol-gold ${compact ? "text-xs" : "text-sm"}`}>
+            {r.name ? (r.hideRating ? "??" : r.rating) : "--"}
+          </em>
         </li>
       ))}
     </ol>

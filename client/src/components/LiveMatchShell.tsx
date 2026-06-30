@@ -52,25 +52,25 @@ export function LiveMatchShell({
   const [speed, setSpeed] = useState(activeSpeed);
   return (
     <motion.div
-      className="screen live"
+      className="live live-shell min-h-screen bg-transparent font-body text-pebol-text"
       initial={{ opacity: 0 }}
       animate={{ opacity: 1 }}
       transition={{ duration: 0.2 }}
     >
-      <div className="live-stage stacked">
-        <div className="live-topbar">
-          <div className="live-sub">
+      <div className="live-stage stacked grid gap-3 rounded-lg">
+        <div className="live-topbar flex flex-wrap items-center justify-between gap-3">
+          <div className="live-sub flex min-w-0 items-center gap-2">
             <span className="sb-leg"><HalfLabel /></span>
             <span className="agg-mini"><PenaltyLabel /></span>
           </div>
-          <div className="speed-row">
+          <div className="speed-row flex flex-wrap items-center justify-end gap-2">
             <span className="spd-label">Velocidade</span>
-            <div className="speed-control" role="group" aria-label="Velocidade da partida">
+            <div className="speed-control flex items-center gap-1.5" role="group" aria-label="Velocidade da partida">
               {speedOptions.map((s) => (
                 <button
                   key={s}
                   type="button"
-                  className={`spd ${s === speed ? "active" : ""}`}
+                  className={`spd grid h-9 min-w-10 place-items-center rounded-lg border px-2 font-display text-xs font-black transition-all duration-200 ${s === speed ? "active" : ""}`}
                   data-spd={s}
                   onClick={() => {
                     setSpeed(s);
@@ -87,7 +87,7 @@ export function LiveMatchShell({
               </span>
             )}
             {showPause ? <PauseButton onToggle={onTogglePause} /> : null}
-            <button type="button" className="ghost skip" onClick={onSkip}>
+            <button type="button" className="ghost skip min-h-9 rounded-lg" onClick={onSkip}>
               Pular
             </button>
           </div>
@@ -98,15 +98,15 @@ export function LiveMatchShell({
           initial={{ opacity: 0, y: 12 }}
           animate={{ opacity: 1, y: 0 }}
         >
-          <div className="scoreboard">
-            <div className="sb-team">
-              <div className="sb-team-top">
+          <div className="scoreboard grid min-w-0 gap-3 rounded-lg md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
+            <div className="sb-team min-w-0">
+              <div className="sb-team-top flex min-w-0 items-center gap-2">
                 <TeamBadge teamName={youName} initials={youInitials} variant="you" />
-                <span className="sb-name">{youName}</span>
+                <span className="sb-name min-w-0 truncate">{youName}</span>
               </div>
               <ScoreboardGoals side="you" />
             </div>
-            <div className="sb-center">
+            <div className="sb-center text-center">
               <div className="sb-score">
                 <ScoreNumber side="left" />
                 <span className="sb-sep">:</span>
@@ -116,9 +116,9 @@ export function LiveMatchShell({
                 <ClockMinute />'
               </div>
             </div>
-            <div className="sb-team right">
-              <div className="sb-team-top">
-                <span className="sb-name">{opponentName}</span>
+            <div className="sb-team right min-w-0">
+              <div className="sb-team-top flex min-w-0 items-center justify-end gap-2">
+                <span className="sb-name min-w-0 truncate">{opponentName}</span>
                 <TeamBadge teamName={opponentName} initials={opponentInitials} variant="opp" />
               </div>
               <ScoreboardGoals side="opp" />
@@ -128,13 +128,13 @@ export function LiveMatchShell({
           <CardOverlay />
         </motion.div>
 
-        <div className="live-main">
+        <div className="live-main grid gap-3 xl:grid-cols-[minmax(0,1.12fr)_minmax(18rem,.88fr)] xl:items-stretch">
           <motion.div
-            className="live-field-col"
+            className="live-field-col min-w-0"
             initial={{ opacity: 0, x: -14 }}
             animate={{ opacity: 1, x: 0 }}
           >
-            <div className="ballfield">
+            <div className="ballfield overflow-hidden rounded-lg">
               <BallFieldSvg />
               <BallSprite>
                 <SoccerBallSvg />
@@ -142,7 +142,7 @@ export function LiveMatchShell({
             </div>
           </motion.div>
           <motion.div
-            className="live-feed-col"
+            className="live-feed-col min-w-0"
             initial={{ opacity: 0, x: 14 }}
             animate={{ opacity: 1, x: 0 }}
           >

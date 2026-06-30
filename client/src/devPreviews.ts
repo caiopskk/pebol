@@ -1,8 +1,15 @@
 export const DEV_PREVIEWS = [
   { kind: "cup-setup", label: "Copa setup", hash: "#preview-cup-setup" },
   { kind: "cup-draft", label: "Copa draft", hash: "#preview-cup-draft" },
+  { kind: "pvp-draft", label: "PvP draft", hash: "#preview-pvp-draft" },
   { kind: "cup-prematch", label: "Pré-jogo", hash: "#preview-cup-prematch" },
+  {
+    kind: "cup-prematch-ko",
+    label: "Pré mata-mata",
+    hash: "#preview-cup-prematch-ko",
+  },
   { kind: "cup-match", label: "Jogo", hash: "#preview-cup-match" },
+  { kind: "pvp-result", label: "Final PvP", hash: "#preview-pvp-result" },
   { kind: "cup-victory", label: "Vitória", hash: "#preview-cup-victory" },
   { kind: "cup-gameover", label: "Derrota", hash: "#preview-cup-gameover" },
   { kind: "penalty-modal", label: "Pênaltis", hash: "#preview-penalty-modal" },

@@ -36,13 +36,13 @@ const cardMotion = {
 const glass =
   "border border-white/10 bg-pebol-panel shadow-premium backdrop-blur-xl";
 const panel =
-  `${glass} relative overflow-hidden rounded-2xl transition-all duration-300 ease-out`;
+  `${glass} relative overflow-hidden rounded-lg transition-all duration-300 ease-out`;
 const heading =
-  "font-display text-xl font-extrabold uppercase tracking-[0.015em] text-pebol-text";
+  "font-display text-lg font-extrabold uppercase tracking-[0.015em] text-pebol-text";
 const primaryAction =
-  "relative isolate min-h-12 w-full overflow-hidden rounded-xl border border-pebol-accent/40 bg-gradient-to-r from-pebol-accent via-emerald-300 to-pebol-gold px-5 py-3 font-display text-sm font-extrabold uppercase tracking-[0.07em] text-black shadow-glow transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_0_42px_rgba(0,255,135,.38)] active:translate-y-0";
+  "pebol-glow-button pebol-glow-fill relative isolate min-h-10 w-full rounded-lg border-0 bg-gradient-to-r from-pebol-accent via-emerald-300 to-pebol-gold px-4 py-2.5 font-display text-sm font-extrabold uppercase tracking-[0.07em] text-black shadow-glow transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_0_42px_rgba(0,255,135,.38)] active:translate-y-0";
 const secondaryAction =
-  "min-h-11 rounded-xl border border-white/10 bg-white/[0.055] px-4 py-2 font-display text-sm font-bold text-slate-200 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:border-pebol-blue/50 hover:bg-pebol-blue/15";
+  "pebol-glow-button min-h-10 rounded-lg border-0 bg-white/[0.055] px-3 py-2 font-display text-sm font-bold text-slate-200 transition-all duration-300 ease-out hover:-translate-y-0.5 hover:bg-pebol-blue/15";
 
 type RoomPool = "clubs" | "worldcup";
 type RoomRule = "classico" | "hardcore";
@@ -137,9 +137,9 @@ function AccountProfile({
     >
       {account ? (
         <>
-          <div className={`${panel} flex min-w-0 items-center gap-4 p-4`}>
-            <div className="home-avatar-frame relative grid h-20 w-20 shrink-0 place-items-center rounded-2xl border border-pebol-accent/40 bg-gradient-to-br from-pebol-accent/25 via-pebol-blue/15 to-black shadow-glow">
-              <span className="home-avatar-initials font-display text-2xl font-extrabold text-white">
+          <div className={`${panel} flex min-w-0 items-center gap-3 p-3`}>
+            <div className="home-avatar-frame relative grid h-16 w-16 shrink-0 place-items-center rounded-lg border border-pebol-accent/40 bg-gradient-to-br from-pebol-accent/25 via-pebol-blue/15 to-black shadow-glow">
+              <span className="home-avatar-initials font-display text-xl font-extrabold text-white">
                 {initials(account.username)}
               </span>
               <em className="home-level-badge absolute -bottom-2 rounded-full border border-pebol-gold/50 bg-black px-2 py-0.5 font-display text-[0.65rem] font-bold not-italic text-pebol-gold">
@@ -150,13 +150,13 @@ function AccountProfile({
               <span className="font-display text-xs font-extrabold uppercase tracking-[0.14em] text-pebol-accent">
                 Conta conectada
               </span>
-              <strong className="mt-1 block truncate font-display text-2xl font-extrabold text-white">
+              <strong className="mt-0.5 block truncate font-display text-xl font-extrabold text-white">
                 {account.username}
               </strong>
               <span className="block text-sm font-semibold text-pebol-muted">
                 {account.role === "admin" ? "Administrador" : "Usuário"} · {title}
               </span>
-              <div className="mt-3">
+              <div className="mt-2">
                 <div className="mb-1 flex items-center justify-between gap-3 text-xs font-medium text-slate-300">
                   <span>XP da temporada</span>
                   <strong className="font-display font-semibold text-pebol-gold">
@@ -225,19 +225,16 @@ function RoomPanel({
   submitJoin: (event: FormEvent<HTMLFormElement>) => void;
 }) {
   return (
-    <motion.section variants={cardMotion} className={`${panel} p-5`}>
-      <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_12%,rgba(0,255,135,.14),transparent_34%),radial-gradient(circle_at_20%_90%,rgba(58,134,212,.16),transparent_36%)]" />
+    <motion.section variants={cardMotion} className={`${panel} p-4`}>
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_12%,rgba(0,255,135,.14),transparent_34%),radial-gradient(circle_at_20%_90%,rgba(255,206,84,.12),transparent_36%)]" />
       <div className="relative">
-        <div className="grid grid-cols-2 rounded-xl border border-white/10 bg-black/25 p-1">
+        <div className={`home-tab-control ${roomTab === "join" ? "is-join" : "is-create"}`}>
+          <span className="home-tab-indicator" aria-hidden="true" />
           {(["create", "join"] as const).map((tab) => (
             <button
               key={tab}
               type="button"
-              className={`rounded-lg px-3 py-2 font-display text-sm font-extrabold uppercase tracking-[0.06em] transition-all duration-300 ease-out ${
-                roomTab === tab
-                  ? "bg-pebol-accent text-black shadow-glow"
-                  : "text-pebol-muted hover:bg-white/5 hover:text-white"
-              }`}
+              className={`home-tab-label ${roomTab === tab ? "active" : ""}`}
               onClick={() => setRoomTab(tab)}
             >
               {tab === "create" ? "Criar sala" : "Entrar"}
@@ -245,32 +242,32 @@ function RoomPanel({
           ))}
         </div>
 
-        <div className="mt-5 grid">
+        <div className="mt-4 grid">
           <form className={`col-start-1 row-start-1 ${roomTab === "create" ? "" : "pointer-events-none invisible opacity-0"}`} onSubmit={submitCreate}>
             <label htmlFor="c-name">Seu nome</label>
             <input ref={createNameRef} id="c-name" name="name" maxLength={20} placeholder="Insira seu nome" defaultValue={savedName} className="rounded-xl" />
             <label>Tipo de elenco</label>
-            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <div className="mb-3 grid gap-2 sm:grid-cols-2">
               {(["clubs", "worldcup"] as RoomPool[]).map((pool) => {
                 return (
                   <button
                     key={pool}
                     type="button"
                     title={poolCopy[pool].title}
-                    className={`group rounded-2xl border p-3 text-left transition-all duration-300 ease-out ${
+                    className={`group rounded-lg border p-2.5 text-left transition-all duration-300 ease-out ${
                       selectedPool === pool
-                        ? "border-pebol-accent bg-pebol-accent/15 shadow-glow"
+                        ? "home-choice-active border-pebol-accent bg-pebol-accent/15 shadow-glow"
                         : "border-white/10 bg-white/[0.045] hover:-translate-y-1 hover:border-pebol-blue/50 hover:bg-pebol-blue/10"
                     }`}
                     onClick={() => setSelectedPool(pool)}
                   >
-                    <span className="mb-3 grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-black/30 font-display text-xs font-bold text-pebol-gold">
+                    <span className="mb-2 grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-black/30 font-display text-xs font-bold text-pebol-gold">
                       {poolCopy[pool].badge}
                     </span>
                     <small className="font-display text-[0.65rem] font-extrabold uppercase tracking-[0.11em] text-pebol-muted">
                       {poolCopy[pool].eyebrow}
                     </small>
-                    <strong className="block font-display text-lg font-extrabold text-white">
+                    <strong className="block font-display text-base font-extrabold text-white">
                       {poolCopy[pool].title}
                     </strong>
                     <span className="mt-1 block text-xs font-semibold leading-snug text-pebol-muted">
@@ -281,7 +278,7 @@ function RoomPanel({
               })}
             </div>
             <label>Modo de jogo</label>
-            <div className="mb-4 grid gap-3 sm:grid-cols-2">
+            <div className="mb-3 grid gap-2 sm:grid-cols-2">
               {(["classico", "hardcore"] as RoomRule[]).map((rule) => {
                 const locked = rule === "hardcore" && !hardcoreUnlocked;
                 return (
@@ -290,22 +287,22 @@ function RoomPanel({
                     type="button"
                     disabled={locked}
                     title={locked ? hardcoreLockText : ruleCopy[rule].title}
-                    className={`group rounded-2xl border p-3 text-left transition-all duration-300 ease-out ${
+                    className={`group rounded-lg border p-2.5 text-left transition-all duration-300 ease-out ${
                       selectedRule === rule
-                        ? "border-pebol-accent bg-pebol-accent/15 shadow-glow"
+                        ? "home-choice-active border-pebol-accent bg-pebol-accent/15 shadow-glow"
                         : "border-white/10 bg-white/[0.045] hover:-translate-y-1 hover:border-pebol-blue/50 hover:bg-pebol-blue/10"
                     } ${locked ? "cursor-not-allowed opacity-50" : ""}`}
                     onClick={() => {
                       if (!locked) setSelectedRule(rule);
                     }}
                   >
-                    <span className="mb-3 grid h-9 w-9 place-items-center rounded-xl border border-white/10 bg-black/30 font-display text-xs font-bold text-pebol-gold">
+                    <span className="mb-2 grid h-8 w-8 place-items-center rounded-lg border border-white/10 bg-black/30 font-display text-xs font-bold text-pebol-gold">
                       {ruleCopy[rule].badge}
                     </span>
                     <small className="font-display text-[0.65rem] font-extrabold uppercase tracking-[0.11em] text-pebol-muted">
                       {ruleCopy[rule].eyebrow}
                     </small>
-                    <strong className="block font-display text-lg font-extrabold text-white">
+                    <strong className="block font-display text-base font-extrabold text-white">
                       {ruleCopy[rule].title}
                     </strong>
                     <span className="mt-1 block text-xs font-semibold leading-snug text-pebol-muted">
@@ -342,8 +339,8 @@ function SecondaryModes({ solo, onSoon }: { solo: () => void; onSoon: HomeProps[
     { id: undefined, icon: "LG", title: "Modo liga", sub: "Em breve", onClick: () => onSoon("liga") },
   ];
   return (
-    <motion.section variants={cardMotion} className={`${panel} p-4`}>
-      <div className="grid gap-3">
+    <motion.section variants={cardMotion} className={`${panel} p-3`}>
+      <div className="grid gap-2">
         {modes.map((mode) => (
           <motion.button
             key={mode.title}
@@ -351,10 +348,10 @@ function SecondaryModes({ solo, onSoon }: { solo: () => void; onSoon: HomeProps[
             whileHover={{ y: -3, x: 2 }}
             whileTap={{ scale: 0.985 }}
             type="button"
-            className="group flex items-center gap-3 rounded-2xl border border-white/10 bg-white/[0.045] p-3 text-left transition-all duration-300 ease-out hover:border-pebol-accent/45 hover:bg-pebol-accent/10 hover:shadow-glow"
+            className="group flex items-center gap-2.5 rounded-lg border border-white/10 bg-white/[0.045] p-2.5 text-left transition-all duration-300 ease-out hover:border-pebol-accent/45 hover:bg-pebol-accent/10 hover:shadow-glow"
             onClick={mode.onClick}
           >
-            <span className="grid h-11 w-11 shrink-0 place-items-center rounded-xl border border-white/10 bg-black/35 font-display text-xs font-bold text-pebol-accent transition-all duration-300 group-hover:border-pebol-accent/60 group-hover:bg-pebol-accent/15">
+            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-black/35 font-display text-xs font-bold text-pebol-accent transition-all duration-300 group-hover:border-pebol-accent/60 group-hover:bg-pebol-accent/15">
               {mode.icon}
             </span>
             <span className="min-w-0">
@@ -374,12 +371,12 @@ function SecondaryModes({ solo, onSoon }: { solo: () => void; onSoon: HomeProps[
 
 function WorldCupFeature({ onWorldCup }: { onWorldCup: () => void }) {
   return (
-    <motion.aside variants={cardMotion} whileHover={{ y: -3 }} className={`${panel} min-h-[18rem] p-6 pl-36`}>
+    <motion.aside variants={cardMotion} whileHover={{ y: -3 }} className={`${panel} min-h-[14rem] p-4 pl-28 sm:min-h-[15rem] sm:p-5 sm:pl-32`}>
       <div className="absolute inset-0 bg-pitch-lines bg-[length:44px_44px] opacity-25" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_48%,rgba(255,206,84,.28),transparent_32%),linear-gradient(135deg,rgba(58,134,212,.18),rgba(0,255,135,.08)_42%,rgba(0,0,0,.42))]" />
-      <div className="absolute left-5 top-1/2 h-44 w-28 -translate-y-1/2 rounded-full bg-pebol-gold/20 blur-3xl" />
+      <div className="absolute left-4 top-1/2 h-36 w-24 -translate-y-1/2 rounded-full bg-pebol-gold/20 blur-3xl" />
       <img
-        className="absolute left-2 top-1/2 z-10 h-48 w-32 -translate-y-1/2 object-contain drop-shadow-[0_28px_28px_rgba(255,206,84,.22)]"
+        className="absolute left-1 top-1/2 z-10 h-40 w-28 -translate-y-1/2 object-contain drop-shadow-[0_28px_28px_rgba(255,206,84,.22)] sm:h-44 sm:w-32"
         src="/world_cup_trophy.png"
         alt="Troféu da Copa do Mundo"
       />
@@ -387,18 +384,18 @@ function WorldCupFeature({ onWorldCup }: { onWorldCup: () => void }) {
         <span className="font-display text-xs font-extrabold uppercase tracking-[0.14em] text-pebol-gold">
           Modo solo
         </span>
-        <h2 className={`${heading} mt-2 text-3xl`}>Copa do Mundo</h2>
-        <p className="mt-2 max-w-md text-sm font-medium leading-6 text-slate-300">
+        <h2 className={`${heading} mt-1.5 text-2xl`}>Copa do Mundo</h2>
+        <p className="mt-1.5 max-w-md text-sm font-medium leading-5 text-slate-300">
           Monte uma seleção no draft, dispute a fase de grupos e avance pelo chaveamento de 32 times até a final.
         </p>
-        <ul className="mt-4 flex flex-wrap gap-2">
+        <ul className="mt-3 flex flex-wrap gap-1.5">
           {["48 seleções", "Grupo + mata-mata", "Campanha offline"].map((item) => (
             <li key={item} className="rounded-full border border-pebol-gold/25 bg-pebol-gold/10 px-3 py-1 font-display text-xs font-bold uppercase tracking-[0.05em] text-pebol-gold">
               {item}
             </li>
           ))}
         </ul>
-        <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.985 }} type="button" id="c-worldcup" className={`${primaryAction} mt-5 max-w-xs from-pebol-gold via-yellow-300 to-pebol-accent shadow-goldGlow`} onClick={onWorldCup}>
+        <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.985 }} type="button" id="c-worldcup" className={`${primaryAction} mt-3 max-w-xs from-pebol-gold via-yellow-300 to-pebol-accent shadow-goldGlow`} onClick={onWorldCup}>
           Jogar campanha
         </motion.button>
       </div>
@@ -411,7 +408,7 @@ function FeedbackCallout({ onOpenFeedback }: { onOpenFeedback: () => void }) {
     <motion.aside
       variants={cardMotion}
       whileHover={{ y: -2 }}
-      className={`${panel} p-4`}
+      className={`${panel} p-3.5`}
     >
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_90%_20%,rgba(0,255,135,.14),transparent_34%),linear-gradient(135deg,rgba(58,134,212,.1),transparent_52%)]" />
       <div className="relative flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
@@ -419,7 +416,7 @@ function FeedbackCallout({ onOpenFeedback }: { onOpenFeedback: () => void }) {
           <span className="font-display text-xs font-extrabold uppercase tracking-[0.14em] text-pebol-accent">
             Sua opinião
           </span>
-          <h2 className="mt-1 font-display text-xl font-extrabold uppercase tracking-[0.015em] text-pebol-text">
+          <h2 className="mt-1 font-display text-lg font-extrabold uppercase tracking-[0.015em] text-pebol-text">
             Ajude a melhorar o Pebol
           </h2>
           <p className="mt-1 text-sm font-medium leading-6 text-pebol-muted">
@@ -445,14 +442,14 @@ function LeaderboardPanel({
   account,
 }: Pick<HomeProps, "leaderboard" | "account">) {
   return (
-    <motion.section variants={cardMotion} className={`${panel} flex min-h-full flex-col p-5`}>
-      <div className="mb-4">
+    <motion.section variants={cardMotion} className={`${panel} flex min-h-full flex-col p-4`}>
+      <div className="mb-3">
         <span className="font-display text-xs font-extrabold uppercase tracking-[0.14em] text-pebol-accent">
           Ranking
         </span>
         <h2 className={heading}>Leaderboard por nível</h2>
       </div>
-      <ol className="grid flex-1 auto-rows-fr gap-2">
+      <ol className="grid flex-1 auto-rows-fr gap-1.5">
         {Array.from({ length: 10 }, (_, index) => {
           const rank = index + 1;
           const p = leaderboard?.[index];
@@ -462,7 +459,7 @@ function LeaderboardPanel({
               layout={!!p}
               key={p?.userId ?? `placeholder-${rank}`}
               whileHover={p ? { x: 3, scale: 1.01 } : undefined}
-              className={`home-leader-row ${p && rank <= 3 ? `home-podium home-rank-${rank}` : ""} grid min-h-12 grid-cols-[2.6rem_minmax(0,1fr)_auto] items-center gap-3 rounded-2xl border px-3 py-2 transition-all duration-300 ${
+              className={`home-leader-row ${p && rank <= 3 ? `home-podium home-rank-${rank}` : ""} grid min-h-10 grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border px-2.5 py-1.5 transition-all duration-300 ${
                 p
                   ? isYou
                     ? "border-pebol-accent/50 bg-pebol-accent/10"
@@ -470,7 +467,7 @@ function LeaderboardPanel({
                   : "border-white/5 bg-white/[0.025]"
               }`}
             >
-              <span className={`home-rank-badge grid h-9 w-9 place-items-center rounded-xl border font-display text-sm font-bold ${medalClass(rank)}`}>
+              <span className={`home-rank-badge grid h-8 w-8 place-items-center rounded-lg border font-display text-xs font-bold ${medalClass(rank)}`}>
                 {medalLabel(rank)}
               </span>
               <span className="min-w-0">
@@ -540,12 +537,12 @@ export function Home({
 
   return (
     <motion.div
-      className="min-h-screen bg-stadium-depth px-4 py-4 font-body text-pebol-text sm:px-6 lg:px-8"
+      className="min-h-screen px-4 py-4 font-body text-pebol-text sm:px-6 lg:px-8"
       initial="hidden"
       animate="show"
       transition={{ staggerChildren: 0.055, delayChildren: 0.03 }}
     >
-      <div className="mx-auto grid max-w-[96rem] gap-4">
+      <div className="mx-auto grid max-w-[96rem] gap-3">
         <AccountProfile
           account={account}
           progress={progress}
@@ -555,8 +552,8 @@ export function Home({
           onLogout={onLogout}
         />
 
-        <div className="grid gap-4 xl:grid-cols-[minmax(19rem,1fr)_minmax(24rem,1.18fr)_minmax(20rem,1fr)] xl:items-stretch">
-          <div className="grid gap-4">
+        <div className="grid gap-3 xl:grid-cols-[minmax(19rem,1fr)_minmax(24rem,1.18fr)_minmax(20rem,1fr)] xl:items-stretch">
+          <div className="grid gap-3">
             <RoomPanel
               selectedPool={selectedPool}
               setSelectedPool={setSelectedPool}
@@ -574,18 +571,18 @@ export function Home({
             <SecondaryModes solo={solo} onSoon={onSoon} />
           </div>
 
-          <div className="grid gap-4">
-            <motion.div variants={cardMotion} className={`${panel} grid min-h-[15rem] place-items-center p-6 text-center`}>
+          <div className="grid gap-3">
+            <motion.div variants={cardMotion} className={`${panel} grid min-h-[12rem] place-items-center p-4 text-center`}>
               <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(0,255,135,.16),transparent_42%)]" />
               <div className="relative">
                 <img
-                  className="home-brand-logo mx-auto w-[min(24rem,82vw)] drop-shadow-[0_26px_34px_rgba(0,0,0,.58)]"
+                  className="home-brand-logo mx-auto w-[min(19rem,78vw)] drop-shadow-[0_26px_34px_rgba(0,0,0,.58)]"
                   src="/512x512.png"
                   srcSet="/512x512.png 512w, /1024x1024.png 1024w"
-                  sizes="min(24rem, 82vw)"
+                  sizes="min(19rem, 78vw)"
                   alt="Pebol"
                 />
-                <p className="mx-auto mt-3 max-w-sm text-sm font-semibold leading-6 text-pebol-muted">
+                <p className="mx-auto mt-2 max-w-sm text-sm font-semibold leading-5 text-pebol-muted">
                   Monte seu time no draft e desafie um amigo 1v1 ou jogue contra a máquina.
                 </p>
               </div>

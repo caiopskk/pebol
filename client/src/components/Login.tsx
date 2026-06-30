@@ -30,7 +30,7 @@ export function Login({ onSubmit, onBack }: LoginProps) {
 
   return (
     <motion.div
-      className="min-h-screen bg-stadium-depth px-4 py-8 font-body text-pebol-text"
+      className="min-h-screen px-4 py-8 font-body text-pebol-text"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18, ease: "easeOut" }}
@@ -38,7 +38,7 @@ export function Login({ onSubmit, onBack }: LoginProps) {
       <div className="mx-auto grid max-w-md gap-5">
         <header className="text-center">
           <img
-            className="auth-brand-logo mx-auto w-[min(18rem,78vw)] drop-shadow-[0_24px_32px_rgba(0,0,0,.58)]"
+            className="mx-auto w-[min(18rem,78vw)] drop-shadow-[0_24px_32px_rgba(0,0,0,.58)]"
             src="/512x512.png"
             srcSet="/512x512.png 512w, /1024x1024.png 1024w"
             sizes="min(18rem, 78vw)"

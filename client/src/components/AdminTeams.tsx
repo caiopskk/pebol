@@ -83,7 +83,7 @@ export function AdminTeams({
 
   return (
     <motion.div
-      className="min-h-screen bg-stadium-depth px-4 py-6 font-body text-pebol-text sm:px-6"
+      className="min-h-screen px-4 py-6 font-body text-pebol-text sm:px-6"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18, ease: "easeOut" }}

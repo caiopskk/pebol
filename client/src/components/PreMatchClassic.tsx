@@ -68,7 +68,7 @@ export function PreMatchClassic({
   const youFormation = you.formationId ?? "—";
   const oppFormation = opponent?.formationId ?? "—";
   const shellClass =
-    "min-h-screen bg-stadium-depth px-4 py-5 font-body text-pebol-text sm:px-6 lg:px-8";
+    "min-h-screen px-4 py-5 font-body text-pebol-text sm:px-6 lg:px-8";
   const cardClass =
     "relative overflow-hidden rounded-2xl border border-white/10 bg-pebol-panel p-5 shadow-premium backdrop-blur-xl";
   const chipClass = (active: boolean) =>
@@ -129,7 +129,7 @@ export function PreMatchClassic({
             </div>
 
             {banners.length ? (
-              <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-3">
+              <div className="grid min-h-[7.75rem] content-start rounded-2xl border border-white/10 bg-white/[0.045] p-3">
                 <TacticBannerList banners={banners} />
               </div>
             ) : null}

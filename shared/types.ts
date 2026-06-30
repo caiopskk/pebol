@@ -233,6 +233,7 @@ export interface ClientToServer {
   }) => void;
   ready: () => void;
   pick: (data: { slotId: string; playerName: string }) => void;
+  repositionPick: (data: { fromSlotId: string; toSlotId: string }) => void;
   rerollTeam: () => void;
   halftimeReady: (data: HalftimeLineup) => void;
   rematch: () => void;

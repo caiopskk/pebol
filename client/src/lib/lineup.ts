@@ -43,7 +43,7 @@ export function buildPitchSlots(
       penalty: !!pick && pick.effectiveRating < pick.player.rating,
       hideRating,
       showPos: opts.showPos,
-      open: !filled && opts.openSlotIds?.has(slot.id),
+      open: opts.openSlotIds?.has(slot.id) ?? false,
       selectedSub: filled && opts.selectedSubId === slot.id,
     };
   });

@@ -23,11 +23,9 @@ import {
   groupOf,
   posLabel,
 } from "../../shared/formations.js";
-import { MENTALITIES, mentalityEdge } from "../../shared/mentalities.js";
+import { MENTALITIES } from "../../shared/mentalities.js";
 import {
-  attackFocusReport,
   computeStrength,
-  effectiveRating,
   playerPositions,
   simInputFromTeam,
   simulateGauntletMatch,
@@ -35,7 +33,6 @@ import {
 } from "../../shared/engine.js";
 import { getTeam } from "../../shared/data/teams.js";
 import {
-  WC_DRAFT_TEAMS,
   wcOpponentTeam,
   WC_LADDER,
 } from "../../shared/data/worldcup.js";
@@ -61,6 +58,7 @@ import {
   sendReady,
   sendPreMatchReady,
   sendPick,
+  sendRepositionPick,
   sendRerollTeam,
   sendHalftimeReady,
   sendRematch,
@@ -117,10 +115,12 @@ import {
   previewCampaignEndState,
   previewCampaignPicks,
   previewCampaignState,
+  previewPvpDraftState,
 } from "./devPreviewFixtures.js";
 import {
   renderCampaignMatchPreview,
   renderPenaltyModalPreview,
+  renderPvpResultPreview,
   renderSubstitutionModalPreview,
 } from "./devPreviewScreens.js";
 import type {
@@ -129,11 +129,10 @@ import type {
 } from "./campaignTypes.js";
 import {
   ALL_POS,
-  parseAltPositionsInput,
-  parseImportedTeams,
   playerPosText,
   teamFullName,
 } from "./lib/teamImport.js";
+import { importTeamsFromFileInput } from "./lib/adminTeamImport.js";
 import {
   applyIntervalSubstitution as applyIntervalSubstitutionBase,
   buildIntervalBench,
@@ -181,6 +180,25 @@ import {
   draftAchievementIds,
   regularMatchAchievementAwards,
 } from "./lib/achievementRules.js";
+import {
+  attackFocusBannerSpec,
+  attackFocusLabel,
+  campaignTacticBanners,
+  mentalityLabel,
+  picksOvr,
+  teamStrengthData as teamStrengthDataBase,
+} from "./lib/tacticsUi.js";
+import {
+  campaignSelectable,
+  drawCampaignTeam,
+  placeCampaignPlayer,
+  relocateCampaignPick,
+} from "./lib/campaignDraftLogic.js";
+import { createInitialCampaignState } from "./lib/campaignStateFactory.js";
+import {
+  blankTeam,
+  canEditTeam as canEditTeamBase,
+} from "./lib/adminTeamState.js";
 
 const app = document.getElementById("app")!;
 const overlaysRoot = createRoot(document.getElementById("overlays")!);
@@ -234,6 +252,7 @@ interface Local {
   state: RoomState | null;
   // transient selection during the draft
   selectedPlayer: string | null;
+  selectedDraftSlotId: string | null;
   // setup choices (before sending)
   formationId: string;
   mentality: Mentality;
@@ -276,6 +295,7 @@ const L: Local = {
   youId: null,
   state: null,
   selectedPlayer: null,
+  selectedDraftSlotId: null,
   formationId: "4-3-3",
   mentality: "equilibrada",
   attackFocus: "equilibrado",
@@ -560,6 +580,7 @@ function goHome() {
   L.state = null;
   L.youId = null;
   L.selectedPlayer = null;
+  L.selectedDraftSlotId = null;
   L.playing = false;
   L.matchPlayed = false;
   L.campaign = null;
@@ -718,17 +739,7 @@ function renderFeedback() {
 }
 
 function canEditTeam(t: AdminTeam): boolean {
-  if (!L.account) return false;
-  return t.ownerId ? t.ownerId === L.account.id : L.account.role === "admin";
-}
-
-
-function searchKey(v: string): string {
-  return v
-    .normalize("NFD")
-    .replace(/[\u0300-\u036f]/g, "")
-    .toLowerCase()
-    .trim();
+  return canEditTeamBase(L.account, t);
 }
 
 function renderAdmin() {
@@ -780,61 +791,16 @@ function renderAdminFeedback() {
   );
 }
 
-function blankTeam(): AdminTeam {
-  return {
-    id: "",
-    name: "",
-    season: "",
-    league: "",
-    alias: "",
-    kind: "club",
-    ownerId: null,
-    players: Array.from({ length: 11 }, (_, i) => ({
-      name: "",
-      pos: ALL_POS[Math.min(i, 14)] as Player["pos"],
-      rating: 75,
-    })),
-    bench: [],
-  };
-}
-
 async function importTeamsFromFile(input: HTMLInputElement) {
-  const file = input.files?.[0];
-  input.value = "";
-  if (!file) return;
-  try {
-    const raw = JSON.parse(await file.text()) as unknown;
-    const teams = parseImportedTeams(raw, L.account?.role === "admin");
-    if (!teams.length) return showToast("Nenhum time encontrado no JSON.");
-    let created = 0;
-    let skipped = 0;
-    const errors: string[] = [];
-    for (const team of teams) {
-      try {
-        await api.createTeam(team);
-        created++;
-      } catch (e) {
-        const msg = (e as Error).message || "";
-        if (/já existe/i.test(msg)) skipped++;
-        else errors.push(`${team.name}: ${msg}`);
-      }
-    }
-    if (created) {
-      void awardAchievements(
-        ["json_import", "custom_team"],
-        `import:${file.name}:${file.size}:${Date.now()}`,
-      );
-    }
-    const parts: string[] = [];
-    if (created) parts.push(`${created} importado${created > 1 ? "s" : ""}`);
-    if (skipped) parts.push(`${skipped} duplicado${skipped > 1 ? "s" : ""} ignorado${skipped > 1 ? "s" : ""}`);
-    if (errors.length) parts.push(`${errors.length} com erro`);
-    showToast(parts.join(" · ") || "Nenhum time importado.");
-    if (errors.length) console.warn("Falhas na importação:", errors);
-    await loadAdminTeams();
-  } catch (e) {
-    showToast((e as Error).message || "JSON inválido.");
-  }
+  await importTeamsFromFileInput(input, {
+    isAdmin: L.account?.role === "admin",
+    createTeam: (team) => api.createTeam(team),
+    onImported: (sourceKey) => {
+      void awardAchievements(["json_import", "custom_team"], sourceKey);
+    },
+    onFinished: loadAdminTeams,
+    showToast,
+  });
 }
 
 function renderTeamForm() {
@@ -894,30 +860,7 @@ function startCampaign() {
   L.state = null;
   L.youId = null;
   L.playing = false;
-  L.campaign = {
-    phase: "setup",
-    mode: "normal",
-    runId: `cup:${Date.now()}:${Math.random().toString(36).slice(2, 8)}`,
-    formationId: "4-3-3",
-    mentality: "equilibrada",
-    attackFocus: "equilibrado",
-    round: 0,
-    picks: [],
-    currentTeam: null,
-    usedTeamIds: [],
-    selectedPlayer: null,
-    selectedPickSlotId: null,
-    currentOpp: null,
-    lastResult: null,
-    rerollsRemaining: 5,
-    campaignGoals: {},
-    campaignAssists: {},
-    groupTeams: [],
-    groupTable: [],
-    groupQualified: null,
-    groupQualifiedLabel: null,
-    knockoutPath: [],
-  };
+  L.campaign = createInitialCampaignState();
   render();
 }
 
@@ -927,40 +870,6 @@ function campaignExit() {
   L.playing = false;
   lastCampaignPhase = null;
   render();
-}
-
-function mentalityLabel(m: Mentality): string {
-  return MENTALITIES.find((x) => x.id === m)?.name ?? m;
-}
-
-function attackFocusLabel(f: AttackFocus | undefined): string {
-  return (
-    ATTACK_FOCUS_OPTIONS.find((x) => x.id === (f ?? "equilibrado"))?.name ??
-    "Equilibrado"
-  );
-}
-
-function attackFocusBannerSpec(
-  picks: SquadPick[],
-  focus: AttackFocus | undefined,
-): BannerSpec | null {
-  if (picks.length < 5) return null;
-  const report = attackFocusReport(picks);
-  const current = focus ?? "equilibrado";
-  const wide = report.wide == null ? "--" : Math.round(report.wide);
-  const central = report.central == null ? "--" : Math.round(report.central);
-  const detail = `Lados ${wide} · Meio ${central} · OVR ${Math.round(report.overall)}`;
-  if (report.best === "equilibrado") {
-    return { kind: "good", text: `Elenco equilibrado: qualquer foco funciona. ${detail}.` };
-  }
-  const bestLabel = attackFocusLabel(report.best).toLowerCase();
-  if (current === report.best) {
-    return { kind: "good", text: `Foco encaixado: seu elenco rende melhor ${bestLabel}. ${detail}.` };
-  }
-  if (current !== "equilibrado") {
-    return { kind: "bad", text: `Foco desalinhado: seu elenco pede ${bestLabel}. ${detail}.` };
-  }
-  return { kind: "tip", text: `Dica de foco: seu elenco parece melhor ${bestLabel}. ${detail}.` };
 }
 
 let lastCampaignPhase: string | null = null;
@@ -1036,38 +945,9 @@ function renderCampaignSetup() {
   );
 }
 
-function campaignOpenSlots() {
-  const c = L.campaign!;
-  const f = getFormation(c.formationId)!;
-  const filled = new Set(c.picks.map((p) => p.slotId));
-  return f.slots.filter((s) => !filled.has(s.id));
-}
-
-function campaignSelectable(): Set<string> {
-  const c = L.campaign!;
-  if (!c.currentTeam) return new Set();
-  const openGroups = new Set(campaignOpenSlots().map((s) => groupOf(s.pos)));
-  return new Set(
-    c.currentTeam.players
-      .filter((p) =>
-        playerPositions(p).some((pos) => openGroups.has(groupOf(pos))),
-      )
-      .map((p) => p.name),
-  );
-}
-
 function campaignDrawTeam() {
-  const c = L.campaign!;
   cupDraftScrollTop = 0;
-  for (let tries = 0; tries < 10; tries++) {
-    const pool = WC_DRAFT_TEAMS.filter((t) => !c.usedTeamIds.includes(t.id));
-    const src = pool.length ? pool : WC_DRAFT_TEAMS;
-    if (!pool.length) c.usedTeamIds = [];
-    c.currentTeam = src[Math.floor(Math.random() * src.length)];
-    c.selectedPlayer = null;
-    if (campaignSelectable().size) return; // at least one player fits an open slot
-    c.usedTeamIds.push(c.currentTeam.id);
-  }
+  drawCampaignTeam(L.campaign!);
 }
 
 function campaignRerollTeam() {
@@ -1084,16 +964,7 @@ function campaignRerollTeam() {
 
 function campaignPlace(slotId: string, player: Player) {
   const c = L.campaign!;
-  const slot = getFormation(c.formationId)?.slots.find((s) => s.id === slotId);
-  c.selectedPickSlotId = null;
-  c.picks.push({
-    slotId,
-    player,
-    fromTeamId: c.currentTeam!.id,
-    effectiveRating: slot ? effectiveRating(player, slot.pos) : player.rating,
-  });
-  c.usedTeamIds.push(c.currentTeam!.id);
-  c.selectedPlayer = null;
+  if (!placeCampaignPlayer(c, slotId, player)) return;
   // when the XI is complete, wait on the draft screen for the user to confirm
   // (the "Continuar" button) instead of jumping straight to the pre-match
   if (c.picks.length < 11) {
@@ -1117,7 +988,7 @@ function renderCampaignDraft() {
   const team = c.currentTeam!;
   const f = getFormation(c.formationId)!;
   const hideRatings = c.mode === "hardcore";
-  const selectable = campaignSelectable();
+  const selectable = campaignSelectable(c);
   const player = c.selectedPlayer
     ? team.players.find((p) => p.name === c.selectedPlayer)
     : null;
@@ -1170,9 +1041,23 @@ function renderCampaignDraft() {
   const openSlotIds = new Set<string>();
   if (activePlayer) {
     const playerGroups = playerPositions(activePlayer).map(groupOf);
+    const sourceSlot = c.selectedPickSlotId
+      ? f.slots.find((slot) => slot.id === c.selectedPickSlotId)
+      : null;
     for (const slot of f.slots) {
-      if (c.picks.some((p) => p.slotId === slot.id)) continue;
-      if (playerGroups.includes(groupOf(slot.pos))) openSlotIds.add(slot.id);
+      const targetPick = c.picks.find((p) => p.slotId === slot.id);
+      if (!playerGroups.includes(groupOf(slot.pos))) continue;
+      if (!moveSource && targetPick) continue;
+      if (
+        moveSource &&
+        targetPick &&
+        sourceSlot &&
+        !playerPositions(targetPick.player)
+          .map(groupOf)
+          .includes(groupOf(sourceSlot.pos))
+      )
+        continue;
+      openSlotIds.add(slot.id);
     }
   }
   const pitchSlots = buildPitchSlots(f, c.picks, {
@@ -1219,7 +1104,7 @@ function renderCampaignDraft() {
         render();
       },
       onSlotClick: (slotId, filled) => {
-        if (filled) {
+        if (filled && !openSlotIds.has(slotId)) {
           if (c.selectedPlayer) c.selectedPlayer = null;
           c.selectedPickSlotId = c.selectedPickSlotId === slotId ? null : slotId;
           render();
@@ -1235,16 +1120,7 @@ function renderCampaignDraft() {
 
 function campaignRelocate(fromSlotId: string, toSlotId: string) {
   const c = L.campaign!;
-  const pick = c.picks.find((p) => p.slotId === fromSlotId);
-  if (!pick) return;
-  const slot = getFormation(c.formationId)?.slots.find(
-    (s) => s.id === toSlotId,
-  );
-  pick.slotId = toSlotId;
-  pick.effectiveRating = slot
-    ? effectiveRating(pick.player, slot.pos)
-    : pick.player.rating;
-  c.selectedPickSlotId = null;
+  if (!relocateCampaignPick(c, fromSlotId, toSlotId)) return;
   render();
 }
 
@@ -1266,32 +1142,19 @@ function renderCampaignPreMatch() {
   const opp = c.currentOpp!;
   const hideRatings = c.mode === "hardcore";
   const oppTactics = wcOpponentTactics(opp);
-  const counterOf = (m: Mentality): Mentality | undefined =>
-    MENTALITIES.find((x) => x.counters === m)?.id;
-  const edge = mentalityEdge(c.mentality, oppTactics.mentality);
-  const goodCounter = counterOf(oppTactics.mentality);
-  const banners: BannerSpec[] = [];
-  if (hideRatings) {
-    banners.push({ kind: "hardcore", text: "Modo Hardcore: ratings e dicas táticas estão ocultos." });
-  } else {
-    if (edge === "a") {
-      banners.push({ kind: "good", text: `Vantagem tática: seu estilo neutraliza ${mentalityLabel(oppTactics.mentality)}.` });
-    } else if (edge === "b") {
-      banners.push({
-        kind: "bad",
-        text: `Cuidado: ${mentalityLabel(oppTactics.mentality)} neutraliza seu estilo.${goodCounter ? ` Considere ${mentalityLabel(goodCounter)}.` : ""}`,
-      });
-    } else if (goodCounter) {
-      banners.push({ kind: "tip", text: `Dica: ${mentalityLabel(goodCounter)} neutraliza ${mentalityLabel(oppTactics.mentality)}.` });
-    }
-    const focusSpec = attackFocusBannerSpec(c.picks, c.attackFocus);
-    if (focusSpec) banners.push(focusSpec);
-  }
+  const banners = campaignTacticBanners({
+    picks: c.picks,
+    mentality: c.mentality,
+    attackFocus: c.attackFocus,
+    opponentMentality: oppTactics.mentality,
+    hideRatings,
+  });
   renderReact(
     createElement(CampaignPreMatch, {
       ladderLabel: ladder.label,
       progressRound: c.round,
       status: campaignStatusData(c),
+      qualificationLabel: c.round >= 3 ? c.groupQualifiedLabel : null,
       banners,
       youFormation: c.formationId,
       youOvrText: hideRatings ? "OVR ??" : `OVR ${campaignAvgNumber(c.picks)}`,
@@ -1673,6 +1536,20 @@ function renderDevPreview(kind: DevPreviewKind) {
     renderCampaignMatchPreview(previewContext);
     return;
   }
+  if (kind === "pvp-result") {
+    L.campaign = null;
+    renderPvpResultPreview(previewContext);
+    return;
+  }
+  if (kind === "pvp-draft") {
+    L.campaign = null;
+    const previewDraft = previewPvpDraftState();
+    L.state = previewDraft.state;
+    L.youId = previewDraft.youId;
+    L.selectedPlayer = previewDraft.selectedPlayer;
+    renderDraft();
+    return;
+  }
   if (kind === "substitution-modal") {
     L.campaign = null;
     renderSubstitutionModalPreview(previewContext);
@@ -1690,9 +1567,16 @@ function renderDevPreview(kind: DevPreviewKind) {
     return;
   }
 
+  if (
+    !["cup-setup", "cup-draft", "cup-prematch", "cup-prematch-ko"].includes(
+      kind,
+    )
+  )
+    return;
+
   L.campaign = previewCampaignState(kind);
   if (kind === "cup-draft" && L.campaign.currentTeam) {
-    L.campaign.selectedPlayer = [...campaignSelectable()][0] ?? null;
+    L.campaign.selectedPlayer = [...campaignSelectable(L.campaign)][0] ?? null;
   }
   renderCampaign();
 }
@@ -1756,6 +1640,33 @@ function renderDraft() {
   const vsAI = s.players.some((p) => p.isAI);
   const team = s.currentTeam;
   const yourForm = getFormation(you.formationId!)!;
+  if (!yourTurn) L.selectedDraftSlotId = null;
+  const selectedDraftPick = L.selectedDraftSlotId
+    ? you.picks.find((p) => p.slotId === L.selectedDraftSlotId)
+    : null;
+  const selectedDraftSlot = selectedDraftPick
+    ? yourForm.slots.find((slot) => slot.id === selectedDraftPick.slotId)
+    : null;
+  const draftOpenSlotIds = new Set<string>();
+  if (yourTurn && selectedDraftPick && selectedDraftSlot) {
+    const selectedGroups = playerPositions(selectedDraftPick.player).map(groupOf);
+    for (const slot of yourForm.slots) {
+      if (slot.id === selectedDraftPick.slotId) {
+        draftOpenSlotIds.add(slot.id);
+        continue;
+      }
+      if (!selectedGroups.includes(groupOf(slot.pos))) continue;
+      const targetPick = you.picks.find((p) => p.slotId === slot.id);
+      if (
+        targetPick &&
+        !playerPositions(targetPick.player)
+          .map(groupOf)
+          .includes(groupOf(selectedDraftSlot.pos))
+      )
+        continue;
+      draftOpenSlotIds.add(slot.id);
+    }
+  }
   renderReact(
     createElement(Draft, {
       state: s,
@@ -1765,7 +1676,12 @@ function renderDraft() {
       yourTurn,
       vsAI,
       selectedPlayer: L.selectedPlayer,
-      youPitchSlots: buildPitchSlots(yourForm, you.picks, { showPos: true }),
+      selectedDraftSlotId: L.selectedDraftSlotId,
+      youPitchSlots: buildPitchSlots(yourForm, you.picks, {
+        showPos: true,
+        openSlotIds: draftOpenSlotIds,
+        selectedSubId: L.selectedDraftSlotId,
+      }),
       opponentPitchSlots:
         opp && opp.formationId
           ? buildPitchSlots(getFormation(opp.formationId)!, opp.picks, { showPos: true })
@@ -1780,10 +1696,12 @@ function renderDraft() {
       onLeave: goHome,
       onReroll: () => {
         L.selectedPlayer = null;
+        L.selectedDraftSlotId = null;
         sendRerollTeam();
       },
       onSelectPlayer: (name: string) => {
         L.selectedPlayer = name;
+        L.selectedDraftSlotId = null;
         render();
       },
       onPickSlot: (slotId: string) => {
@@ -1791,18 +1709,28 @@ function renderDraft() {
         sendPick(slotId, L.selectedPlayer);
         L.selectedPlayer = null;
       },
+      onRepositionSlot: (slotId: string) => {
+        if (!yourTurn) return;
+        if (!L.selectedDraftSlotId) {
+          if (!you.picks.some((p) => p.slotId === slotId)) return;
+          L.selectedPlayer = null;
+          L.selectedDraftSlotId = slotId;
+          render();
+          return;
+        }
+        if (L.selectedDraftSlotId === slotId) {
+          L.selectedDraftSlotId = null;
+          render();
+          return;
+        }
+        sendRepositionPick(L.selectedDraftSlotId, slotId);
+        L.selectedDraftSlotId = null;
+      },
     }),
   );
 }
 
 // ---------------- Pre-Match (classic) ----------------
-
-function picksOvr(p: PlayerPublic | undefined): number {
-  if (!p || !p.picks.length) return 0;
-  return Math.round(
-    p.picks.reduce((sum, pk) => sum + pk.effectiveRating, 0) / p.picks.length,
-  );
-}
 
 function renderPreMatchClassic() {
   const s = L.state!;
@@ -1869,17 +1797,7 @@ function renderPreMatchClassic() {
 }
 
 function teamStrengthData(p: PlayerPublic | undefined): TeamStrengthData {
-  if (!p) return { state: "none" };
-  if (L.state?.hideRatings) return { state: "hidden" };
-  if (!p.picks.length || !p.formationId) return { state: "none" };
-  const s = computeStrength(p.picks, p.formationId);
-  return {
-    state: "ok",
-    overall: s.overall,
-    attack: s.attack,
-    midfield: s.midfield,
-    defense: s.defense,
-  };
+  return teamStrengthDataBase(p, !!L.state?.hideRatings);
 }
 
 function buildPitchSlots(

@@ -35,7 +35,7 @@ export function Achievements({
 
   return (
     <motion.div
-      className="min-h-screen bg-stadium-depth px-4 py-6 font-body text-pebol-text sm:px-6"
+      className="min-h-screen px-4 py-6 font-body text-pebol-text sm:px-6"
       initial={{ opacity: 0, y: 10 }}
       animate={{ opacity: 1, y: 0 }}
       transition={{ duration: 0.18, ease: "easeOut" }}
@@ -58,7 +58,7 @@ export function Achievements({
             </div>
             <button
               id="ach-back"
-              className="min-h-11 rounded-xl border border-white/10 bg-white/[0.055] px-5 py-2 font-display text-sm font-extrabold text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:border-pebol-blue/50 hover:bg-pebol-blue/15"
+              className="min-h-11 rounded-xl border border-white/10 bg-white/[0.055] px-5 py-2 font-display text-sm font-extrabold text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:border-pebol-accent/40 hover:bg-pebol-accent/10"
               onClick={onBack}
             >
               Voltar
@@ -113,7 +113,7 @@ export function Achievements({
                   animate={{ opacity: 1, y: 0 }}
                   transition={{ duration: 0.16, delay: Math.min(index * 0.015, 0.18) }}
                 >
-                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-pebol-accent via-pebol-gold to-pebol-blue opacity-80" />
+                  <div className="absolute inset-x-0 top-0 h-1 bg-gradient-to-r from-pebol-accent via-pebol-gold to-pebol-accent/70 opacity-80" />
                   <div className="flex justify-between gap-3 font-display text-xs font-black uppercase tracking-[0.12em] text-pebol-muted">
                     <span>{achievement.category}</span>
                     <strong className="text-pebol-gold">{achievement.points} XP</strong>

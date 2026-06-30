@@ -46,6 +46,14 @@ const PLAYER_ATTRS = [
   ["phy", "PHY"],
 ] as const;
 
+const fieldClass =
+  "min-h-11 rounded-lg border border-white/10 bg-black/25 px-3 py-2 text-sm font-semibold text-white outline-none transition-all duration-300 focus:border-pebol-accent/55 focus:ring-2 focus:ring-pebol-accent/15";
+const compactFieldClass = `${fieldClass} mb-0`;
+const secondaryButtonClass =
+  "min-h-10 rounded-lg border border-white/10 bg-white/5 px-4 py-2 font-display text-sm font-extrabold text-slate-200 shadow-none transition-all duration-300 hover:border-pebol-blue/50 hover:bg-pebol-blue/10";
+const primaryButtonClass =
+  "min-h-12 rounded-lg border border-pebol-accent/40 bg-accent-gold px-5 py-3 font-display text-sm font-black uppercase tracking-[0.08em] text-black shadow-glow transition-all duration-300 hover:-translate-y-0.5 disabled:cursor-not-allowed disabled:opacity-65";
+
 function newKey(): string {
   return Math.random().toString(36).slice(2, 10);
 }
@@ -87,16 +95,19 @@ function PlayerRow({
   onRemove?: (key: string) => void;
 }) {
   return (
-    <div className="pf-row" hidden={hidden}>
+    <div
+      className="grid items-center gap-2 rounded-lg border border-white/10 bg-white/5 p-2 transition-all duration-300 lg:grid-cols-[minmax(9rem,1fr)_5rem_minmax(8rem,.7fr)_4.25rem_minmax(18rem,1.3fr)_auto]"
+      hidden={hidden}
+    >
       <input
-        className="pf-name"
+        className={`${compactFieldClass} font-semibold text-white`}
         value={row.name}
         placeholder="Nome"
         maxLength={40}
         onChange={(e) => onChange(row.key, { name: e.target.value })}
       />
       <select
-        className="pf-pos"
+        className={`${compactFieldClass} font-semibold text-white`}
         value={row.pos}
         onChange={(e) => onChange(row.key, { pos: e.target.value as Position })}
       >
@@ -107,7 +118,7 @@ function PlayerRow({
         ))}
       </select>
       <input
-        className="pf-alt"
+        className={`${compactFieldClass} font-semibold text-white`}
         value={(row.altPositions ?? []).join(", ")}
         placeholder="Alt. ex: LW, ST"
         maxLength={40}
@@ -121,7 +132,7 @@ function PlayerRow({
         }
       />
       <input
-        className="pf-rt"
+        className={`${compactFieldClass} font-semibold text-white`}
         type="number"
         min={40}
         max={99}
@@ -130,11 +141,17 @@ function PlayerRow({
           onChange(row.key, { rating: Number(e.target.value) || 0 })
         }
       />
-      <div className="pf-attrs" aria-label="Atributos estilo EA FC">
+      <div
+        className="grid gap-2 sm:grid-cols-3 lg:grid-cols-6"
+        aria-label="Atributos estilo EA FC"
+      >
         {PLAYER_ATTRS.map(([key, label]) => (
-          <label key={key}>
-            <span>{label}</span>
+          <label key={key} className="m-0 grid gap-1">
+            <span className="text-center font-display text-[0.62rem] font-black uppercase tracking-[0.04rem] text-pebol-muted">
+              {label}
+            </span>
             <input
+              className={`${compactFieldClass} min-h-9 px-1.5 text-center`}
               type="number"
               min={1}
               max={99}
@@ -151,7 +168,7 @@ function PlayerRow({
       </div>
       {bench && onRemove ? (
         <button
-          className="ghost pf-del"
+          className={`${secondaryButtonClass} min-w-10 p-0`}
           title="Remover"
           onClick={() => onRemove(row.key)}
         >
@@ -268,51 +285,73 @@ export function TeamForm({
   }
 
   return (
-    <motion.div className="screen admin-screen" {...screenIn}>
-      <div className="admin-toolbar">
-        <div className="admin-title">
+    <motion.div
+      className="min-h-screen px-4 py-5 font-body text-pebol-text sm:px-6 lg:px-8"
+      {...screenIn}
+    >
+      <div className="mx-auto w-full max-w-6xl">
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-pebol-panel px-4 py-3 shadow-premium backdrop-blur-xl">
+        <div className="grid gap-1">
           <span className="cup-tag">{isNew ? "Novo registro" : "Edição"}</span>
-          <h1>{isNew ? "Novo time" : "Editar time"}</h1>
-          <p>Configure titulares, reservas e informações do elenco.</p>
+          <h1 className="font-display text-2xl font-black uppercase tracking-[0.03em] text-white">
+            {isNew ? "Novo time" : "Editar time"}
+          </h1>
+          <p className="text-sm font-semibold text-pebol-muted">
+            Configure titulares, reservas e informações do elenco.
+          </p>
         </div>
-        <div className="admin-actions">
+        <div className="grid gap-3 sm:grid-cols-2">
           <button
             type="button"
-            className="primary alt admin-action"
+            className={`${secondaryButtonClass} w-full sm:w-auto`}
             onClick={onCancel}
           >
             Cancelar
           </button>
         </div>
       </div>
-      <div className="panel team-form">
-        <div className="tf-grid">
-          <label>
+      <div className="panel grid gap-4 p-4">
+        <div className="grid gap-3 sm:grid-cols-2">
+          <label className="grid gap-1 text-xs font-bold text-pebol-muted">
             Nome
-            <input value={name} onChange={(e) => setName(e.target.value)} />
+            <input
+              className={fieldClass}
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+            />
           </label>
           {isAdmin ? (
-            <label>
+            <label className="grid gap-1 text-xs font-bold text-pebol-muted">
               Apelido genérico (visto por não-admins)
               <input
+                className={fieldClass}
                 value={alias}
                 onChange={(e) => setAlias(e.target.value)}
                 placeholder="ex: Rubro-Negro Carioca"
               />
             </label>
           ) : null}
-          <label>
+          <label className="grid gap-1 text-xs font-bold text-pebol-muted">
             Liga / País
-            <input value={league} onChange={(e) => setLeague(e.target.value)} />
+            <input
+              className={fieldClass}
+              value={league}
+              onChange={(e) => setLeague(e.target.value)}
+            />
           </label>
-          <label>
+          <label className="grid gap-1 text-xs font-bold text-pebol-muted">
             Temporada
-            <input value={season} onChange={(e) => setSeason(e.target.value)} />
+            <input
+              className={fieldClass}
+              value={season}
+              onChange={(e) => setSeason(e.target.value)}
+            />
           </label>
           {isAdmin ? (
-            <label>
+            <label className="grid gap-1 text-xs font-bold text-pebol-muted">
               Tipo
               <select
+                className={fieldClass}
                 value={kind}
                 onChange={(e) => setKind(e.target.value as "club" | "national")}
               >
@@ -322,8 +361,9 @@ export function TeamForm({
             </label>
           ) : null}
           {isAdmin ? (
-            <label className="tf-check">
+            <label className="flex items-center gap-2 text-sm font-semibold text-pebol-text">
               <input
+                className="m-0 w-auto"
                 type="checkbox"
                 checked={official}
                 disabled={!isNew}
@@ -333,10 +373,11 @@ export function TeamForm({
             </label>
           ) : null}
         </div>
-        <div className="admin-search player-search">
+        <div className="my-4 grid gap-3 rounded-lg border border-white/10 bg-pebol-panel p-4 shadow-premium backdrop-blur-xl md:grid-cols-[minmax(0,1fr)_auto] md:items-end">
           <label>
             Pesquisar jogadores
             <input
+              className="mt-2 block min-h-11 w-full rounded-lg border border-white/10 bg-black/25 px-3 py-2 font-body text-sm font-semibold normal-case tracking-normal text-white outline-none transition-all duration-300 placeholder:text-pebol-faint focus:border-pebol-accent/55 focus:ring-2 focus:ring-pebol-accent/15"
               value={search}
               onChange={(e) => {
                 setSearch(e.target.value);
@@ -346,10 +387,12 @@ export function TeamForm({
               autoComplete="off"
             />
           </label>
-          <span>Filtra titulares e reservas sem salvar alterações.</span>
+          <span className="text-sm font-bold text-pebol-muted">
+            Filtra titulares e reservas sem salvar alterações.
+          </span>
         </div>
-        <h3>Titulares (11)</h3>
-        <div className="pf-list">
+        <h3 className="font-display text-lg font-black text-white">Titulares (11)</h3>
+        <div className="grid gap-2">
           {starters.map((r, i) => (
             <PlayerRow
               key={r.key}
@@ -362,10 +405,12 @@ export function TeamForm({
           ))}
         </div>
         {startersHidden ? (
-          <p className="pf-empty">Nenhum titular encontrado.</p>
+          <p className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm font-semibold italic text-pebol-muted">
+            Nenhum titular encontrado.
+          </p>
         ) : null}
-        <h3>Reservas</h3>
-        <div className="pf-list">
+        <h3 className="font-display text-lg font-black text-white">Reservas</h3>
+        <div className="grid gap-2">
           {bench.map((r, i) => (
             <PlayerRow
               key={r.key}
@@ -378,24 +423,29 @@ export function TeamForm({
             />
           ))}
         </div>
-        {benchHidden ? <p className="pf-empty">Nenhum reserva encontrado.</p> : null}
+        {benchHidden ? (
+          <p className="rounded-lg border border-white/10 bg-white/5 p-3 text-sm font-semibold italic text-pebol-muted">
+            Nenhum reserva encontrado.
+          </p>
+        ) : null}
         <button
           type="button"
-          className="primary alt form-inline-action"
+          className={`${secondaryButtonClass} mt-3`}
           onClick={addBench}
         >
           Adicionar reserva
         </button>
-        <div className="form-footer">
+        <div className="mt-5 grid justify-end gap-3 sm:grid-cols-2">
           <button
             type="button"
-            className="primary big"
+            className={`${primaryButtonClass} w-full`}
             disabled={saving}
             onClick={handleSave}
           >
             {saving ? "Salvando…" : isNew ? "Criar time" : "Salvar"}
           </button>
         </div>
+      </div>
       </div>
     </motion.div>
   );

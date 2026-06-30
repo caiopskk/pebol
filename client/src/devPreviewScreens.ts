@@ -1,10 +1,13 @@
 import { createElement, Fragment, type ReactElement } from "react";
-import type { PlayerPublic } from "../../shared/types.js";
+import type { MatchResult, PlayerPublic } from "../../shared/types.js";
 import { FORMATIONS, getFormation } from "../../shared/formations.js";
 import { MENTALITIES } from "../../shared/mentalities.js";
+import { computeStrength, effectiveRating } from "../../shared/engine.js";
+import { getTeam } from "../../shared/data/teams.js";
 import { ATTACK_FOCUS_OPTIONS } from "./components/SetupBoard.js";
 import { CampaignMatchShell } from "./components/CampaignMatchShell.js";
 import { LiveMatchShell } from "./components/LiveMatchShell.js";
+import { ResultSummary } from "./components/ResultSummary.js";
 import type {
   HalftimeCallbacks,
   HalftimeOptions,
@@ -13,6 +16,12 @@ import type { PitchSlot } from "./components/Pitch.js";
 import { PreviewAlertControls } from "./devPreviewChrome.js";
 import { previewCampaignPicks } from "./devPreviewFixtures.js";
 import { halftimeStore, liveStore } from "./lib/liveStore.js";
+import {
+  eventLogParts,
+  initials,
+  leaderCardData,
+  strengthRow,
+} from "./lib/resultSummaryData.js";
 
 interface BuildPitchOpts {
   forceHideRatings?: boolean;
@@ -52,6 +61,185 @@ function noopHalftimeCallbacks(): HalftimeCallbacks {
     onContinue: () => {},
     onBackgroundClick: () => {},
   };
+}
+
+function previewPicks(teamId: string, formationId: string): PlayerPublic["picks"] {
+  const team = getTeam(teamId);
+  const formation = getFormation(formationId)!;
+  if (!team) return [];
+  const used = new Set<string>();
+
+  return formation.slots.map((slot) => {
+    const player =
+      team.players.find((candidate) => candidate.pos === slot.pos && !used.has(candidate.name)) ??
+      team.players.find((candidate) => !used.has(candidate.name)) ??
+      team.players[0];
+    used.add(player.name);
+    return {
+      slotId: slot.id,
+      player,
+      fromTeamId: team.id,
+      effectiveRating: effectiveRating(player, slot.pos),
+    };
+  });
+}
+
+export function renderPvpResultPreview({
+  buildPitchSlots,
+  renderReact,
+}: DevPreviewScreenContext) {
+  const you: PlayerPublic = {
+    id: "you-preview",
+    name: "Seu time",
+    connected: true,
+    ready: true,
+    formationId: "4-3-3",
+    mentality: "pressao",
+    attackFocus: "meio",
+    picks: previewPicks("real-madrid-2016", "4-3-3"),
+  };
+  const opp: PlayerPublic = {
+    id: "opp-preview",
+    name: "Rival",
+    connected: true,
+    ready: true,
+    formationId: "4-3-3",
+    mentality: "posse",
+    attackFocus: "lados",
+    picks: previewPicks("barcelona-2011", "4-3-3"),
+  };
+  const youStrength = computeStrength(you.picks, you.formationId!);
+  const oppStrength = computeStrength(opp.picks, opp.formationId!);
+  const result: MatchResult = {
+    homeId: you.id,
+    awayId: opp.id,
+    secondHalfReady: true,
+    firstHalfGoals: { [you.id]: 1, [opp.id]: 1 },
+    goals: { [you.id]: 3, [opp.id]: 2 },
+    winnerId: you.id,
+    summary: "Seu time venceu por 3 x 2.",
+    strengths: { [you.id]: youStrength, [opp.id]: oppStrength },
+    penaltyScore: null,
+    shootout: null,
+    timeline: [
+      {
+        minute: 7,
+        type: "kickoff",
+        side: null,
+        text: "Bola rolando na Arena Pebol.",
+      },
+      {
+        minute: 18,
+        type: "goal",
+        side: "home",
+        text: "Gol do Seu time! Cristiano Ronaldo sobe mais alto e abre o placar.",
+        player: "Cristiano Ronaldo",
+        assist: "Marcelo",
+      },
+      {
+        minute: 39,
+        type: "goal",
+        side: "away",
+        text: "Gol do Rival. Messi acha espaço na área e empata.",
+        player: "Messi",
+        assist: "Xavi",
+      },
+      {
+        minute: 45,
+        type: "halftime",
+        side: null,
+        text: "Intervalo: 1 x 1 em uma partida muito aberta.",
+      },
+      {
+        minute: 57,
+        type: "goal",
+        side: "home",
+        text: "Gol do Seu time! Kroos recebe de Modrić e finaliza no canto.",
+        player: "Kroos",
+        assist: "Modrić",
+      },
+      {
+        minute: 72,
+        type: "card",
+        side: "away",
+        text: "Cartão amarelo para Piqué após parar o contra-ataque.",
+        player: "Piqué",
+        card: "yellow",
+      },
+      {
+        minute: 81,
+        type: "goal",
+        side: "away",
+        text: "Gol do Rival. David Villa deixa tudo igual no fim.",
+        player: "David Villa",
+        assist: "Iniesta",
+      },
+      {
+        minute: 88,
+        type: "goal",
+        side: "home",
+        text: "Gol do Seu time! Cristiano Ronaldo decide a partida no minuto 88.",
+        player: "Cristiano Ronaldo",
+        assist: "Isco",
+      },
+      {
+        minute: 90,
+        type: "fulltime",
+        side: null,
+        text: "Fim de jogo: Seu time vence por 3 x 2.",
+      },
+    ],
+  };
+  const logParts = eventLogParts(result, you, opp);
+
+  renderReact(
+    createElement(ResultSummary, {
+        outcome: "win",
+        youName: you.name,
+        opponentName: opp.name,
+        youInitials: initials(you.name),
+        opponentInitials: initials(opp.name),
+        youFormation: you.formationId!,
+        opponentFormation: opp.formationId!,
+        youGoals: result.goals[you.id],
+        opponentGoals: result.goals[opp.id],
+        youWon: true,
+        penaltyLabel: null,
+        leaders: [
+          leaderCardData("Artilheiro", {
+            name: "Cristiano Ronaldo",
+            val: "2 gols",
+            side: "you",
+          }),
+          leaderCardData("Assistência", {
+            name: "Modrić",
+            val: "1 assistência",
+            side: "you",
+          }),
+          leaderCardData("Craque do Jogo", {
+            name: "Cristiano Ronaldo",
+            val: "2 gols",
+            side: "you",
+          }),
+        ],
+        strengths: [
+          strengthRow("Ataque", youStrength.attack, oppStrength.attack),
+          strengthRow("Meio", youStrength.midfield, oppStrength.midfield),
+          strengthRow("Defesa", youStrength.defense, oppStrength.defense),
+          strengthRow("Geral", youStrength.overall, oppStrength.overall, true),
+        ],
+        importantLog: logParts.important,
+        fullLog: logParts.full,
+        youPitchSlots: buildPitchSlots(getFormation(you.formationId!)!, you.picks, {
+          forceShowRatings: true,
+        }),
+        opponentPitchSlots: buildPitchSlots(getFormation(opp.formationId!)!, opp.picks, {
+          forceShowRatings: true,
+        }),
+        onRematch: () => {},
+        onHome: () => {},
+      }),
+  );
 }
 
 export function renderPenaltyModalPreview({

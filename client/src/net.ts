@@ -40,6 +40,9 @@ export function sendPreMatchReady() {
 export function sendPick(slotId: string, playerName: string) {
   socket.emit("pick", { slotId, playerName });
 }
+export function sendRepositionPick(fromSlotId: string, toSlotId: string) {
+  socket.emit("repositionPick", { fromSlotId, toSlotId });
+}
 export function sendRerollTeam() {
   socket.emit("rerollTeam");
 }

@@ -14,11 +14,12 @@ import type {
 import { isHardcoreMode, isWorldCupMode } from "../../shared/gameMode.js";
 import { TEAMS, getTeam } from "../../shared/data/teams.js";
 import { WC_DRAFT_TEAMS } from "../../shared/data/worldcup.js";
-import { getFormation } from "../../shared/formations.js";
+import { getFormation, groupOf } from "../../shared/formations.js";
 import { randomManager } from "../../shared/data/managers.js";
 import {
   effectiveRating,
   openSlots,
+  playerPositions,
   simulateFirstHalf,
   simulateSecondHalf,
 } from "../../shared/engine.js";
@@ -267,6 +268,46 @@ export function pick(
   player.picks.push(newPick);
 
   advanceTurn(room);
+  return null;
+}
+
+function fitsSlotSector(player: Player, slotPos: Position) {
+  return playerPositions(player).some((pos) => groupOf(pos) === groupOf(slotPos));
+}
+
+export function repositionPick(
+  room: Room,
+  playerId: string,
+  fromSlotId: string,
+  toSlotId: string,
+): string | null {
+  if (room.phase !== "draft") return "Não é fase de draft.";
+  if (room.activePlayerId !== playerId) return "Não é a sua vez.";
+  if (fromSlotId === toSlotId) return null;
+
+  const player = room.players.find((p) => p.id === playerId);
+  if (!player?.formationId) return "Formação inválida.";
+  const formation = getFormation(player.formationId);
+  if (!formation) return "Formação inválida.";
+
+  const fromSlot = formation.slots.find((s) => s.id === fromSlotId);
+  const toSlot = formation.slots.find((s) => s.id === toSlotId);
+  if (!fromSlot || !toSlot) return "Vaga inválida.";
+
+  const pick = player.picks.find((p) => p.slotId === fromSlotId);
+  if (!pick) return "Selecione um jogador escalado.";
+  if (!fitsSlotSector(pick.player, toSlot.pos)) return "Troca fora do setor.";
+
+  const targetPick = player.picks.find((p) => p.slotId === toSlotId);
+  if (targetPick && !fitsSlotSector(targetPick.player, fromSlot.pos))
+    return "Troca fora do setor.";
+
+  pick.slotId = toSlotId;
+  pick.effectiveRating = effectiveRating(pick.player, toSlot.pos);
+  if (targetPick) {
+    targetPick.slotId = fromSlotId;
+    targetPick.effectiveRating = effectiveRating(targetPick.player, fromSlot.pos);
+  }
   return null;
 }
 
