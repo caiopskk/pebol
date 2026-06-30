@@ -37,8 +37,7 @@ const glass =
   "border border-white/10 bg-pebol-panel shadow-premium backdrop-blur-xl";
 const panel =
   `${glass} relative overflow-hidden rounded-lg transition-all duration-300 ease-out`;
-const heading =
-  "font-display text-lg font-extrabold uppercase tracking-[0.015em] text-pebol-text";
+const heading = "font-title text-lg uppercase tracking-[0.015em] text-pebol-text";
 const primaryAction =
   "pebol-glow-button pebol-glow-fill relative isolate min-h-10 w-full rounded-lg border-0 bg-gradient-to-r from-pebol-accent via-emerald-300 to-pebol-gold px-4 py-2.5 font-display text-sm font-extrabold uppercase tracking-[0.07em] text-black shadow-glow transition-all duration-300 ease-out hover:-translate-y-0.5 hover:shadow-[0_0_42px_rgba(0,255,135,.38)] active:translate-y-0";
 const secondaryAction =
@@ -416,7 +415,7 @@ function FeedbackCallout({ onOpenFeedback }: { onOpenFeedback: () => void }) {
           <span className="font-display text-xs font-extrabold uppercase tracking-[0.14em] text-pebol-accent">
             Sua opinião
           </span>
-          <h2 className="mt-1 font-display text-lg font-extrabold uppercase tracking-[0.015em] text-pebol-text">
+          <h2 className="mt-1 font-title text-lg uppercase tracking-[0.015em] text-pebol-text">
             Ajude a melhorar o Pebol
           </h2>
           <p className="mt-1 text-sm font-medium leading-6 text-pebol-muted">

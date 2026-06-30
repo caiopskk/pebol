@@ -6,6 +6,7 @@ export default {
       fontFamily: {
         display: ["Barlow", "Rajdhani", "Inter", "system-ui", "sans-serif"],
         body: ["Inter", "Segoe UI", "system-ui", "sans-serif"],
+        title: ["Anton", "Barlow", "system-ui", "sans-serif"],
       },
       colors: {
         pebol: {

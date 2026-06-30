@@ -479,13 +479,16 @@ function buildHalfTimeline(
   homeGoals: number,
   awayGoals: number,
   rng: () => number,
-  half: 1 | 2,
+  half: 1 | 2 | 3 | 4,
   preExpelled: HalfExpelled = { home: [], away: [] },
+  opts: { extraTimeFollows?: boolean } = {},
 ): { events: MatchEvent[]; expelled: HalfExpelled } {
   const evs: MatchEvent[] = [];
   const sideOf = (k: Side) => (k === "home" ? home : away);
-  const start = half === 1 ? 1 : 46;
-  const end = half === 1 ? 44 : 89;
+  // half 3/4 are the two 15-minute extra-time periods (knockout draws only).
+  const isET = half >= 3;
+  const start = half === 1 ? 1 : half === 2 ? 46 : half === 3 ? 91 : 106;
+  const end = half === 1 ? 44 : half === 2 ? 89 : half === 3 ? 105 : 120;
   const span = end - start + 1;
   const randMin = () => start + Math.floor(rng() * span);
 
@@ -539,9 +542,11 @@ function buildHalfTimeline(
       null,
       `Bola rolando! ${teamLabel(home)} x ${teamLabel(away)}.`,
     );
+  if (half === 3)
+    add(start, "kickoff", null, "Recomeça o jogo: começa a prorrogação!");
 
   // decide the red card first so later events can leave the sent-off player out
-  if (rng() < 0.1) {
+  if (rng() < (isET ? 0.04 : 0.1)) {
     const key: Side = rng() > 0.5 ? "home" : "away";
     const minute = randMin();
     const player = weightedPlayer(availSide(key, minute), rng, W_DEFENSE);
@@ -637,14 +642,14 @@ function buildHalfTimeline(
     }
   };
 
-  sprinkle(1 + Math.floor(rng() * 2), "chance", TXT.chance, W_CHANCE);
-  sprinkle(1 + Math.floor(rng() * 2), "save", TXT.save, W_FIELD);
-  sprinkle(1 + Math.floor(rng() * 2), "corner", TXT.corner, W_ATTACK);
-  sprinkle(Math.floor(rng() * 2), "offside", TXT.offside, W_ATTACK);
-  sprinkle(2 + Math.floor(rng() * 2), "foul", TXT.foul, W_DEFENSE);
+  sprinkle(isET ? Math.floor(rng() * 2) : 1 + Math.floor(rng() * 2), "chance", TXT.chance, W_CHANCE);
+  sprinkle(isET ? Math.floor(rng() * 2) : 1 + Math.floor(rng() * 2), "save", TXT.save, W_FIELD);
+  sprinkle(isET ? Math.floor(rng() * 2) : 1 + Math.floor(rng() * 2), "corner", TXT.corner, W_ATTACK);
+  sprinkle(Math.floor(rng() * (isET ? 1 : 2)), "offside", TXT.offside, W_ATTACK);
+  sprinkle(isET ? Math.floor(rng() * 2) : 2 + Math.floor(rng() * 2), "foul", TXT.foul, W_DEFENSE);
 
   // yellow cards
-  const nY = 1 + Math.floor(rng() * 2);
+  const nY = isET ? Math.floor(rng() * 2) : 1 + Math.floor(rng() * 2);
   for (let i = 0; i < nY; i++) {
     const key: Side = rng() > 0.5 ? "home" : "away";
     const minute = randMin();
@@ -664,7 +669,7 @@ function buildHalfTimeline(
   }
 
   // injury (occasional)
-  if (rng() < 0.2) sprinkle(1, "injury", TXT.injury);
+  if (rng() < (isET ? 0.08 : 0.2)) sprinkle(1, "injury", TXT.injury);
 
   // fill every still-empty minute with a possession line (minute-by-minute updates)
   const busy = new Set(
@@ -683,8 +688,22 @@ function buildHalfTimeline(
     );
   }
 
-  if (half === 1) add(45, "halftime", null, "Fim do primeiro tempo.");
-  else add(90, "fulltime", null, "Fim do segundo tempo. Acabou o jogo!");
+  if (half === 1) {
+    add(45, "halftime", null, "Fim do primeiro tempo.");
+  } else if (half === 2) {
+    add(
+      90,
+      "fulltime",
+      null,
+      opts.extraTimeFollows
+        ? "Fim do tempo normal! Times empatados — vamos para a prorrogação."
+        : "Fim do segundo tempo. Acabou o jogo!",
+    );
+  } else if (half === 3) {
+    add(105, "halftime", null, "Fim do 1º tempo da prorrogação.");
+  } else {
+    add(120, "fulltime", null, "Fim da prorrogação! Acabou o jogo.");
+  }
 
   // sort by minute; within a minute: goal first, possession before structural markers
   const rank = (e: MatchEvent) =>
@@ -720,7 +739,11 @@ function poisson(lambda: number, rng: () => number): number {
   return k - 1;
 }
 
-function expectedGoals(attacker: SimSide, defender: SimSide): number {
+function expectedGoals(
+  attacker: SimSide,
+  defender: SimSide,
+  scale = 1,
+): number {
   // Rating gaps drive most of the result (steeper than before, so the better
   // squad wins more reliably ~ less luck). The flat base is small so it adds
   // little free noise.
@@ -731,7 +754,7 @@ function expectedGoals(attacker: SimSide, defender: SimSide): number {
   // ...plus numerical superiority in midfield (formation choice matters)
   const midControl = (attacker.midCount - defender.midCount) * 0.05;
   const xg = 0.78 + base + midRating + midControl;
-  return Math.max(0.15, Math.min(2.7, xg));
+  return Math.max(0.15, Math.min(2.7, xg)) * scale;
 }
 
 /**
@@ -1049,16 +1072,42 @@ export function simulateGauntletMatch(
   applyCounter(a.side, you.mentality, b.side, opp.mentality);
   const rng = makeRng(Math.floor(Math.random() * 2 ** 31));
 
-  const ga1 = poisson(expectedGoals(a.side, b.side) * 0.5, rng);
-  const gb1 = poisson(expectedGoals(b.side, a.side) * 0.5, rng);
+  // Group-stage matches (no shootout) see fewer goals than knockout football,
+  // but scoring is never shut out entirely.
+  const xgScale = settleDrawWithShootout ? 1 : 0.82;
+
+  const ga1 = poisson(expectedGoals(a.side, b.side, xgScale) * 0.5, rng);
+  const gb1 = poisson(expectedGoals(b.side, a.side, xgScale) * 0.5, rng);
   const fh = buildHalfTimeline(a.side, b.side, ga1, gb1, rng, 1);
 
-  const ga2 = poisson(expectedGoals(a.side, b.side) * 0.5, rng);
-  const gb2 = poisson(expectedGoals(b.side, a.side) * 0.5, rng);
-  const sh = buildHalfTimeline(a.side, b.side, ga2, gb2, rng, 2, fh.expelled);
+  const ga2 = poisson(expectedGoals(a.side, b.side, xgScale) * 0.5, rng);
+  const gb2 = poisson(expectedGoals(b.side, a.side, xgScale) * 0.5, rng);
+  const drawAfterReg = settleDrawWithShootout && ga1 + ga2 === gb1 + gb2;
+  const sh = buildHalfTimeline(a.side, b.side, ga2, gb2, rng, 2, fh.expelled, {
+    extraTimeFollows: drawAfterReg,
+  });
 
-  const youGoals = ga1 + ga2;
-  const oppGoals = gb1 + gb2;
+  let youGoals = ga1 + ga2;
+  let oppGoals = gb1 + gb2;
+  let timeline = [...fh.events, ...sh.events];
+  let wentToExtraTime = false;
+
+  // Knockout draws get 2x15 minutes of extra time before going to penalties.
+  if (drawAfterReg) {
+    wentToExtraTime = true;
+    const ga3 = poisson(expectedGoals(a.side, b.side) * (15 / 90), rng);
+    const gb3 = poisson(expectedGoals(b.side, a.side) * (15 / 90), rng);
+    const et1 = buildHalfTimeline(a.side, b.side, ga3, gb3, rng, 3, sh.expelled);
+
+    const ga4 = poisson(expectedGoals(a.side, b.side) * (15 / 90), rng);
+    const gb4 = poisson(expectedGoals(b.side, a.side) * (15 / 90), rng);
+    const et2 = buildHalfTimeline(a.side, b.side, ga4, gb4, rng, 4, et1.expelled);
+
+    youGoals += ga3 + ga4;
+    oppGoals += gb3 + gb4;
+    timeline = [...timeline, ...et1.events, ...et2.events];
+  }
+
   let outcome: "win" | "draw" | "loss" =
     youGoals > oppGoals ? "win" : youGoals === oppGoals ? "draw" : "loss";
   let shootout: ShootoutKick[] | null = null;
@@ -1078,13 +1127,14 @@ export function simulateGauntletMatch(
     youId: you.id,
     oppId: opp.id,
     oppName: opp.name,
-    timeline: [...fh.events, ...sh.events],
+    timeline,
     youGoals,
     oppGoals,
     outcome,
     shootout,
     penaltyScore,
     winnerId,
+    wentToExtraTime,
   };
 }
 

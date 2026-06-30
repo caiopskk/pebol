@@ -151,7 +151,7 @@ function PlayerRow({
               {label}
             </span>
             <input
-              className={`${compactFieldClass} min-h-9 px-1.5 text-center`}
+              className={`${compactFieldClass} !min-h-9 !px-1.5 text-center`}
               type="number"
               min={1}
               max={99}
@@ -293,7 +293,7 @@ export function TeamForm({
       <div className="mb-4 flex flex-wrap items-center justify-between gap-3 rounded-lg border border-white/10 bg-pebol-panel px-4 py-3 shadow-premium backdrop-blur-xl">
         <div className="grid gap-1">
           <span className="cup-tag">{isNew ? "Novo registro" : "Edição"}</span>
-          <h1 className="font-display text-2xl font-black uppercase tracking-[0.03em] text-white">
+          <h1 className="font-title text-2xl uppercase tracking-[0.03em] text-white">
             {isNew ? "Novo time" : "Editar time"}
           </h1>
           <p className="text-sm font-semibold text-pebol-muted">

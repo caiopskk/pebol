@@ -64,7 +64,9 @@ export function LiveMatchShell({
             <span className="agg-mini"><PenaltyLabel /></span>
           </div>
           <div className="speed-row flex flex-wrap items-center justify-end gap-2">
-            <span className="spd-label">Velocidade</span>
+            <span className="mr-1 font-display text-xs font-black uppercase tracking-[0.5px] text-pebol-muted">
+              Velocidade
+            </span>
             <div className="speed-control flex items-center gap-1.5" role="group" aria-label="Velocidade da partida">
               {speedOptions.map((s) => (
                 <button

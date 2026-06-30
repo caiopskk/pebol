@@ -12,7 +12,7 @@ export function BallFieldSvg() {
   const { v, h } = useMemo(fieldGridLines, []);
   return (
     <svg
-      className="bf-svg"
+      className="absolute inset-0 block h-full w-full"
       viewBox="0 0 105 68"
       preserveAspectRatio="none"
       xmlns="http://www.w3.org/2000/svg"
@@ -29,26 +29,26 @@ export function BallFieldSvg() {
           <rect x="0" y="0" width="14" height="68" fill="url(#bfPitchShade)" />
         </pattern>
       </defs>
-      <rect x="0" y="0" width="105" height="68" className="bf-pitch" />
+      <rect x="0" y="0" width="105" height="68" className="fill-[url(#bfPitchStripes)]" />
       <g>
         {v.map((l) => (
-          <line key={`v${l.x}`} x1={l.x} y1="0" x2={l.x} y2="68" className="bf-grid" />
+          <line key={`v${l.x}`} x1={l.x} y1="0" x2={l.x} y2="68" className="stroke-white/[0.07] stroke-[0.18]" />
         ))}
         {h.map((l) => (
-          <line key={`h${l.y}`} x1="0" y1={l.y} x2="105" y2={l.y} className="bf-grid" />
+          <line key={`h${l.y}`} x1="0" y1={l.y} x2="105" y2={l.y} className="stroke-white/[0.07] stroke-[0.18]" />
         ))}
       </g>
-      <g className="bf-lines">
+      <g className="fill-none stroke-white/45 stroke-[0.4]">
         <rect x={0.5} y={0.5} width="104" height="67" />
         <line x1={52.5} y1={0.5} x2={52.5} y2={67.5} />
         <circle cx={52.5} cy="34" r={9.15} fill="none" />
-        <circle cx={52.5} cy="34" r={0.6} className="bf-spot" />
+        <circle cx={52.5} cy="34" r={0.6} className="fill-white/60 stroke-none" />
         <rect x={0.5} y={13.84} width={16.5} height={40.32} fill="none" />
         <rect x="88" y={13.84} width={16.5} height={40.32} fill="none" />
         <rect x={0.5} y={24.84} width={5.5} height={18.32} fill="none" />
         <rect x="99" y={24.84} width={5.5} height={18.32} fill="none" />
-        <circle cx="11" cy="34" r={0.6} className="bf-spot" />
-        <circle cx="94" cy="34" r={0.6} className="bf-spot" />
+        <circle cx="11" cy="34" r={0.6} className="fill-white/60 stroke-none" />
+        <circle cx="94" cy="34" r={0.6} className="fill-white/60 stroke-none" />
       </g>
     </svg>
   );
@@ -57,7 +57,7 @@ export function BallFieldSvg() {
 export function SoccerBallSvg() {
   return (
     <img
-      className="bf-ball-svg"
+      className="block h-full w-full"
       src="/soccer-ball.svg"
       alt=""
       aria-hidden="true"

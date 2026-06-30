@@ -57,10 +57,10 @@ function LeaderCard({ data }: { data: LeaderCardData }) {
       <div className={`leader-ic ${data.side ?? ""}`.trim()}>
         {data.initials ?? "–"}
       </div>
-      <div className="leader-meta">
+      <div className="min-w-0">
         <div className="leader-label">{data.label}</div>
         <div className="leader-name">{data.name ?? "—"}</div>
-        <div className="leader-val">{data.val}</div>
+        <div className="text-xs text-pebol-muted">{data.val}</div>
       </div>
     </div>
   );
@@ -197,7 +197,9 @@ function PvpShareCard({
               <br />
               {youWon ? "Você venceu" : "Você perdeu"}
             </div>
-            {penaltyLabel ? <div className="hero-pens">{penaltyLabel}</div> : null}
+            {penaltyLabel ? (
+              <div className="mt-1 text-xs font-semibold text-pebol-gold">{penaltyLabel}</div>
+            ) : null}
           </div>
           <div className="hero-team relative z-[1] flex min-w-0 flex-col items-center gap-3">
             <div className="hero-crest opp">{opponentInitials}</div>
@@ -321,7 +323,9 @@ export function ResultSummary({
               <br />
               {youWon ? "Você venceu" : "Você perdeu"}
             </div>
-            {penaltyLabel ? <div className="hero-pens">{penaltyLabel}</div> : null}
+            {penaltyLabel ? (
+              <div className="mt-1 text-xs font-semibold text-pebol-gold">{penaltyLabel}</div>
+            ) : null}
           </div>
           <div className="hero-team relative z-[1] flex min-w-0 flex-col items-center gap-3">
             <div className="hero-crest opp">{opponentInitials}</div>

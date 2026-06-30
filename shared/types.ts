@@ -188,6 +188,7 @@ export interface GauntletResult {
   shootout: ShootoutKick[] | null;
   penaltyScore: Record<string, number> | null;
   winnerId: string | null;
+  wentToExtraTime: boolean;
 }
 
 /** A player's lineup submitted at halftime (used to re-simulate the 2nd half). */

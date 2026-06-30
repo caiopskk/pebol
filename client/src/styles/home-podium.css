@@ -1,0 +1,286 @@
+/* Home leaderboard: avatar frame, segmented tab control, podium ribbon sweep,
+   and rank-badge pulse animations. Pure legacy CSS (pseudo-elements, gradients,
+   keyframes) layered on top of Tailwind-utility-styled markup in Home.tsx —
+   not a Tailwind migration target. */
+
+.home-avatar-frame {
+  background-clip: padding-box;
+  isolation: isolate;
+}
+
+.home-avatar-frame::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 0 0 1px rgba(var(--color-pebol-accent) / 0.22);
+}
+
+.home-avatar-initials {
+  position: relative;
+  z-index: 1;
+  line-height: 1;
+  transform: translateY(0.03em);
+}
+
+.home-level-badge {
+  z-index: 2;
+  line-height: 1.15;
+  letter-spacing: 0;
+  font-weight: 700;
+}
+
+.home-tab-control {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 0;
+  min-height: 2.8rem;
+  padding: 0.25rem;
+  border: 0;
+  border-radius: 0.75rem;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.055), rgba(255, 255, 255, 0.025)),
+    rgba(0, 0, 0, 0.24);
+  box-shadow:
+    inset 0 1px 0 rgba(255, 255, 255, 0.05),
+    0 0.8rem 1.7rem rgba(0, 0, 0, 0.12);
+}
+
+.home-tab-indicator {
+  position: absolute;
+  top: 0.25rem;
+  bottom: 0.25rem;
+  left: 0.25rem;
+  z-index: 0;
+  width: calc((100% - 0.5rem) / 2);
+  border-radius: 0.55rem;
+  background:
+    linear-gradient(90deg, rgba(0, 255, 135, 0.98), rgba(99, 231, 149, 0.92), rgba(255, 206, 84, 0.88));
+  box-shadow:
+    0 0 0 1px rgba(0, 255, 135, 0.58),
+    0 0 1.15rem rgba(0, 255, 135, 0.34),
+    0 0.65rem 1.25rem rgba(0, 255, 135, 0.14),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+  transition:
+    transform 0.22s cubic-bezier(0.2, 0.8, 0.2, 1),
+    background 0.22s ease,
+    box-shadow 0.22s ease;
+}
+
+.home-tab-control.is-join .home-tab-indicator {
+  transform: translateX(100%);
+  background:
+    linear-gradient(90deg, rgba(255, 206, 84, 0.9), rgba(138, 224, 137, 0.9), rgba(0, 255, 135, 0.92));
+  box-shadow:
+    0 0 0 1px rgba(0, 255, 135, 0.46),
+    0 0 1.15rem rgba(0, 255, 135, 0.26),
+    0 0.65rem 1.25rem rgba(0, 255, 135, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.32);
+}
+
+.home-tab-label {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  min-height: 2.3rem;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 0.55rem;
+  background: transparent;
+  color: var(--muted);
+  font-family: var(--font-display);
+  font-size: 0.82rem;
+  font-weight: 900;
+  letter-spacing: 0.055em;
+  text-transform: uppercase;
+  opacity: 0.74;
+  transition:
+    color 0.18s ease,
+    opacity 0.18s ease,
+    transform 0.18s ease;
+}
+
+.home-tab-label:hover {
+  color: var(--text);
+  opacity: 0.95;
+}
+
+.home-tab-label.active {
+  color: #04130c;
+  opacity: 1;
+  text-shadow: none;
+}
+
+:root[data-resolved-theme="dark"] .home-tab-indicator {
+  background:
+    linear-gradient(90deg, rgba(0, 255, 135, 0.88), rgba(92, 218, 142, 0.78), rgba(255, 206, 84, 0.84));
+  box-shadow:
+    0 0 0 1px rgba(0, 255, 135, 0.36),
+    0 0 0.75rem rgba(0, 255, 135, 0.18),
+    0 0.55rem 1rem rgba(0, 255, 135, 0.08),
+    inset 0 1px 0 rgba(255, 255, 255, 0.22);
+}
+
+:root[data-resolved-theme="dark"] .home-tab-control.is-join .home-tab-indicator {
+  background:
+    linear-gradient(90deg, rgba(255, 206, 84, 0.86), rgba(128, 210, 130, 0.78), rgba(0, 255, 135, 0.84));
+  box-shadow:
+    0 0 0 1px rgba(0, 255, 135, 0.3),
+    0 0 0.75rem rgba(0, 255, 135, 0.14),
+    0 0.55rem 1rem rgba(0, 255, 135, 0.07),
+    inset 0 1px 0 rgba(255, 255, 255, 0.2);
+}
+
+.home-rank-badge,
+.home-leader-level,
+.home-leader-xp,
+.home-leader-name {
+  letter-spacing: 0;
+  text-rendering: geometricPrecision;
+}
+
+.home-leader-row {
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+}
+
+.home-podium::before {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  z-index: -1;
+  opacity: 0;
+  transform: translateX(-115%);
+  pointer-events: none;
+  animation: homePodiumSweep 4.4s cubic-bezier(0.4, 0, 0.2, 1) infinite;
+}
+
+.home-rank-1::before {
+  background: linear-gradient(105deg, transparent 16%, rgba(255, 206, 84, 0.18), transparent 74%);
+}
+
+.home-rank-2::before {
+  background: linear-gradient(105deg, transparent 16%, rgba(214, 226, 238, 0.16), transparent 74%);
+  animation-delay: 0.45s;
+}
+
+.home-rank-3::before {
+  background: linear-gradient(105deg, transparent 16%, rgba(217, 119, 6, 0.15), transparent 74%);
+  animation-delay: 0.9s;
+}
+
+.home-podium .home-rank-badge {
+  animation: homeRankPulse 3.6s ease-in-out infinite;
+}
+
+.home-rank-2 .home-rank-badge {
+  animation-delay: 0.4s;
+}
+
+.home-rank-3 .home-rank-badge {
+  animation-delay: 0.8s;
+}
+
+.home-leader-name {
+  line-height: 1.2;
+}
+
+.home-leader-level {
+  min-width: 3.35rem;
+  text-align: center;
+  font-size: 0.72rem !important;
+  font-weight: 800 !important;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.05;
+  color: #061812 !important;
+  background:
+    linear-gradient(180deg, rgba(44, 255, 166, 0.98), rgba(17, 190, 113, 0.92)) !important;
+  border-color: rgba(102, 255, 194, 0.38) !important;
+  box-shadow:
+    0 0.35rem 0.9rem rgba(0, 255, 135, 0.12),
+    inset 0 1px 0 rgba(255, 255, 255, 0.38);
+}
+
+.home-leader-xp {
+  line-height: 1.15;
+}
+
+@keyframes homePodiumSweep {
+  0% {
+    opacity: 0;
+    transform: translateX(-115%);
+  }
+  18% {
+    opacity: 1;
+  }
+  48% {
+    opacity: 0.72;
+    transform: translateX(115%);
+  }
+  100% {
+    opacity: 0;
+    transform: translateX(115%);
+  }
+}
+
+@keyframes homeRankPulse {
+  0%,
+  100% {
+    transform: translateZ(0) scale(1);
+    box-shadow: none;
+  }
+  45% {
+    transform: translateZ(0) scale(1.045);
+    box-shadow: 0 0 1rem rgba(255, 206, 84, 0.18);
+  }
+}
+
+:root[data-resolved-theme="light"] .home-avatar-frame {
+  border-color: rgba(0, 169, 96, 0.42) !important;
+  box-shadow:
+    0 1rem 2rem rgba(14, 35, 39, 0.12),
+    0 0 0 1px rgba(0, 169, 96, 0.18);
+}
+
+:root[data-resolved-theme="light"] .home-avatar-frame::after {
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 169, 96, 0.28),
+    inset 0 1px 0 rgba(255, 255, 255, 0.62);
+}
+
+:root[data-resolved-theme="light"] .home-level-badge {
+  background: linear-gradient(135deg, #ffe18a, #d19417) !important;
+  border-color: rgba(122, 86, 11, 0.32) !important;
+  color: #17210a !important;
+  box-shadow:
+    0 0.35rem 0.8rem rgba(184, 128, 16, 0.18),
+    inset 0 1px 0 rgba(255, 255, 255, 0.5);
+}
+
+:root[data-resolved-theme="light"] .home-rank-badge {
+  background: rgba(15, 38, 42, 0.045) !important;
+  border-color: rgba(15, 38, 42, 0.14) !important;
+  color: #314550 !important;
+}
+
+:root[data-resolved-theme="light"] .home-rank-badge.text-pebol-gold {
+  background: rgba(184, 128, 16, 0.12) !important;
+  border-color: rgba(184, 128, 16, 0.42) !important;
+  color: #93640c !important;
+}
+
+:root[data-resolved-theme="light"] .home-rank-badge.text-slate-100 {
+  background: rgba(76, 91, 101, 0.1) !important;
+  border-color: rgba(76, 91, 101, 0.24) !important;
+  color: #1f3038 !important;
+}
+
+:root[data-resolved-theme="light"] .home-rank-badge.text-orange-200 {
+  background: rgba(217, 119, 6, 0.12) !important;
+  border-color: rgba(217, 119, 6, 0.32) !important;
+  color: #a04f07 !important;
+}

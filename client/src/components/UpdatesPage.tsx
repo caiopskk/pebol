@@ -72,7 +72,7 @@ export function UpdatesPage({ onBack }: UpdatesPageProps) {
         <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
           Novidades
         </span>
-        <h1 className="mt-2 font-display text-4xl font-black uppercase tracking-[0.02em] text-white">
+        <h1 className="mt-2 font-title text-4xl uppercase tracking-[0.02em] text-white">
           Atualizações do Pebol
         </h1>
         <p className="mt-4 max-w-2xl text-base leading-7 text-pebol-muted">
@@ -87,7 +87,7 @@ export function UpdatesPage({ onBack }: UpdatesPageProps) {
                 <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-gold">
                   {entry.date}
                 </span>
-                <h2 className="mt-2 font-display text-xl font-black text-white">
+                <h2 className="mt-2 font-title text-xl text-white">
                   {entry.title}
                 </h2>
                 <p className="mt-2 text-sm leading-6 text-pebol-muted">{entry.summary}</p>

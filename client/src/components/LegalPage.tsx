@@ -117,7 +117,7 @@ export function LegalPage({ kind, onBack }: LegalPageProps) {
         <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
           Pebol
         </span>
-        <h1 className="mt-2 font-display text-4xl font-black uppercase tracking-[0.02em] text-white">
+        <h1 className="mt-2 font-title text-4xl uppercase tracking-[0.02em] text-white">
           {copy.title}
         </h1>
         <p className="mt-1 text-xs font-black uppercase tracking-[0.1em] text-pebol-gold">
@@ -128,7 +128,7 @@ export function LegalPage({ kind, onBack }: LegalPageProps) {
         <div className="mt-6 grid gap-4">
           {copy.sections.map((section) => (
             <section key={section.title} className="rounded-2xl border border-white/10 bg-white/[0.035] p-4">
-              <h2 className="font-display text-lg font-black text-white">{section.title}</h2>
+              <h2 className="font-title text-lg text-white">{section.title}</h2>
               {section.body.map((paragraph) => (
                 <p key={paragraph} className="mt-2 text-sm leading-6 text-pebol-muted">
                   {paragraph}

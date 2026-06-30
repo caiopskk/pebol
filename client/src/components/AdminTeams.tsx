@@ -94,7 +94,7 @@ export function AdminTeams({
           <div className="relative grid gap-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
             <div>
               <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">Administração</span>
-              <h1 className="mt-1 font-display text-3xl font-black uppercase tracking-[0.02em] text-white">Gerenciar times</h1>
+              <h1 className="mt-1 font-title text-3xl uppercase tracking-[0.02em] text-white">Gerenciar times</h1>
               <p className="mt-1 text-sm font-semibold text-pebol-muted">
                 {account?.username ?? ""} · {isAdmin ? "admin" : "usuário"}
               </p>
@@ -109,7 +109,7 @@ export function AdminTeams({
                 onChange={importFile}
               />
               <a
-                className="min-h-11 rounded-lg border border-white/10 bg-white/[0.055] px-4 py-2 font-display text-sm font-extrabold text-slate-200 transition-all duration-300 hover:border-pebol-blue/50 hover:bg-pebol-blue/15"
+                className="inline-flex min-h-11 items-center justify-center rounded-lg border border-white/10 bg-white/[0.055] px-4 py-2 font-display text-sm font-extrabold text-slate-200 transition-all duration-300 hover:border-pebol-blue/50 hover:bg-pebol-blue/15"
                 href="/import_teams_model.json"
                 download
               >

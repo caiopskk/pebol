@@ -8,15 +8,19 @@ import {
 } from "../../shared/gameMode.js";
 import type {
   GameMode,
+  GauntletResult,
+  MatchEvent,
   MatchResult,
   PlayerPublic,
   RoomState,
+  ShootoutKick,
   SquadPick,
 } from "../../shared/types.js";
 import {
   draftAchievementIds,
   regularMatchAchievementAwards,
 } from "./lib/achievementRules.js";
+import { campaignMatchAchievementIds } from "./lib/campaignData.js";
 
 function picks(rating: number): SquadPick[] {
   return FORMATIONS[0].slots.map((slot, index) => ({
@@ -155,5 +159,168 @@ assert.equal(penaltyWin?.xp, 60);
 
 const achievementText = ACHIEVEMENTS.map((a) => `${a.title} ${a.description}`).join(" ");
 assert.equal(/pica/i.test(achievementText), false);
+
+// ---- campaignMatchAchievementIds (World Cup gauntlet matches) ----
+
+function goalEvent(
+  minute: number,
+  side: "home" | "away",
+  scorer: string,
+  assist?: string,
+): MatchEvent {
+  return { minute, type: "goal", side, text: "Gol.", player: scorer, assist };
+}
+
+function redCardEvent(minute: number, side: "home" | "away", who: string): MatchEvent {
+  return { minute, type: "card", side, card: "red", text: "Vermelho.", player: who };
+}
+
+function gauntletResult(opts: {
+  youGoals: number;
+  oppGoals: number;
+  outcome: "win" | "draw" | "loss";
+  timeline: MatchEvent[];
+  shootout?: ShootoutKick[] | null;
+  penaltyScore?: Record<string, number> | null;
+  wentToExtraTime?: boolean;
+}): GauntletResult {
+  return {
+    youId: "you",
+    oppId: "opp",
+    oppName: "Rival",
+    timeline: opts.timeline,
+    youGoals: opts.youGoals,
+    oppGoals: opts.oppGoals,
+    outcome: opts.outcome,
+    shootout: opts.shootout ?? null,
+    penaltyScore: opts.penaltyScore ?? null,
+    winnerId: opts.outcome === "win" ? "you" : opts.outcome === "loss" ? "opp" : null,
+    wentToExtraTime: opts.wentToExtraTime ?? false,
+  };
+}
+
+const bigCleanSheetWin = campaignMatchAchievementIds(
+  gauntletResult({
+    youGoals: 4,
+    oppGoals: 0,
+    outcome: "win",
+    timeline: [
+      goalEvent(10, "home", "Artilheiro", "Garçom"),
+      goalEvent(25, "home", "Artilheiro", "Garçom"),
+      goalEvent(60, "home", "Artilheiro", "Outro"),
+      goalEvent(70, "home", "Companheiro", "Garçom"),
+    ],
+  }),
+);
+assert.ok(bigCleanSheetWin.includes("first_goal"));
+assert.ok(bigCleanSheetWin.includes("first_win"));
+assert.ok(bigCleanSheetWin.includes("clean_sheet"));
+assert.ok(bigCleanSheetWin.includes("hat_trick"));
+assert.ok(bigCleanSheetWin.includes("assist_master"));
+assert.ok(bigCleanSheetWin.includes("big_win"));
+assert.equal(bigCleanSheetWin.includes("comeback_win"), false);
+assert.equal(bigCleanSheetWin.includes("red_card_win"), false);
+
+const comebackWin = campaignMatchAchievementIds(
+  gauntletResult({
+    youGoals: 2,
+    oppGoals: 1,
+    outcome: "win",
+    timeline: [
+      goalEvent(20, "away", "Rival 9"),
+      goalEvent(60, "home", "Camisa 10", "Meião"),
+      goalEvent(75, "home", "Camisa 9", "Meião"),
+    ],
+  }),
+);
+assert.ok(comebackWin.includes("comeback_win"));
+assert.equal(comebackWin.includes("clean_sheet"), false);
+
+const noComebackWin = campaignMatchAchievementIds(
+  gauntletResult({
+    youGoals: 2,
+    oppGoals: 1,
+    outcome: "win",
+    timeline: [
+      goalEvent(20, "home", "Camisa 10", "Meião"),
+      goalEvent(60, "away", "Rival 9"),
+      goalEvent(75, "home", "Camisa 9", "Meião"),
+    ],
+  }),
+);
+assert.equal(
+  noComebackWin.includes("comeback_win"),
+  false,
+  "leading at halftime should not count as a comeback",
+);
+
+const redCardWin = campaignMatchAchievementIds(
+  gauntletResult({
+    youGoals: 1,
+    oppGoals: 0,
+    outcome: "win",
+    timeline: [redCardEvent(30, "home", "Zagueiro"), goalEvent(80, "home", "Atacante", "Meia")],
+  }),
+);
+assert.ok(redCardWin.includes("red_card_win"));
+
+const oppRedCardWin = campaignMatchAchievementIds(
+  gauntletResult({
+    youGoals: 1,
+    oppGoals: 0,
+    outcome: "win",
+    timeline: [redCardEvent(30, "away", "Rival zagueiro"), goalEvent(80, "home", "Atacante", "Meia")],
+  }),
+);
+assert.equal(
+  oppRedCardWin.includes("red_card_win"),
+  false,
+  "the opponent being sent off should not award your red-card-win achievement",
+);
+
+const campaignPenaltyWin = campaignMatchAchievementIds(
+  gauntletResult({
+    youGoals: 1,
+    oppGoals: 1,
+    outcome: "win",
+    timeline: [goalEvent(40, "home", "Cobrador"), goalEvent(70, "away", "Rival")],
+    shootout: [],
+    penaltyScore: { you: 5, opp: 4 },
+  }),
+);
+assert.ok(campaignPenaltyWin.includes("penalty_win"));
+
+const campaignPenaltyLoss = campaignMatchAchievementIds(
+  gauntletResult({
+    youGoals: 1,
+    oppGoals: 1,
+    outcome: "loss",
+    timeline: [goalEvent(40, "home", "Cobrador"), goalEvent(70, "away", "Rival")],
+    shootout: [],
+    penaltyScore: { you: 4, opp: 5 },
+  }),
+);
+assert.equal(
+  campaignPenaltyLoss.includes("penalty_win"),
+  false,
+  "losing a shootout must not award the penalty-win achievement",
+);
+
+// extra-time goals (minute > 90) must still be picked up by the goal/assist/clean-sheet tallies
+const extraTimeWin = campaignMatchAchievementIds(
+  gauntletResult({
+    youGoals: 2,
+    oppGoals: 0,
+    outcome: "win",
+    wentToExtraTime: true,
+    timeline: [
+      goalEvent(55, "home", "Titular", "Armador"),
+      goalEvent(112, "home", "Reserva", "Armador"),
+    ],
+  }),
+);
+assert.ok(extraTimeWin.includes("first_win"));
+assert.ok(extraTimeWin.includes("clean_sheet"));
+assert.equal(extraTimeWin.includes("hat_trick"), false);
 
 console.log("[achievement-rules-test] ok");

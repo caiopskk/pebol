@@ -277,11 +277,11 @@ export function ShareResultButton({
   return (
     <button
       type="button"
-      className={`${className} share-result-button`}
+      className={`${className} min-w-[14rem] text-center`}
       onClick={copyImage}
       aria-disabled={copyState === "copying"}
     >
-      <span>{label}</span>
+      <span className="inline-block min-w-[10.5rem]">{label}</span>
     </button>
   );
 }

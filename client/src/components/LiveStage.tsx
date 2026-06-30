@@ -38,7 +38,7 @@ export function ScoreNumber({ side }: { side: "left" | "right" }) {
 
 export function ClockMinute() {
   const s = useLiveState();
-  return <span>{Math.min(s.minute, 90)}</span>;
+  return <span>{Math.min(s.minute, 120)}</span>;
 }
 
 export function HalfLabel() {
@@ -105,7 +105,7 @@ export function EventFeed() {
           key={ev.id}
           className={`ev grid min-h-10 grid-cols-[3.25rem_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-3 py-2 ${ev.type}${ev.cardKind ? ` ${ev.cardKind}` : ""}`}
         >
-          <span className="ev-min font-display text-xs font-black text-pebol-muted">{Math.min(ev.minute, 90)}'</span>
+          <span className="ev-min font-display text-xs font-black text-pebol-muted">{Math.min(ev.minute, 120)}'</span>
           <span className="ev-tx min-w-0 text-sm font-semibold">{ev.text}</span>
           {ev.pos ? <span className="ev-pos font-display text-xs font-black uppercase text-pebol-muted">{ev.pos}</span> : null}
         </li>
@@ -134,7 +134,7 @@ export function ScoreboardGoals({ side }: { side: "you" | "opp" }) {
 function KickRow({ kick }: { kick: { id: number; taker: string; scored: boolean; pending: boolean } }) {
   const cls = kick.pending ? "pending" : kick.scored ? "made" : "missed";
   return (
-    <li className={`pen-kick ${cls} grid min-h-10 grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 rounded-lg border px-3 py-2`}>
+    <li className={`pen-kick ${cls}`}>
       <span className="pen-mark" aria-hidden="true" />
       <strong>{kick.taker}</strong>
       <span className="pen-result">
@@ -309,7 +309,7 @@ function ReserveItem({
   return (
     <li>
       <button
-        className={`reserve-option grid min-h-10 w-full grid-cols-[minmax(4.5rem,auto)_minmax(0,1fr)_minmax(0,.8fr)_2.5rem] items-center gap-2 rounded-lg border px-3 py-2 text-left ${item.selected ? "selected" : ""}`.trim()}
+        className={`reserve-option ${item.selected ? "selected" : ""}`.trim()}
         disabled={item.disabled}
         onClick={() => onClick(item.name)}
       >
@@ -320,11 +320,15 @@ function ReserveItem({
         <span className="pl-team min-w-0 truncate">{item.teamLabel}</span>
         {item.disabled && !item.selected ? null : null}
         {item.rating ? (
-          <span className={`pl-rt ${item.disabled ? "hidden" : ""}`.trim()}>
+          <span
+            className={`pl-rt font-display text-sm font-bold leading-none tracking-wide tabular-nums text-pebol-gold ${item.disabled ? "hidden" : ""}`.trim()}
+          >
             {item.disabled && item.rating === 0 ? "??" : item.rating}
           </span>
         ) : (
-          <span className="pl-rt hidden">??</span>
+          <span className="pl-rt hidden font-display text-sm font-bold leading-none tracking-wide tabular-nums text-pebol-gold">
+            ??
+          </span>
         )}
       </button>
     </li>
@@ -351,15 +355,17 @@ export function HalftimePanel({
         callbacks.onBackgroundClick();
       }}
     >
-      <div className="halftime-card max-h-[92vh] overflow-auto rounded-lg">
+      <div className="halftime-card">
         <div className="section-head">
           <div>
-            <span className="half-kicker">Intervalo</span>
+            <span className="block !text-[0.68rem] !font-black uppercase tracking-[0.12rem] !text-pebol-accent">
+              Intervalo
+            </span>
             <h3>Ajustes do time</h3>
           </div>
           <span>{h.subCountLabel}</span>
         </div>
-        <div className="half-controls grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="half-controls">
           <label>
             Formação
             <select
@@ -406,25 +412,28 @@ export function HalftimePanel({
           </button>
         </div>
         {h.focusBanner ? (
-          <TacticBanner kind={h.focusBanner.kind}>{h.focusBanner.text}</TacticBanner>
+          <TacticBanner kind={h.focusBanner.kind} compact>
+            {h.focusBanner.text}
+          </TacticBanner>
         ) : null}
-        <div className="halftime-squad grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(18rem,.9fr)]">
-          <div className="half-field-box min-w-0 rounded-lg">
-            <div className={`half-pitch ${h.locked ? "locked" : ""}`.trim()}>
-              <Pitch
-                slots={h.pitchSlots}
-                small
-                interactive
-                onSlotClick={(id, filled) => {
-                  if (filled) callbacks.onSlotClick(id);
-                }}
-              />
-            </div>
-            <p className="sub-status">{h.subStatus}</p>
+        <div className="halftime-squad">
+          <div className="half-field-box">
+            <Pitch
+              slots={h.pitchSlots}
+              small
+              interactive
+              variant="half"
+              onSlotClick={(id, filled) => {
+                if (filled) callbacks.onSlotClick(id);
+              }}
+            />
+            <p className="mt-2 text-xs leading-[1.4] text-pebol-muted">{h.subStatus}</p>
           </div>
-          <div className="half-reserve-box min-w-0 rounded-lg">
-            <span className="half-box-title">Reservas disponíveis</span>
-            <ul className="reserve-list grid gap-2">
+          <div className="half-reserve-box">
+            <span className="mb-2 block text-[0.7rem] font-black uppercase tracking-[0.08rem] text-pebol-muted">
+              Reservas disponíveis
+            </span>
+            <ul className="reserve-list">
               {h.reserves.map((r) => (
                 <ReserveItem key={r.name} item={r} onClick={callbacks.onReserveClick} />
               ))}

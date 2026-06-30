@@ -1,0 +1,43 @@
+/* Campaign setup and pre-match theme refinements. */
+
+:root[data-resolved-theme="dark"] .prematch-chip.active,
+:root[data-resolved-theme="dark"] .cup-prematch-card .campaign-mode-active {
+  background: rgba(0, 255, 135, 0.045) !important;
+  border-color: rgba(0, 255, 135, 0.58) !important;
+  color: #00ff87 !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 255, 135, 0.06),
+    0 0 0.45rem rgba(0, 255, 135, 0.035) !important;
+}
+
+:root[data-resolved-theme="dark"] .prematch-chip.active:hover,
+:root[data-resolved-theme="dark"] .cup-prematch-card .campaign-mode-active:hover {
+  background: rgba(0, 255, 135, 0.065) !important;
+  border-color: rgba(0, 255, 135, 0.66) !important;
+  box-shadow:
+    inset 0 0 0 1px rgba(0, 255, 135, 0.08),
+    0 0 0.55rem rgba(0, 255, 135, 0.05) !important;
+}
+
+:root[data-resolved-theme="light"] .prematch-chip:not(.active) {
+  background: rgba(255, 255, 255, 0.56) !important;
+  border-color: rgba(15, 38, 42, 0.14) !important;
+  color: #0a181c !important;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+:root[data-resolved-theme="light"] .prematch-chip:hover {
+  background: rgba(232, 247, 240, 0.78) !important;
+  border-color: rgba(0, 169, 96, 0.34) !important;
+}
+
+:root[data-resolved-theme="light"] .prematch-chip.active {
+  background: rgba(213, 246, 230, 0.9) !important;
+  border-color: rgba(0, 169, 96, 0.48) !important;
+  color: #00844f !important;
+  box-shadow: 0 0.8rem 1.7rem rgba(0, 169, 96, 0.1) !important;
+}
+
+:root[data-resolved-theme="light"] .cup-prematch-card .prematch-control-card .prematch-chip:not(.active) {
+  background: rgba(255, 255, 255, 0.46) !important;
+}

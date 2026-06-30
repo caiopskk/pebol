@@ -79,7 +79,7 @@ export function SetupBoard({
       comfortable ? "p-4 sm:p-5" : "p-3.5 sm:p-4"
     }`;
   const titleClass =
-    `font-display font-black uppercase tracking-[0.02em] text-white ${
+    `font-title uppercase tracking-[0.02em] text-white ${
       comfortable ? "text-xl" : "text-lg"
     }`;
   const optionClass = (active: boolean, extra = "") =>
@@ -149,7 +149,7 @@ export function SetupBoard({
         <div className={`mini-pitch-wrap rounded-lg border border-white/10 bg-black/20 ${
           comfortable ? "mt-4 p-3" : "mt-3 p-2.5"
         }`}>
-          <Pitch slots={pitchSlots} small className="setup-pitch" />
+          <Pitch slots={pitchSlots} small variant="setup" />
         </div>
         {hideMentalityFocus ? (
           <>

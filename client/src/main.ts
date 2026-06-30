@@ -1311,6 +1311,7 @@ function renderCampaignMatch() {
   );
 
   const goals = { you: 0, opp: 0 };
+  const matchEndMinute = r.wentToExtraTime ? 120 : 90;
   let minute = 0,
     evIdx = 0,
     timer: number | undefined,
@@ -1402,7 +1403,7 @@ function renderCampaignMatch() {
         const p = pidOf(ev.side);
         if (p) {
           goals[p as "you" | "opp"]++;
-          liveStore.addGoal(p, Math.min(ev.minute, 90), ev.player ?? "?", ev.assist ?? null);
+          liveStore.addGoal(p, Math.min(ev.minute, matchEndMinute), ev.player ?? "?", ev.assist ?? null);
         }
         liveStore.setScore(goals.you, goals.opp);
         goalAnim(ev.player);
@@ -1412,14 +1413,22 @@ function renderCampaignMatch() {
       schedule(d / L.matchSpeed);
       return;
     }
-    if (minute >= 90) {
+    if (minute >= matchEndMinute) {
       if (r.shootout?.length) schedule(1000, playShootout);
       else schedule(1100, finish);
       return;
     }
     minute++;
     liveStore.setMinute(minute);
-    liveStore.setHalfLabel(minute <= 45 ? "1º Tempo" : "2º Tempo");
+    liveStore.setHalfLabel(
+      minute <= 45
+        ? "1º Tempo"
+        : minute <= 90
+          ? "2º Tempo"
+          : minute <= 105
+            ? "1º Tempo (Prorrogação)"
+            : "2º Tempo (Prorrogação)",
+    );
     schedule(130 / L.matchSpeed);
   }
   function playShootout() {
@@ -1472,8 +1481,8 @@ function renderCampaignGameOver() {
   const detail = fellInGroup
     ? `Você terminou como ${c.groupQualifiedLabel}.`
     : r.penaltyScore
-      ? `Empate contra ${r.oppName}: ${r.youGoals} x ${r.oppGoals}. Nos pênaltis, ${r.penaltyScore[r.youId]} x ${r.penaltyScore[r.oppId]}.`
-      : `Resultado contra ${r.oppName}: ${r.youGoals} x ${r.oppGoals} (${r.outcome === "draw" ? "empate" : "derrota"}).`;
+      ? `Empate contra ${r.oppName}: ${r.youGoals} x ${r.oppGoals}${r.wentToExtraTime ? " (após a prorrogação)" : ""}. Nos pênaltis, ${r.penaltyScore[r.youId]} x ${r.penaltyScore[r.oppId]}.`
+      : `Resultado contra ${r.oppName}: ${r.youGoals} x ${r.oppGoals} (${r.outcome === "draw" ? "empate" : "derrota"}${r.wentToExtraTime ? " na prorrogação" : ""}).`;
   const penaltyLabel = r.penaltyScore
     ? `Pênaltis ${r.penaltyScore[r.youId]} x ${r.penaltyScore[r.oppId]}`
     : null;

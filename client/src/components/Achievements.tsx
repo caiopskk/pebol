@@ -48,7 +48,7 @@ export function Achievements({
               <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
                 Perfil
               </span>
-              <h1 className="mt-1 font-display text-3xl font-black uppercase tracking-[0.02em] text-white">
+              <h1 className="mt-1 font-title text-3xl uppercase tracking-[0.02em] text-white">
                 Nível {progress?.level ?? 1} · {progress?.title ?? "Aspirante"}
               </h1>
               <p className="mt-1 text-sm font-semibold text-pebol-muted">
@@ -118,7 +118,7 @@ export function Achievements({
                     <span>{achievement.category}</span>
                     <strong className="text-pebol-gold">{achievement.points} XP</strong>
                   </div>
-                  <h2 className="mt-4 font-display text-xl font-black text-white">
+                  <h2 className="mt-4 font-title text-xl text-white">
                     {achievement.title}
                   </h2>
                   <p className="mt-2 text-sm leading-6 text-pebol-muted">

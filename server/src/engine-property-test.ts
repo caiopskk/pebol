@@ -225,8 +225,17 @@ function assertSimulationProperties(): void {
     strengthIsSane(computeStrength(home.picks, home.formationId));
     strengthIsSane(computeStrength(away.picks, away.formationId));
 
-    const result = simulateGauntletMatch(home, away, true);
-    assert.ok(result.timeline.length >= 90, "timeline should contain live events");
+    // alternate knockout (shootout/extra-time eligible) and group-stage (draws stand) modes
+    const knockout = i % 2 === 0;
+    const result = simulateGauntletMatch(home, away, knockout);
+
+    assert.ok(result.timeline.length > 0, "timeline should contain live events");
+    assert.equal(result.timeline[0]?.type, "kickoff", "timeline should open with kickoff");
+    assert.equal(
+      result.timeline[result.timeline.length - 1]?.type,
+      "fulltime",
+      "timeline should close with a fulltime marker",
+    );
     for (let j = 1; j < result.timeline.length; j++) {
       assert.ok(
         result.timeline[j].minute >= result.timeline[j - 1].minute,
@@ -237,12 +246,48 @@ function assertSimulationProperties(): void {
     assert.ok(["win", "draw", "loss"].includes(result.outcome));
     if (result.outcome === "win") assert.equal(result.winnerId, home.id);
     if (result.outcome === "loss") assert.equal(result.winnerId, away.id);
-    if (result.shootout) {
-      assert.ok(result.penaltyScore);
-      assert.ok(result.shootout.length >= 6);
-      for (const kick of result.shootout) {
-        assert.ok(kick.taker.length > 0);
+
+    const lastMinute = result.timeline[result.timeline.length - 1].minute;
+    assert.ok(
+      result.timeline.length >= lastMinute,
+      "every minute up to the close marker should produce at least one event",
+    );
+
+    if (knockout) {
+      // a knockout match always produces a winner — group draws are the only ones allowed to stand
+      assert.notEqual(result.outcome, "draw", "knockout match must not end drawn");
+      if (result.shootout) {
+        assert.ok(result.penaltyScore, "shootout result needs a penalty score");
+        assert.ok(
+          result.shootout.length >= 6,
+          "shootout needs at least a best-of-5 plus a tiebreak kick",
+        );
+        for (const kick of result.shootout) assert.ok(kick.taker.length > 0);
+        assert.ok(result.wentToExtraTime, "a shootout can only follow extra time");
       }
+      if (result.wentToExtraTime) {
+        assert.equal(lastMinute, 120, "extra time should close at minute 120");
+        assert.ok(
+          result.timeline.some((e) => e.minute > 90),
+          "extra time was flagged but no events past minute 90 exist",
+        );
+      } else {
+        assert.equal(lastMinute, 90, "a match without extra time should close at minute 90");
+        assert.ok(
+          result.timeline.every((e) => e.minute <= 90),
+          "no extra-time events should appear when wentToExtraTime is false",
+        );
+      }
+    } else {
+      // group-stage matches: draws stand, no shootout, no extra time
+      assert.equal(result.shootout, null, "group stage must never go to penalties");
+      assert.equal(result.penaltyScore, null, "group stage must never produce a penalty score");
+      assert.equal(result.wentToExtraTime, false, "group stage must never play extra time");
+      assert.equal(lastMinute, 90, "group stage match should close at minute 90");
+      assert.ok(
+        result.timeline.every((e) => e.minute <= 90),
+        "group stage timeline should never exceed minute 90",
+      );
     }
   }
 }

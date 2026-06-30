@@ -62,9 +62,9 @@ function PlayerItem({
       </span>
       <span className="pl-name min-w-0 truncate text-sm font-black text-white">{player.name}</span>
       {hideRatings ? (
-        <span className="pl-rt hidden text-right font-display text-sm font-black text-pebol-gold">??</span>
+        <span className="pl-rt hidden text-right font-display text-sm font-bold leading-none tracking-wide tabular-nums text-pebol-gold">??</span>
       ) : (
-        <span className="pl-rt text-right font-display text-sm font-black text-pebol-gold">{player.rating}</span>
+        <span className="pl-rt text-right font-display text-sm font-bold leading-none tracking-wide tabular-nums text-pebol-gold">{player.rating}</span>
       )}
       {taken ? <span className="pl-tick text-pebol-accent">✓</span> : null}
     </li>
@@ -147,12 +147,10 @@ export function Draft({
 
         <div className="grid gap-3 xl:grid-cols-[minmax(20rem,1fr)_minmax(21rem,.92fr)_minmax(20rem,1fr)] xl:items-start">
           <section
-            className={`draft-board you-board min-w-0 overflow-hidden rounded-lg border bg-pebol-panel p-4 shadow-premium backdrop-blur-xl ${
+            className={`min-w-0 overflow-hidden rounded-lg border bg-pebol-panel p-4 shadow-premium backdrop-blur-xl ${
               yourTurn
                 ? "border-pebol-accent/40 bg-pebol-accent/[0.035] shadow-[0_0_0.95rem_rgba(0,255,135,0.07)]"
                 : "border-white/10"
-            } ${yourTurn && (selectedPlayer || selectedDraftSlotId) ? "picking" : ""} ${
-              yourTurn && selectedDraftSlotId ? "repositioning" : ""
             }`}
           >
             <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -163,6 +161,9 @@ export function Draft({
               slots={youPitchSlots}
               small
               interactive
+              variant="draft"
+              picking={Boolean(yourTurn && (selectedPlayer || selectedDraftSlotId))}
+              repositioning={Boolean(yourTurn && selectedDraftSlotId)}
               onSlotClick={(slotId, filled) => {
                 if (!yourTurn) return;
                 if (selectedPlayer) {
@@ -190,7 +191,7 @@ export function Draft({
               <span className="font-display text-[0.68rem] font-black uppercase tracking-[0.18em] text-pebol-muted">
                 {drawnTeamLabel}
               </span>
-              <h2 className="m-0 break-words font-display text-2xl font-black leading-none text-pebol-text">
+              <h2 className="m-0 break-words font-title text-2xl leading-none text-pebol-text">
                 {team ? `${team.name} ${team.season}` : "—"}
               </h2>
               <span className="min-h-4 text-xs font-bold text-pebol-muted">
@@ -248,7 +249,9 @@ export function Draft({
               </h3>
               <TeamStrengthCard data={opponentStrength} />
             </div>
-            {opponentPitchSlots ? <Pitch slots={opponentPitchSlots} small /> : null}
+            {opponentPitchSlots ? (
+              <Pitch slots={opponentPitchSlots} small variant="draft" />
+            ) : null}
           </section>
         </div>
       </div>

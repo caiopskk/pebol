@@ -95,7 +95,7 @@ export function CampaignDraft({
         <section className="cup-draft-source min-w-0 rounded-lg border border-white/10 bg-pebol-panel p-4 shadow-premium backdrop-blur-xl">
           <div className="grid gap-2 rounded-lg border border-white/10 bg-white/[0.04] p-3">
             <span className="font-display text-[0.65rem] font-black uppercase tracking-[0.16em] text-pebol-faint">Saiu no sorteio</span>
-            <h2 className="m-0 min-h-7 [overflow-wrap:anywhere] font-display text-2xl font-black uppercase leading-none tracking-[0.02em] text-white">
+            <h2 className="m-0 min-h-7 [overflow-wrap:anywhere] font-title text-2xl uppercase leading-none tracking-[0.02em] text-white">
               {sourceName} {sourceSeason}
             </h2>
             <span className="min-h-4 text-left text-xs font-semibold text-pebol-muted">{sourceLeague}</span>
@@ -131,7 +131,9 @@ export function CampaignDraft({
                   {p.posText}
                 </span>
                 <span className="pl-name min-w-0 truncate text-sm font-black text-white">{p.name}</span>
-                <span className={`pl-rt text-right font-display text-sm font-black text-pebol-gold ${hideRatings ? "hidden" : ""}`}>
+                <span
+                  className={`pl-rt text-right font-display text-sm font-bold leading-none tracking-wide tabular-nums text-pebol-gold ${hideRatings ? "hidden" : ""}`}
+                >
                   {hideRatings ? "??" : p.rating}
                 </span>
               </li>
@@ -140,9 +142,9 @@ export function CampaignDraft({
           <p className="mt-3 flex min-h-[4.25rem] flex-wrap items-center justify-center gap-x-1 rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-center text-sm font-semibold leading-tight text-pebol-muted text-balance">{hint}</p>
         </section>
 
-        <section className="you-board cup-draft-pitch min-w-0 overflow-hidden rounded-lg border border-white/10 bg-pebol-panel p-4 shadow-premium backdrop-blur-xl">
+        <section className="min-w-0 overflow-hidden rounded-lg border border-white/10 bg-pebol-panel p-4 shadow-premium backdrop-blur-xl">
           <h3 className="mb-3 flex items-center justify-center gap-2 font-display text-base font-black text-white">Seu time</h3>
-          <Pitch slots={pitchSlots} interactive onSlotClick={onSlotClick} />
+          <Pitch slots={pitchSlots} interactive variant="cupDraft" onSlotClick={onSlotClick} />
         </section>
 
         <section className="cup-draft-summary min-w-0 rounded-lg border border-white/10 bg-pebol-panel p-4 shadow-premium backdrop-blur-xl">

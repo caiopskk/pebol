@@ -89,7 +89,7 @@ export function FeedbackPage({
           <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
             Feedback
           </span>
-          <h1 className="mt-2 font-display text-4xl font-black uppercase tracking-[0.02em] text-pebol-text">
+          <h1 className="mt-2 font-title text-4xl uppercase tracking-[0.02em] text-pebol-text">
             Ajude a melhorar o Pebol
           </h1>
           <p className="mt-4 text-base leading-7 text-pebol-muted">
@@ -123,7 +123,7 @@ export function FeedbackPage({
           {!account ? (
             <div className="grid min-h-[24rem] place-items-center text-center">
               <div>
-                <h2 className="font-display text-2xl font-black text-pebol-text">
+                <h2 className="font-title text-2xl text-pebol-text">
                   Login necessário
                 </h2>
                 <p className="mx-auto mt-2 max-w-md text-sm leading-6 text-pebol-muted">

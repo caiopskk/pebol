@@ -195,16 +195,32 @@ async function seedAchievements(): Promise<void> {
 }
 
 async function seedIfEmpty(): Promise<void> {
-  const r = await db.execute("SELECT count(*) AS c FROM teams");
-  if (Number(r.rows[0].c) > 0) return;
   const now = Date.now();
-  for (const t of TEAMS)
+  let clubCount = 0;
+  let nationalCount = 0;
+  for (const t of TEAMS) {
+    const exists = await db.execute({
+      sql: "SELECT 1 FROM teams WHERE id=? LIMIT 1",
+      args: [t.id],
+    });
+    if (exists.rows.length) continue;
     await writeTeam(t.id, t, "club", null, now, CLUB_ALIASES[t.id] ?? t.name);
-  const nationalTeams = [...WC_DRAFT_TEAMS, ...WC_OPPONENT_TEAMS, WC_BOSS];
-  for (const t of nationalTeams)
+    clubCount++;
+  }
+  const nationalTeams = [...new Map(
+    [...WC_DRAFT_TEAMS, ...WC_OPPONENT_TEAMS, WC_BOSS].map((team) => [team.id, team]),
+  ).values()];
+  for (const t of nationalTeams) {
+    const exists = await db.execute({
+      sql: "SELECT 1 FROM teams WHERE id=? LIMIT 1",
+      args: [t.id],
+    });
+    if (exists.rows.length) continue;
     await writeTeam(t.id, t, "national", null, now, t.name);
+    nationalCount++;
+  }
   console.log(
-    `[db] seeded ${TEAMS.length} clubs + ${nationalTeams.length} national teams`,
+    `[db] seeded ${clubCount} clubs + ${nationalCount} national teams`,
   );
 }
 

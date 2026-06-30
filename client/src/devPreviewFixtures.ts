@@ -352,6 +352,7 @@ export function previewCampaignEndState(kind: CampaignEndPreviewKind): CampaignS
           shootout: null,
           penaltyScore: null,
           winnerId: lastOpp.id,
+          wentToExtraTime: false,
         },
     rerollsRemaining: 0,
     campaignGoals: { Ronaldo: 7, Messi: 3, Zidane: 1 },

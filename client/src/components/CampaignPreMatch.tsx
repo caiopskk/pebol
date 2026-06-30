@@ -63,7 +63,7 @@ export function CampaignPreMatch({
   const chipClass = (active: boolean) =>
     `prematch-chip min-h-9 rounded-lg border px-3 py-1.5 text-left font-display text-sm font-extrabold transition-all duration-300 ${
       active
-        ? "border-pebol-accent/45 bg-pebol-accent/15 text-pebol-accent shadow-glow"
+        ? "active border-pebol-accent/45 bg-pebol-accent/15 text-pebol-accent shadow-glow"
         : "border-white/10 bg-white/[0.055] text-slate-200 hover:border-pebol-blue/50 hover:bg-pebol-blue/15"
     }`;
 
@@ -78,7 +78,7 @@ export function CampaignPreMatch({
             <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
               Copa do Mundo
             </span>
-            <h1 className="font-display text-xl font-black uppercase tracking-[0.03em] text-white sm:text-2xl">
+            <h1 className="font-title text-xl uppercase tracking-[0.03em] text-white sm:text-2xl">
               {ladderLabel}
             </h1>
           </div>

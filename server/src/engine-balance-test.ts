@@ -112,8 +112,78 @@ function assertMirrorMatchIsBalanced(): void {
   );
 }
 
+function assertKnockoutDrawsAreAlwaysResolved(): void {
+  const a = side("a", 84);
+  const b = side("b", 84);
+  let extraTimeCount = 0;
+
+  for (let i = 0; i < RUNS; i++) {
+    const result = simulateGauntletMatch(a, b, true);
+    assert.notEqual(result.outcome, "draw", "knockout match must always produce a winner");
+    if (result.wentToExtraTime) extraTimeCount++;
+  }
+
+  const etRate = extraTimeCount / RUNS;
+  console.log(`[engine-balance-test] extra time rate (mirror knockout): ${rate(extraTimeCount, RUNS)}%`);
+  assert.ok(
+    etRate > 0.05 && etRate < 0.7,
+    `extra time rate looks off for evenly matched teams: ${rate(extraTimeCount, RUNS)}%`,
+  );
+}
+
+function assertStrongTeamStillFavoredInKnockout(): void {
+  const strong = side("strong", 92);
+  const weak = side("weak", 72);
+  let wins = 0;
+
+  for (let i = 0; i < RUNS; i++) {
+    const result = simulateGauntletMatch(strong, weak, true);
+    if (result.outcome === "win") wins++;
+  }
+
+  const winRate = wins / RUNS;
+  console.log(
+    `[engine-balance-test] strong vs weak (knockout, w/ extra time + penalties): ${rate(wins, RUNS)}% win`,
+  );
+  assert.ok(
+    winRate >= 0.85,
+    `strong team should still dominate in knockout play: ${rate(wins, RUNS)}%`,
+  );
+}
+
+function avgGoalsPerMatch(a: SimInput, b: SimInput, knockout: boolean, runs: number): number {
+  let total = 0;
+  for (let i = 0; i < runs; i++) {
+    const result = simulateGauntletMatch(a, b, knockout);
+    total += result.youGoals + result.oppGoals;
+  }
+  return total / runs;
+}
+
+function assertGroupStageHasFewerButNonZeroGoals(): void {
+  const a = side("a", 84);
+  const b = side("b", 84);
+  const groupAvg = avgGoalsPerMatch(a, b, false, RUNS);
+  const knockoutAvg = avgGoalsPerMatch(a, b, true, RUNS);
+  console.log(
+    `[engine-balance-test] avg goals/match — group: ${groupAvg.toFixed(2)}, knockout: ${knockoutAvg.toFixed(2)}`,
+  );
+
+  assert.ok(
+    groupAvg > 0.3,
+    `group stage should still produce goals regularly: ${groupAvg.toFixed(2)} avg/match`,
+  );
+  assert.ok(
+    groupAvg < knockoutAvg - 0.15,
+    `group stage goal rate should be clearly lower than knockout: group=${groupAvg.toFixed(2)} knockout=${knockoutAvg.toFixed(2)}`,
+  );
+}
+
 assertStrengthGap();
 assertStrongTeamWinsMore();
 assertMirrorMatchIsBalanced();
+assertKnockoutDrawsAreAlwaysResolved();
+assertStrongTeamStillFavoredInKnockout();
+assertGroupStageHasFewerButNonZeroGoals();
 
 console.log("[engine-balance-test] ok");

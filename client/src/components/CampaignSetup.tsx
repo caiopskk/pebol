@@ -73,7 +73,7 @@ export function CampaignSetup({
                 <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
                   Modo Copa do Mundo
                 </span>
-                <h1 className="font-display text-xl font-black uppercase tracking-[0.03em] text-white sm:text-2xl">
+                <h1 className="font-title text-xl uppercase tracking-[0.03em] text-white sm:text-2xl">
                   Copa do Mundo 48 Seleções
                 </h1>
                 <p className="mt-1 max-w-3xl text-sm font-semibold leading-5 text-pebol-muted">
@@ -116,7 +116,7 @@ export function CampaignSetup({
           extraFocusContent={
             <div className="mt-2.5 rounded-lg border border-white/10 bg-white/[0.045] p-2.5">
               <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
-                <h2 className="font-display text-base font-black uppercase tracking-[0.03em] text-white">
+                <h2 className="font-title text-base uppercase tracking-[0.03em] text-white">
                   Modo da campanha
                 </h2>
                 <span className="rounded-full border border-white/10 bg-white/[0.055] px-3 py-1 font-display text-xs font-black uppercase tracking-[0.08em] text-pebol-muted">

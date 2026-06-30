@@ -52,7 +52,7 @@ export function AdminFeedbacks({
               <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
                 Administração
               </span>
-              <h1 className="mt-1 font-display text-3xl font-black uppercase tracking-[0.02em] text-pebol-text">
+              <h1 className="mt-1 font-title text-3xl uppercase tracking-[0.02em] text-pebol-text">
                 Feedbacks dos jogadores
               </h1>
               <p className="mt-1 text-sm font-semibold text-pebol-muted">
@@ -82,7 +82,7 @@ export function AdminFeedbacks({
               <span className="font-display text-xs font-black uppercase tracking-[0.14em] text-pebol-muted">
                 Caixa de entrada
               </span>
-              <h2 className="mt-1 font-display text-xl font-black text-pebol-text">
+              <h2 className="mt-1 font-title text-xl text-pebol-text">
                 {feedback
                   ? `${feedback.length} feedback${feedback.length === 1 ? "" : "s"}`
                   : "Carregando feedbacks"}
