@@ -1,4 +1,5 @@
 import { createElement, Fragment, type ReactElement } from "react";
+import type { AccountUser } from "./api.js";
 import type { MatchResult, PlayerPublic } from "../../shared/types.js";
 import { FORMATIONS, getFormation } from "../../shared/formations.js";
 import { MENTALITIES } from "../../shared/mentalities.js";
@@ -23,6 +24,15 @@ import {
   strengthRow,
 } from "./lib/resultSummaryData.js";
 
+const PREVIEW_AVATAR_SVG =
+  '<svg xmlns="http://www.w3.org/2000/svg" width="64" height="64"><rect width="64" height="64" fill="#00ff87"/><text x="32" y="42" font-size="28" text-anchor="middle" font-family="sans-serif" fill="#04130c">PP</text></svg>';
+export const PREVIEW_ACCOUNT: AccountUser = {
+  id: "preview-user",
+  username: "PreviewPlayer",
+  role: "user",
+  avatarUrl: `data:image/svg+xml,${encodeURIComponent(PREVIEW_AVATAR_SVG)}`,
+};
+
 interface BuildPitchOpts {
   forceHideRatings?: boolean;
   forceShowRatings?: boolean;
@@ -41,6 +51,7 @@ interface DevPreviewScreenContext {
   renderReact: (node: ReactElement) => void;
   setMatchSpeed: (speed: number) => void;
   buildPitchSlots: BuildPitchSlots;
+  account: AccountUser | null;
 }
 
 function previewHalftimeOptions(): HalftimeOptions {
@@ -87,10 +98,11 @@ function previewPicks(teamId: string, formationId: string): PlayerPublic["picks"
 export function renderPvpResultPreview({
   buildPitchSlots,
   renderReact,
+  account,
 }: DevPreviewScreenContext) {
   const you: PlayerPublic = {
     id: "you-preview",
-    name: "Seu time",
+    name: "admin",
     connected: true,
     ready: true,
     formationId: "4-3-3",
@@ -100,7 +112,7 @@ export function renderPvpResultPreview({
   };
   const opp: PlayerPublic = {
     id: "opp-preview",
-    name: "Rival",
+    name: "caio",
     connected: true,
     ready: true,
     formationId: "4-3-3",
@@ -117,7 +129,7 @@ export function renderPvpResultPreview({
     firstHalfGoals: { [you.id]: 1, [opp.id]: 1 },
     goals: { [you.id]: 3, [opp.id]: 2 },
     winnerId: you.id,
-    summary: "Seu time venceu por 3 x 2.",
+    summary: "admin venceu por 3 x 2.",
     strengths: { [you.id]: youStrength, [opp.id]: oppStrength },
     penaltyScore: null,
     shootout: null,
@@ -132,7 +144,7 @@ export function renderPvpResultPreview({
         minute: 18,
         type: "goal",
         side: "home",
-        text: "Gol do Seu time! Cristiano Ronaldo sobe mais alto e abre o placar.",
+        text: "Gol do admin! Cristiano Ronaldo sobe mais alto e abre o placar.",
         player: "Cristiano Ronaldo",
         assist: "Marcelo",
       },
@@ -140,7 +152,7 @@ export function renderPvpResultPreview({
         minute: 39,
         type: "goal",
         side: "away",
-        text: "Gol do Rival. Messi acha espaço na área e empata.",
+        text: "Gol do caio. Messi acha espaço na área e empata.",
         player: "Messi",
         assist: "Xavi",
       },
@@ -154,7 +166,7 @@ export function renderPvpResultPreview({
         minute: 57,
         type: "goal",
         side: "home",
-        text: "Gol do Seu time! Kroos recebe de Modrić e finaliza no canto.",
+        text: "Gol do admin! Kroos recebe de Modrić e finaliza no canto.",
         player: "Kroos",
         assist: "Modrić",
       },
@@ -170,7 +182,7 @@ export function renderPvpResultPreview({
         minute: 81,
         type: "goal",
         side: "away",
-        text: "Gol do Rival. David Villa deixa tudo igual no fim.",
+        text: "Gol do caio. David Villa deixa tudo igual no fim.",
         player: "David Villa",
         assist: "Iniesta",
       },
@@ -178,7 +190,7 @@ export function renderPvpResultPreview({
         minute: 88,
         type: "goal",
         side: "home",
-        text: "Gol do Seu time! Cristiano Ronaldo decide a partida no minuto 88.",
+        text: "Gol do admin! Cristiano Ronaldo decide a partida no minuto 88.",
         player: "Cristiano Ronaldo",
         assist: "Isco",
       },
@@ -186,7 +198,7 @@ export function renderPvpResultPreview({
         minute: 90,
         type: "fulltime",
         side: null,
-        text: "Fim de jogo: Seu time vence por 3 x 2.",
+        text: "Fim de jogo: admin vence por 3 x 2.",
       },
     ],
   };
@@ -194,6 +206,7 @@ export function renderPvpResultPreview({
 
   renderReact(
     createElement(ResultSummary, {
+        account: account ?? PREVIEW_ACCOUNT,
         outcome: "win",
         youName: you.name,
         opponentName: opp.name,
@@ -245,6 +258,7 @@ export function renderPvpResultPreview({
 export function renderPenaltyModalPreview({
   renderReact,
   setMatchSpeed,
+  account,
 }: DevPreviewScreenContext, opts: { suddenDeath?: boolean } = {}) {
   liveStore.reset();
   halftimeStore.reset();
@@ -292,6 +306,7 @@ export function renderPenaltyModalPreview({
 
   renderReact(
     createElement(CampaignMatchShell, {
+      account: account ?? PREVIEW_ACCOUNT,
       ladderLabel: "Semifinal",
       oppName: "Argentina 1986",
       oppFlagName: "Argentina",
@@ -309,6 +324,7 @@ export function renderPenaltyModalPreview({
 export function renderCampaignMatchPreview({
   renderReact,
   setMatchSpeed,
+  account,
 }: DevPreviewScreenContext) {
   liveStore.reset();
   halftimeStore.reset();
@@ -350,6 +366,7 @@ export function renderCampaignMatchPreview({
       null,
       createElement(PreviewAlertControls),
       createElement(CampaignMatchShell, {
+        account: account ?? PREVIEW_ACCOUNT,
         ladderLabel: "Fase de grupos - Jogo 3",
         oppName: "México 1986",
         oppFlagName: "México",
@@ -369,6 +386,7 @@ export function renderSubstitutionModalPreview({
   buildPitchSlots,
   renderReact,
   setMatchSpeed,
+  account,
 }: DevPreviewScreenContext) {
   liveStore.reset();
   halftimeStore.reset();
@@ -468,6 +486,7 @@ export function renderSubstitutionModalPreview({
 
   renderReact(
     createElement(LiveMatchShell, {
+      account: account ?? PREVIEW_ACCOUNT,
       youInitials: "VC",
       opponentInitials: "HO",
       youName: "Seu time",

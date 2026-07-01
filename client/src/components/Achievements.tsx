@@ -16,6 +16,13 @@ function unlockedDate(value: number) {
   return new Date(value).toLocaleDateString("pt-BR");
 }
 
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2)
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  return (name || "P").slice(0, 2).toUpperCase();
+}
+
 export function Achievements({
   account,
   achievements,
@@ -44,17 +51,34 @@ export function Achievements({
         <header className="relative overflow-hidden rounded-2xl border border-white/10 bg-pebol-panel p-5 shadow-premium backdrop-blur-xl">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_95%_0%,rgba(0,255,135,.15),transparent_34%),radial-gradient(circle_at_0%_100%,rgba(255,206,84,.12),transparent_36%)]" />
           <div className="relative grid gap-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
-            <div>
-              <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
-                Perfil
-              </span>
-              <h1 className="mt-1 font-title text-3xl uppercase tracking-[0.02em] text-white">
-                Nível {progress?.level ?? 1} · {progress?.title ?? "Aspirante"}
-              </h1>
-              <p className="mt-1 text-sm font-semibold text-pebol-muted">
-                {account?.username ?? ""} · {unlocked}/{total} conquistas ·{" "}
-                {progress?.xp ?? points} XP
-              </p>
+            <div className="flex min-w-0 items-center gap-4">
+              {account ? (
+                <span className="grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-lg border border-pebol-accent/40 bg-gradient-to-br from-pebol-accent/25 via-pebol-blue/15 to-black shadow-glow">
+                  {account.avatarUrl ? (
+                    <img
+                      className="h-full w-full object-cover"
+                      src={account.avatarUrl}
+                      alt={`Imagem de perfil de ${account.username}`}
+                    />
+                  ) : (
+                    <span className="font-display text-xl font-extrabold text-white">
+                      {initials(account.username)}
+                    </span>
+                  )}
+                </span>
+              ) : null}
+              <div className="min-w-0">
+                <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">
+                  Perfil
+                </span>
+                <h1 className="mt-1 font-title text-3xl uppercase tracking-[0.02em] text-white">
+                  Nível {progress?.level ?? 1} · {progress?.title ?? "Aspirante"}
+                </h1>
+                <p className="mt-1 text-sm font-semibold text-pebol-muted">
+                  {account?.username ?? ""} · {unlocked}/{total} conquistas ·{" "}
+                  {progress?.xp ?? points} XP
+                </p>
+              </div>
             </div>
             <button
               id="ach-back"

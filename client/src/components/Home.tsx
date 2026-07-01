@@ -588,13 +588,30 @@ function LeaderboardPanel({
               <span className={`home-rank-badge grid h-8 w-8 place-items-center rounded-lg border font-display text-xs font-bold ${medalClass(rank)}`}>
                 {medalLabel(rank)}
               </span>
-              <span className="min-w-0">
-                <strong className="home-leader-name block truncate font-display text-sm font-semibold text-white">
-                  {p ? p.username : leaderboard === null ? "..." : "Vago"}
-                </strong>
-                <em className="block truncate text-xs font-semibold not-italic text-pebol-muted">
-                  {p ? p.title : "Aguardando jogador"}
-                </em>
+              <span className="flex min-w-0 items-center gap-2">
+                {p ? (
+                  <span className="grid h-7 w-7 shrink-0 place-items-center overflow-hidden rounded-full border border-white/10 bg-white/[0.06]">
+                    {p.avatarUrl ? (
+                      <img
+                        className="h-full w-full object-cover"
+                        src={p.avatarUrl}
+                        alt=""
+                      />
+                    ) : (
+                      <span className="font-display text-[0.6rem] font-bold text-pebol-muted">
+                        {initials(p.username)}
+                      </span>
+                    )}
+                  </span>
+                ) : null}
+                <span className="min-w-0">
+                  <strong className="home-leader-name block truncate font-display text-sm font-semibold text-white">
+                    {p ? p.username : leaderboard === null ? "..." : "Vago"}
+                  </strong>
+                  <em className="block truncate text-xs font-semibold not-italic text-pebol-muted">
+                    {p ? p.title : "Aguardando jogador"}
+                  </em>
+                </span>
               </span>
               <span className="grid justify-items-end gap-1">
                 <strong className="home-leader-level rounded-full border border-pebol-accent/20 bg-pebol-accent/10 px-2 py-0.5 font-display text-xs font-bold text-pebol-accent">

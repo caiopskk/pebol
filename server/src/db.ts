@@ -86,6 +86,7 @@ export interface LeaderboardEntry extends UserProgress {
   userId: string;
   username: string;
   rank: number;
+  avatarUrl: string | null;
 }
 export interface PublicUser {
   id: string;
@@ -667,7 +668,7 @@ export async function getLeaderboard(limit = 10): Promise<LeaderboardEntry[]> {
   const safeLimit = Math.max(1, Math.min(50, Math.round(Number(limit) || 10)));
   const rows = (
     await db.execute({
-      sql: `SELECT u.id, u.username,
+      sql: `SELECT u.id, u.username, u.avatar_url,
                    COALESCE(ax.xp, 0) AS achievement_xp,
                    COALESCE(xx.xp, 0) AS activity_xp
             FROM users u
@@ -695,6 +696,7 @@ export async function getLeaderboard(limit = 10): Promise<LeaderboardEntry[]> {
       userId: String(row.id),
       username: String(row.username),
       rank: index + 1,
+      avatarUrl: row.avatar_url ? String(row.avatar_url) : null,
       ...buildLevelProgress(achievementXp + activityXp),
       achievementXp,
       activityXp,

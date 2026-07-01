@@ -119,6 +119,7 @@ import {
   previewPvpDraftState,
 } from "./devPreviewFixtures.js";
 import {
+  PREVIEW_ACCOUNT,
   renderCampaignMatchPreview,
   renderPenaltyModalPreview,
   renderPvpResultPreview,
@@ -341,6 +342,15 @@ function opponent(): PlayerPublic | undefined {
 function devPreviewKind(): DevPreviewKind | null {
   if (!import.meta.env.DEV) return null;
   return devPreviewFromHash(location.hash);
+}
+
+/**
+ * Real account when logged in; a fake avatar-bearing account when browsing
+ * a dev-preview screen anonymously (so reviewers see the avatar UI without
+ * needing to log in). Outside of dev-preview hashes this is always L.account.
+ */
+function accountForRender(): AccountUser | null {
+  return L.account ?? (devPreviewKind() ? PREVIEW_ACCOUNT : null);
 }
 
 function goPreviewHome() {
@@ -750,8 +760,8 @@ function renderProfile() {
         showToast("Senha alterada.");
         render();
       },
-      onUploadAvatar: async (file, crop) => {
-        const r = await api.uploadAvatar(file, crop);
+      onUploadAvatar: async (file) => {
+        const r = await api.uploadAvatar(file);
         setToken(r.token);
         L.account = r.user;
         showToast("Imagem atualizada.");
@@ -1198,6 +1208,7 @@ function renderCampaignPreMatch() {
   });
   renderReact(
     createElement(CampaignPreMatch, {
+      account: accountForRender(),
       ladderLabel: ladder.label,
       progressRound: c.round,
       status: campaignStatusData(c),
@@ -1344,6 +1355,7 @@ function renderCampaignMatch() {
 
   renderReact(
     createElement(CampaignMatchShell, {
+      account: L.account,
       ladderLabel: WC_LADDER[c.round].label,
       oppName: teamFullName(oppTeam),
       oppFlagName: oppTeam.name,
@@ -1538,6 +1550,7 @@ function renderCampaignGameOver() {
     : { kind: "knockout", bracket: knockoutBracketData(c) };
   renderReact(
     createElement(CampaignGameOver, {
+      account: accountForRender(),
       title,
       detail,
       youGoals: r.youGoals,
@@ -1558,6 +1571,7 @@ function renderCampaignVictory() {
   const c = L.campaign!;
   renderReact(
     createElement(CampaignVictory, {
+      account: accountForRender(),
       groupLabel: c.groupQualifiedLabel ?? "líder do grupo",
       journeyLeaders: campaignJourneyLeadersData(c),
       squadRows: campaignSquadRowsData(c),
@@ -1575,7 +1589,7 @@ function renderDevPreview(kind: DevPreviewKind) {
   L.playing = false;
   L.accountScreen = null;
   lastCampaignPhase = null;
-  const previewContext = { renderReact, setMatchSpeed, buildPitchSlots };
+  const previewContext = { renderReact, setMatchSpeed, buildPitchSlots, account: L.account };
 
   if (kind === "penalty-modal") {
     L.campaign = null;
@@ -1817,6 +1831,7 @@ function renderPreMatchClassic() {
   const sync = () => sendSetup(L.formationId, L.mentality, L.attackFocus);
   renderReact(
     createElement(PreMatchClassic, {
+      account: L.account,
       code: s.code,
       mode: s.mode,
       vsAI,
@@ -1954,6 +1969,7 @@ function renderLiveMatch() {
 
   renderReact(
     createElement(LiveMatchShell, {
+      account: L.account,
       youInitials: initials(you.name),
       opponentInitials: initials(opp.name),
       youName: you.name,
@@ -2463,11 +2479,14 @@ function renderSummary() {
 
   renderReact(
     createElement(ResultSummary, {
+      account: L.account,
       outcome,
       youName: you.name,
       opponentName: opp.name,
       youInitials: initials(you.name),
       opponentInitials: initials(opp.name),
+      youAvatarUrl: you.avatarUrl ?? accountForRender()?.avatarUrl ?? null,
+      opponentAvatarUrl: opp.avatarUrl ?? null,
       youFormation: you.formationId ?? "",
       opponentFormation: opp.formationId ?? "",
       youGoals: r.goals[you.id],

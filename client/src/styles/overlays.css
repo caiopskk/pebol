@@ -45,12 +45,12 @@
 }
 
 .write-lock-card {
-  width: 3.75rem;
-  height: 3.75rem;
+  width: auto;
+  height: auto;
+  min-width: 8.5rem;
   display: grid;
   place-items: center;
-  align-items: center;
-  padding: 0;
+  padding: 1rem 1.5rem;
   background:
     radial-gradient(
       4rem 4rem at 50% 20%,
@@ -64,18 +64,44 @@
 }
 
 .write-spinner {
-  width: 1.75rem;
-  height: 1.75rem;
-  flex: 0 0 auto;
-  border: 0.1875rem solid rgba(255, 255, 255, 0.14);
-  border-top-color: var(--accent);
-  border-radius: 50%;
-  animation: writeSpin 0.8s linear infinite;
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 900;
+  text-transform: uppercase;
+  font-size: 1.2rem;
+  letter-spacing: 0.16rem;
+  color: var(--accent);
+  animation: writeShadows 1.2s ease-in infinite;
 }
 
-@keyframes writeSpin {
-  to {
-    transform: rotate(360deg);
+@keyframes writeShadows {
+  0%,
+  100% {
+    transform: translate(0, 0);
+    text-shadow: none;
+  }
+  20% {
+    transform: translate(-1px, -1px);
+    text-shadow: 1px 1px 0 var(--accent-2);
+  }
+  40% {
+    transform: translate(-2px, -2px);
+    text-shadow:
+      1px 1px 0 var(--accent-2),
+      2px 2px 0 var(--gold);
+  }
+  60% {
+    transform: translate(-3px, -3px);
+    text-shadow:
+      1px 1px 0 var(--accent-2),
+      2px 2px 0 var(--gold),
+      3px 3px 0 #b88010;
+  }
+  80% {
+    transform: translate(-2px, -2px);
+    text-shadow:
+      1px 1px 0 var(--accent-2),
+      2px 2px 0 var(--gold);
   }
 }
 

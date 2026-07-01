@@ -96,7 +96,9 @@ function WriteLock({ visible }: { visible: boolean }) {
       aria-hidden={visible ? "false" : "true"}
     >
       <div className="write-lock-card">
-        <span className="write-spinner" aria-hidden="true" />
+        <span className="write-spinner" aria-hidden="true">
+          Pebol
+        </span>
       </div>
     </div>
   );

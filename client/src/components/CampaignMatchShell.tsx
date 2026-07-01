@@ -12,10 +12,12 @@ import {
   ScoreboardGoals,
   ShootoutPanel,
 } from "./LiveStage.js";
-import { TeamBadge } from "./CupStatus.js";
+import type { AccountUser } from "../api.js";
+import { TeamBadge, YouAvatarBadge } from "./CupStatus.js";
 import { BallFieldSvg, SoccerBallSvg } from "./MatchSvg.js";
 
 interface CampaignMatchShellProps {
+  account: AccountUser | null;
   ladderLabel: string;
   oppName: string;
   oppFlagName: string;
@@ -29,6 +31,7 @@ interface CampaignMatchShellProps {
 }
 
 export function CampaignMatchShell({
+  account,
   ladderLabel,
   oppName,
   oppFlagName,
@@ -89,7 +92,11 @@ export function CampaignMatchShell({
           <div className="scoreboard">
             <div className="sb-team">
               <div className="sb-team-top">
-                <span className="sb-badge you">VC</span>
+                <YouAvatarBadge
+                  account={account}
+                  fallback={<span className="sb-badge you">VC</span>}
+                  className="sb-badge you"
+                />
                 <span className="sb-name">Seu time</span>
               </div>
               <ScoreboardGoals side="you" />

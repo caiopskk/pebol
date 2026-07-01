@@ -116,6 +116,7 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
     }
     res.setHeader("Content-Type", image.contentType);
     res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.setHeader("X-Content-Type-Options", "nosniff");
     res.send(image.buffer);
   });
 

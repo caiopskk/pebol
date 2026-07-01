@@ -7,11 +7,14 @@ import type {
 } from "../../../shared/types.js";
 import { gameModeLabel, isHardcoreMode, isWorldCupMode } from "../../../shared/gameMode.js";
 import { MENTALITIES } from "../../../shared/mentalities.js";
+import type { AccountUser } from "../api.js";
 import { ATTACK_FOCUS_OPTIONS } from "./SetupBoard.js";
 import { screenIn } from "../lib/motion.js";
 import { TacticBannerList, type BannerSpec } from "./TacticBanner.js";
+import { YouAvatarBadge } from "./CupStatus.js";
 
 interface PreMatchClassicProps {
+  account: AccountUser | null;
   code: string;
   mode: GameMode;
   vsAI: boolean;
@@ -43,6 +46,7 @@ function modePillClass(mode: GameMode) {
 }
 
 export function PreMatchClassic({
+  account,
   code,
   mode,
   vsAI,
@@ -108,8 +112,16 @@ export function PreMatchClassic({
           <div className="relative grid gap-5">
             <div className="grid gap-4 md:grid-cols-[1fr_auto_1fr] md:items-center">
               <div className="rounded-2xl border border-white/10 bg-white/[0.045] p-4 text-center">
-                <div className="mx-auto grid h-14 w-14 place-items-center rounded-2xl border border-pebol-accent/40 bg-pebol-accent/15 font-display text-lg font-black text-pebol-accent shadow-glow">
-                  VC
+                <div className="mx-auto flex justify-center">
+                  <YouAvatarBadge
+                    account={account}
+                    fallback={
+                      <div className="grid h-14 w-14 place-items-center rounded-2xl border border-pebol-accent/40 bg-pebol-accent/15 font-display text-lg font-black text-pebol-accent shadow-glow">
+                        VC
+                      </div>
+                    }
+                    className="grid h-14 w-14 place-items-center rounded-2xl border border-pebol-accent/40 bg-pebol-accent/15 shadow-glow"
+                  />
                 </div>
                 <div className="mt-3 font-display text-xl font-black text-white">{you.name}</div>
                 <div className="mt-1 text-sm font-semibold text-pebol-muted">

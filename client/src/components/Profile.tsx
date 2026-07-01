@@ -8,8 +8,11 @@ interface ProfileProps {
   onBack: () => void;
   onSaveProfile: (username: string) => Promise<void>;
   onSavePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  onUploadAvatar: (file: File, crop?: { x: number; y: number; size: number }) => Promise<void>;
+  onUploadAvatar: (file: File) => Promise<void>;
 }
+
+/** Cap the cropped avatar's output resolution — displayed at 64-96px, so anything larger just wastes upload bandwidth and storage. */
+const AVATAR_MAX_DIM = 480;
 
 const fieldClass =
   "min-h-11 rounded-lg border border-white/10 bg-black/25 px-3 py-2 font-body text-sm font-semibold text-pebol-text outline-none transition-all duration-300 placeholder:text-pebol-faint focus:border-pebol-accent/55 focus:ring-2 focus:ring-pebol-accent/15";
@@ -72,9 +75,10 @@ export function Profile({
 
   const getCroppedImageBlob = async (imageSrc: string, pixelCrop: Area, type: string) => {
     const image = await createImage(imageSrc);
+    const outputSize = Math.min(pixelCrop.width, pixelCrop.height, AVATAR_MAX_DIM);
     const canvas = document.createElement("canvas");
-    canvas.width = pixelCrop.width;
-    canvas.height = pixelCrop.height;
+    canvas.width = outputSize;
+    canvas.height = outputSize;
     const ctx = canvas.getContext("2d");
     if (!ctx) throw new Error("Could not get canvas context");
     ctx.drawImage(
@@ -85,8 +89,8 @@ export function Profile({
       pixelCrop.height,
       0,
       0,
-      pixelCrop.width,
-      pixelCrop.height,
+      outputSize,
+      outputSize,
     );
     return new Promise<Blob>((resolve, reject) => {
       canvas.toBlob((blob) => {
@@ -102,11 +106,7 @@ export function Profile({
     try {
       const blob = await getCroppedImageBlob(avatarPreview, croppedAreaPixels, avatarFile.type);
       const croppedFile = new File([blob], avatarFile.name, { type: avatarFile.type });
-      await onUploadAvatar(croppedFile, {
-        x: Math.round(croppedAreaPixels.x),
-        y: Math.round(croppedAreaPixels.y),
-        size: Math.round(croppedAreaPixels.width),
-      });
+      await onUploadAvatar(croppedFile);
       setAvatarCropOpen(false);
       setAvatarFile(null);
       setAvatarPreview(URL.createObjectURL(croppedFile));

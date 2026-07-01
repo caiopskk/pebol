@@ -35,6 +35,7 @@ export interface LeaderboardEntry extends UserProgress {
   userId: string;
   username: string;
   rank: number;
+  avatarUrl: string | null;
 }
 export type FeedbackCategory = "suggestion" | "bug" | "balance" | "other";
 export interface FeedbackPayload {
@@ -116,14 +117,13 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
-  uploadAvatar: async (file: File, crop?: { x: number; y: number; size: number }) => {
+  uploadAvatar: async (file: File) => {
     writeRequestLock?.begin();
     try {
       const headers: Record<string, string> = {
         "Content-Type": file.type,
         ...(token ? { Authorization: `Bearer ${token}` } : {}),
       };
-      if (crop) headers["X-Avatar-Crop"] = JSON.stringify(crop);
       const res = await fetch(API_BASE + "/api/profile/avatar", {
         method: "PUT",
         headers,

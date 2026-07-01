@@ -1,5 +1,6 @@
 import { motion } from "framer-motion";
 import type { AttackFocus, Mentality } from "../../../shared/types.js";
+import type { AccountUser } from "../api.js";
 import { MENTALITIES } from "../../../shared/mentalities.js";
 import { ATTACK_FOCUS_OPTIONS } from "./SetupBoard.js";
 import { screenIn } from "../lib/motion.js";
@@ -8,10 +9,12 @@ import {
   CupProgress,
   CampaignStatus,
   TeamBadge,
+  YouAvatarBadge,
   type CampaignStatusData,
 } from "./CupStatus.js";
 
 interface CampaignPreMatchProps {
+  account: AccountUser | null;
   ladderLabel: string;
   progressRound: number;
   status: CampaignStatusData;
@@ -37,6 +40,7 @@ interface CampaignPreMatchProps {
 }
 
 export function CampaignPreMatch({
+  account,
   ladderLabel,
   progressRound,
   status,
@@ -116,8 +120,16 @@ export function CampaignPreMatch({
             <div className="relative grid gap-3">
               <div className="grid grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] items-center gap-2 sm:gap-3">
                 <div className="cup-vs-card min-h-[6.25rem] rounded-lg border border-transparent bg-transparent p-1 text-center">
-                  <div className="mx-auto grid h-12 w-12 place-items-center rounded-lg border border-pebol-accent/40 bg-pebol-accent/15 font-display text-base font-black text-pebol-accent shadow-glow">
-                    VC
+                  <div className="mx-auto flex justify-center">
+                    <YouAvatarBadge
+                      account={account}
+                      fallback={
+                        <div className="grid h-12 w-12 place-items-center rounded-lg border border-pebol-accent/40 bg-pebol-accent/15 font-display text-base font-black text-pebol-accent shadow-glow">
+                          VC
+                        </div>
+                      }
+                      className="grid h-12 w-12 place-items-center rounded-lg border border-pebol-accent/40 bg-pebol-accent/15 shadow-glow"
+                    />
                   </div>
                   <div className="mt-2 font-display text-base font-black text-white sm:text-lg">Seu time</div>
                   <div className="mt-0.5 text-xs font-semibold leading-5 text-pebol-muted">

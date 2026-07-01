@@ -1,4 +1,6 @@
+import type { ReactNode } from "react";
 import type { PosGroup } from "../../../shared/types.js";
+import type { AccountUser } from "../api.js";
 import { Flag, hasFlag } from "./Flag.js";
 
 export interface GroupRow {
@@ -390,4 +392,34 @@ export function TeamBadge({
     return <div className={`hero-crest ${variant}`}>{initials}</div>;
   }
   return <span className={`sb-badge ${variant}`}>{initials}</span>;
+}
+
+/**
+ * Renders the logged-in user's profile photo in a badge slot. `fallback` must
+ * be a fully self-styled element (e.g. `<TeamBadge>` or a pre-classed span) —
+ * it's rendered as-is when there's no avatar, not wrapped again. `className`
+ * only styles the avatar-image case, and should match the fallback's badge
+ * shape/sizing so the two don't jump around when the avatar loads/unloads.
+ */
+export function YouAvatarBadge({
+  account,
+  fallback,
+  className,
+}: {
+  account: AccountUser | null;
+  fallback: ReactNode;
+  className: string;
+}) {
+  if (account?.avatarUrl) {
+    return (
+      <span className={`${className} overflow-hidden`}>
+        <img
+          className="h-full w-full object-cover"
+          src={account.avatarUrl}
+          alt={`Imagem de perfil de ${account.username}`}
+        />
+      </span>
+    );
+  }
+  return <>{fallback}</>;
 }

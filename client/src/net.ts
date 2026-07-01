@@ -22,7 +22,8 @@ export function createRoom(name: string, mode: GameMode, solo = false): Promise<
   return new Promise((resolve) => socket.emit("createRoom", { name, mode, solo, token }, resolve));
 }
 export function joinRoom(code: string, name: string): Promise<AckResult> {
-  return new Promise((resolve) => socket.emit("joinRoom", { code, name }, resolve));
+  const token = localStorage.getItem("pebol_token");
+  return new Promise((resolve) => socket.emit("joinRoom", { code, name, token }, resolve));
 }
 export function sendSetup(
   formationId: string,

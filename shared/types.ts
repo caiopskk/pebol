@@ -86,6 +86,7 @@ export type Phase = "lobby" | "setup" | "draft" | "preMatch" | "result";
 export interface PlayerPublic {
   id: string;
   name: string;
+  avatarUrl?: string | null;
   connected: boolean;
   isAI?: boolean;
   rerollsRemaining?: number;
@@ -220,11 +221,11 @@ export interface ServerToClient {
 
 export interface ClientToServer {
   createRoom: (
-    data: { name: string; mode: GameMode; solo?: boolean },
+    data: { name: string; mode: GameMode; solo?: boolean; token?: string | null },
     cb: (res: AckResult) => void,
   ) => void;
   joinRoom: (
-    data: { code: string; name: string },
+    data: { code: string; name: string; token?: string | null },
     cb: (res: AckResult) => void,
   ) => void;
   setup: (data: {

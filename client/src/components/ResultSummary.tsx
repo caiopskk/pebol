@@ -1,6 +1,7 @@
 import { useRef, useState, type RefObject } from "react";
 import { motion } from "framer-motion";
 import { posLabel } from "../../../shared/formations.js";
+import type { AccountUser } from "../api.js";
 import type { PitchSlot } from "./Pitch.js";
 import { ShareResultButton } from "./ShareResultButton.js";
 import { captureNodeToBlob } from "../lib/shareImage.js";
@@ -30,11 +31,14 @@ export interface LogEventItem {
 }
 
 interface ResultSummaryProps {
+  account: AccountUser | null;
   outcome: "win" | "lose";
   youName: string;
   opponentName: string;
   youInitials: string;
   opponentInitials: string;
+  youAvatarUrl?: string | null;
+  opponentAvatarUrl?: string | null;
   youFormation: string;
   opponentFormation: string;
   youGoals: number;
@@ -134,6 +138,31 @@ function ResultLineup({
   );
 }
 
+function HeroAvatar({
+  avatarUrl,
+  initials,
+  variant,
+  name,
+}: {
+  avatarUrl?: string | null;
+  initials: string;
+  variant: "you" | "opp";
+  name: string;
+}) {
+  const className = `hero-crest ${variant} object-cover`.trim();
+  if (avatarUrl) {
+    return (
+      <img
+        className={className}
+        src={avatarUrl}
+        alt={`Avatar de ${name}`}
+        crossOrigin="anonymous"
+      />
+    );
+  }
+  return <div className={`hero-crest ${variant}`}>{initials}</div>;
+}
+
 /**
  * Offscreen, fixed-width replica of the PvP result used only for "copiar imagem".
  * Reuses the same sub-components as the live screen (hero, leaders, strengths,
@@ -147,6 +176,8 @@ function PvpShareCard({
   opponentName,
   youInitials,
   opponentInitials,
+  youAvatarUrl,
+  opponentAvatarUrl,
   youFormation,
   opponentFormation,
   youGoals,
@@ -164,6 +195,8 @@ function PvpShareCard({
   | "opponentName"
   | "youInitials"
   | "opponentInitials"
+  | "youAvatarUrl"
+  | "opponentAvatarUrl"
   | "youFormation"
   | "opponentFormation"
   | "youGoals"
@@ -181,7 +214,12 @@ function PvpShareCard({
         <div className="pvp-share-hero relative overflow-hidden rounded-lg border border-white/10 bg-pebol-panel p-7 shadow-premium">
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(520px_260px_at_12%_50%,rgba(31,199,125,0.14),transparent_60%),radial-gradient(520px_260px_at_88%_50%,rgba(35,120,95,0.13),transparent_60%)]" />
           <div className="hero-team relative z-[1] flex min-w-0 flex-col items-center gap-3">
-            <div className="hero-crest you">{youInitials}</div>
+            <HeroAvatar
+              avatarUrl={youAvatarUrl}
+              initials={youInitials}
+              variant="you"
+              name={youName}
+            />
             <div className="hero-name">{youName}</div>
             <div className="hero-tag">{youFormation}</div>
           </div>
@@ -202,7 +240,12 @@ function PvpShareCard({
             ) : null}
           </div>
           <div className="hero-team relative z-[1] flex min-w-0 flex-col items-center gap-3">
-            <div className="hero-crest opp">{opponentInitials}</div>
+            <HeroAvatar
+              avatarUrl={opponentAvatarUrl}
+              initials={opponentInitials}
+              variant="opp"
+              name={opponentName}
+            />
             <div className="hero-name">{opponentName}</div>
             <div className="hero-tag">{opponentFormation}</div>
           </div>
@@ -245,11 +288,14 @@ function PvpShareCard({
 }
 
 export function ResultSummary({
+  account,
   outcome,
   youName,
   opponentName,
   youInitials,
   opponentInitials,
+  youAvatarUrl,
+  opponentAvatarUrl,
   youFormation,
   opponentFormation,
   youGoals,
@@ -289,6 +335,8 @@ export function ResultSummary({
         opponentName={opponentName}
         youInitials={youInitials}
         opponentInitials={opponentInitials}
+        youAvatarUrl={youAvatarUrl ?? account?.avatarUrl ?? null}
+        opponentAvatarUrl={opponentAvatarUrl}
         youFormation={youFormation}
         opponentFormation={opponentFormation}
         youGoals={youGoals}
@@ -307,7 +355,12 @@ export function ResultSummary({
         >
           <div className="pointer-events-none absolute inset-0 bg-[radial-gradient(520px_260px_at_12%_50%,rgba(31,199,125,0.14),transparent_60%),radial-gradient(520px_260px_at_88%_50%,rgba(35,120,95,0.13),transparent_60%)]" />
           <div className="hero-team relative z-[1] flex min-w-0 flex-col items-center gap-3">
-            <div className="hero-crest you">{youInitials}</div>
+            <HeroAvatar
+              avatarUrl={youAvatarUrl ?? account?.avatarUrl ?? null}
+              initials={youInitials}
+              variant="you"
+              name={youName}
+            />
             <div className="hero-name">{youName}</div>
             <div className="hero-tag">{youFormation}</div>
           </div>
@@ -328,7 +381,12 @@ export function ResultSummary({
             ) : null}
           </div>
           <div className="hero-team relative z-[1] flex min-w-0 flex-col items-center gap-3">
-            <div className="hero-crest opp">{opponentInitials}</div>
+            <HeroAvatar
+              avatarUrl={opponentAvatarUrl}
+              initials={opponentInitials}
+              variant="opp"
+              name={opponentName}
+            />
             <div className="hero-name">{opponentName}</div>
             <div className="hero-tag">{opponentFormation}</div>
           </div>

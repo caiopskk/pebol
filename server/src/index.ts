@@ -58,7 +58,7 @@ app.use((req, res, next) => {
   res.setHeader("Access-Control-Allow-Methods", "GET,POST,PUT,DELETE,OPTIONS");
   res.setHeader(
     "Access-Control-Allow-Headers",
-    "Content-Type, Authorization, X-Avatar-Crop",
+    "Content-Type, Authorization",
   );
   if (req.method === "OPTIONS") {
     res.sendStatus(204);
@@ -110,8 +110,8 @@ io.on("connection", (socket) => {
       },
       cb: (r: AckResult) => void,
     ) => {
+      const user = userFromToken(data.token || undefined);
       if (isHardcoreMode(data.mode)) {
-        const user = userFromToken(data.token || undefined);
         if (!user) {
           cb?.({
             ok: false,
@@ -129,10 +129,11 @@ io.on("connection", (socket) => {
         }
       }
       const { room, playerId } = createRoom(
-        data.name,
+        user?.username ?? data.name,
         data.mode,
         socket.id,
         data.solo,
+        user?.avatarUrl ?? null,
       );
       socket.join(room.code);
       cb?.({ ok: true, code: room.code, youId: playerId });
@@ -142,8 +143,17 @@ io.on("connection", (socket) => {
 
   socket.on(
     "joinRoom",
-    (data: { code: string; name: string }, cb: (r: AckResult) => void) => {
-      const res = joinRoom(data.code, data.name, socket.id);
+    (
+      data: { code: string; name: string; token?: string | null },
+      cb: (r: AckResult) => void,
+    ) => {
+      const user = userFromToken(data.token || undefined);
+      const res = joinRoom(
+        data.code,
+        user?.username ?? data.name,
+        socket.id,
+        user?.avatarUrl ?? null,
+      );
       if ("error" in res) {
         cb?.({ ok: false, error: res.error });
         return;

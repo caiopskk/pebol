@@ -82,10 +82,12 @@ function newPlayer(
   socketId: string | null,
   isAI = false,
   rerolls = 5,
+  avatarUrl: string | null = null,
 ): InternalPlayer {
   return {
     id: randomUUID(),
     name: name.trim().slice(0, 20) || "Jogador",
+    avatarUrl,
     connected: true,
     ready: false,
     formationId: null,
@@ -109,9 +111,10 @@ export function createRoom(
   mode: GameMode,
   socketId: string,
   solo = false,
+  avatarUrl: string | null = null,
 ) {
   const code = genCode();
-  const host = newPlayer(name, socketId, false, rerollsForMode(mode));
+  const host = newPlayer(name, socketId, false, rerollsForMode(mode), avatarUrl);
   const room: Room = {
     code,
     phase: "lobby",
@@ -140,7 +143,12 @@ export function createRoom(
   return { room, playerId: host.id };
 }
 
-export function joinRoom(code: string, name: string, socketId: string) {
+export function joinRoom(
+  code: string,
+  name: string,
+  socketId: string,
+  avatarUrl: string | null = null,
+) {
   const room = rooms.get(code.toUpperCase());
   if (!room) return { error: "Sala não encontrada." };
   if (room.players.length >= 2) {
@@ -149,10 +157,17 @@ export function joinRoom(code: string, name: string, socketId: string) {
     if (!slot) return { error: "Sala cheia." };
     slot.connected = true;
     slot.socketId = socketId;
+    slot.avatarUrl = avatarUrl ?? slot.avatarUrl ?? null;
     return { room, playerId: slot.id };
   }
   if (room.phase !== "lobby") return { error: "Partida já começou." };
-  const guest = newPlayer(name, socketId, false, rerollsForMode(room.mode));
+  const guest = newPlayer(
+    name,
+    socketId,
+    false,
+    rerollsForMode(room.mode),
+    avatarUrl,
+  );
   room.players.push(guest);
   return { room, playerId: guest.id };
 }
@@ -539,6 +554,7 @@ export function toPublic(room: Room): RoomState {
   const players: PlayerPublic[] = room.players.map((p) => ({
     id: p.id,
     name: p.name,
+    avatarUrl: p.avatarUrl ?? null,
     connected: p.connected,
     isAI: p.isAI,
     rerollsRemaining: p.rerollsRemaining,

@@ -2,16 +2,46 @@ import { useRef, type RefObject } from "react";
 import { motion } from "framer-motion";
 import { pressFx, screenIn } from "../lib/motion.js";
 import { captureNodeToBlob } from "../lib/shareImage.js";
+import type { AccountUser } from "../api.js";
 import {
   CampaignStatus,
   CampaignSquadRows,
   CupProgress,
   KnockoutBracket,
+  YouAvatarBadge,
   type BracketRoundData,
   type CampaignStatusData,
   type CampaignSquadRow,
 } from "./CupStatus.js";
 import { ShareResultButton } from "./ShareResultButton.js";
+
+function initials(name: string) {
+  const parts = name.trim().split(/\s+/).filter(Boolean);
+  if (parts.length >= 2)
+    return `${parts[0][0]}${parts[parts.length - 1][0]}`.toUpperCase();
+  return (name || "P").slice(0, 2).toUpperCase();
+}
+
+/** Small watermark-style credit — used only on the "copiar imagem" share card, not the on-screen result. */
+function ShareCardIdentity({ account }: { account: AccountUser | null }) {
+  if (!account) return null;
+  return (
+    <div className="mb-1 flex items-center justify-center gap-1.5">
+      <YouAvatarBadge
+        account={account}
+        fallback={
+          <span className="grid h-5 w-5 place-items-center rounded-full border border-white/10 bg-white/[0.06] font-display text-[0.5rem] font-bold text-pebol-muted">
+            {initials(account.username)}
+          </span>
+        }
+        className="grid h-5 w-5 place-items-center rounded-full border border-white/10 bg-white/[0.06]"
+      />
+      <span className="font-display text-[0.65rem] font-bold text-pebol-muted">
+        {account.username}
+      </span>
+    </div>
+  );
+}
 
 export interface CampaignJourneyLeader {
   label: string;
@@ -82,6 +112,7 @@ function SquadShowcase({ rows }: { rows: CampaignSquadRow[] }) {
  */
 function CampaignShareCard({
   innerRef,
+  account,
   variant,
   trophy = false,
   title,
@@ -93,6 +124,7 @@ function CampaignShareCard({
   progressRound,
 }: {
   innerRef: RefObject<HTMLDivElement | null>;
+  account: AccountUser | null;
   variant: "win" | "lose";
   trophy?: boolean;
   title: string;
@@ -127,6 +159,7 @@ function CampaignShareCard({
           <CampaignStatus data={status} />
         </div>
         <div className="cup-share-footer">
+          <ShareCardIdentity account={account} />
           <span className="font-display text-lg font-black tracking-[0.04em] text-pebol-accent">
             PEBOL
           </span>
@@ -140,6 +173,7 @@ function CampaignShareCard({
 }
 
 interface GameOverProps {
+  account: AccountUser | null;
   title: string;
   detail: string;
   youGoals: number;
@@ -155,6 +189,7 @@ interface GameOverProps {
 }
 
 export function CampaignGameOver({
+  account,
   title,
   detail,
   youGoals,
@@ -179,6 +214,7 @@ export function CampaignGameOver({
     <motion.div className={campaignEndShellClass} {...screenIn}>
       <CampaignShareCard
         innerRef={shareCardRef}
+        account={account}
         variant="lose"
         title={title}
         detail={detail}
@@ -240,6 +276,7 @@ export function CampaignGameOver({
 }
 
 interface VictoryProps {
+  account: AccountUser | null;
   groupLabel: string;
   journeyLeaders: CampaignJourneyLeader[];
   squadRows: CampaignSquadRow[];
@@ -250,6 +287,7 @@ interface VictoryProps {
 }
 
 export function CampaignVictory({
+  account,
   groupLabel,
   journeyLeaders,
   squadRows,
@@ -270,6 +308,7 @@ export function CampaignVictory({
     <motion.div className={campaignEndShellClass} {...screenIn}>
       <CampaignShareCard
         innerRef={shareCardRef}
+        account={account}
         variant="win"
         trophy
         title="CAMPEÃO DO MUNDO!"

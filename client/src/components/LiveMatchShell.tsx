@@ -15,10 +15,12 @@ import {
   ScoreNumber,
   ScoreboardGoals,
 } from "./LiveStage.js";
-import { TeamBadge } from "./CupStatus.js";
+import type { AccountUser } from "../api.js";
+import { TeamBadge, YouAvatarBadge } from "./CupStatus.js";
 import { BallFieldSvg, SoccerBallSvg } from "./MatchSvg.js";
 
 interface LiveMatchShellProps {
+  account: AccountUser | null;
   youInitials: string;
   opponentInitials: string;
   youName: string;
@@ -35,6 +37,7 @@ interface LiveMatchShellProps {
 }
 
 export function LiveMatchShell({
+  account,
   youInitials,
   opponentInitials,
   youName,
@@ -103,7 +106,11 @@ export function LiveMatchShell({
           <div className="scoreboard grid min-w-0 gap-3 rounded-lg md:grid-cols-[minmax(0,1fr)_auto_minmax(0,1fr)] md:items-center">
             <div className="sb-team min-w-0">
               <div className="sb-team-top flex min-w-0 items-center gap-2">
-                <TeamBadge teamName={youName} initials={youInitials} variant="you" />
+                <YouAvatarBadge
+                  account={account}
+                  fallback={<TeamBadge teamName={youName} initials={youInitials} variant="you" />}
+                  className="sb-badge you"
+                />
                 <span className="sb-name min-w-0 truncate">{youName}</span>
               </div>
               <ScoreboardGoals side="you" />
