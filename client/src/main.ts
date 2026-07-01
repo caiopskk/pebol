@@ -101,6 +101,7 @@ import {
 import { TeamForm } from "./components/TeamForm.js";
 import { LegalPage } from "./components/LegalPage.js";
 import { UpdatesPage } from "./components/UpdatesPage.js";
+import { HowToPlayPage } from "./components/HowToPlayPage.js";
 import { FeedbackPage } from "./components/FeedbackPage.js";
 import { initializeTheme, ThemeSwitch } from "./components/ThemeSwitch.js";
 import {
@@ -283,6 +284,7 @@ interface Local {
     | "terms"
     | "privacy"
     | "updates"
+    | "how-to-play"
     | "feedback"
     | null;
   adminTeams: AdminTeam[] | null;
@@ -386,6 +388,7 @@ function render() {
     else if (L.accountScreen === "terms" || L.accountScreen === "privacy")
       renderLegal(L.accountScreen);
     else if (L.accountScreen === "updates") renderUpdates();
+    else if (L.accountScreen === "how-to-play") renderHowToPlay();
     else if (L.accountScreen === "feedback") renderFeedback();
     else renderAchievements();
     return;
@@ -488,6 +491,7 @@ function renderHome() {
       onLogout: logout,
       onWorldCup: startCampaign,
       onOpenUpdates: openUpdates,
+      onOpenHowToPlay: openHowToPlay,
       onOpenFeedback: openFeedback,
       onOpenLegal: openLegal,
       onSoon: (mode) =>
@@ -584,6 +588,10 @@ function openLegal(kind: "terms" | "privacy") {
 }
 function openUpdates() {
   L.accountScreen = "updates";
+  render();
+}
+function openHowToPlay() {
+  L.accountScreen = "how-to-play";
   render();
 }
 function openFeedback() {
@@ -775,6 +783,9 @@ function renderLegal(kind: "terms" | "privacy") {
 }
 function renderUpdates() {
   renderReact(createElement(UpdatesPage, { onBack: closeAccount }));
+}
+function renderHowToPlay() {
+  renderReact(createElement(HowToPlayPage, { onBack: closeAccount }));
 }
 function renderFeedback() {
   renderReact(

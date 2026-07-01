@@ -392,6 +392,33 @@ export function ResultSummary({
           </div>
         </motion.div>
 
+        <div
+          className="mt-4 flex w-full flex-wrap justify-center gap-3"
+          data-share-ignore="true"
+        >
+          <button
+            type="button"
+            className="pebol-glow-button pebol-glow-fill min-h-12 min-w-[14rem] rounded-lg border-0 bg-gradient-to-r from-pebol-accent via-emerald-300 to-pebol-gold px-5 py-3 font-display text-sm font-black uppercase tracking-[0.08em] text-black shadow-glow transition-all duration-300 hover:-translate-y-0.5"
+            onClick={onRematch}
+          >
+            Jogar de novo
+          </button>
+          <ShareResultButton
+            title={shareTitle}
+            text={shareText}
+            targetRef={shareRef}
+            imageFactory={buildShareImage}
+            className="pebol-glow-button min-h-12 min-w-[14rem] rounded-lg border border-white/10 bg-white/[0.045] px-5 py-3 font-display text-sm font-black uppercase tracking-[0.08em] text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/[0.08] hover:text-white"
+          />
+          <button
+            type="button"
+            className="pebol-glow-button min-h-12 min-w-[14rem] rounded-lg border border-white/10 bg-white/[0.045] px-5 py-3 font-display text-sm font-black uppercase tracking-[0.08em] text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/[0.08] hover:text-white"
+            onClick={onHome}
+          >
+            Tela inicial
+          </button>
+        </div>
+
         <div className="mt-4 grid gap-4 lg:grid-cols-[minmax(0,.82fr)_minmax(0,1.18fr)]">
           <div className="grid gap-4">
             <motion.div
@@ -416,33 +443,6 @@ export function ResultSummary({
             <ResultLineup title={opponentName} formation={opponentFormation} slots={opponentPitchSlots} />
           </div>
         </div>
-      </div>
-
-      <div
-        className="mx-auto mt-4 flex w-full max-w-[75rem] flex-wrap justify-center gap-3"
-        data-share-ignore="true"
-      >
-        <button
-          type="button"
-          className="pebol-glow-button pebol-glow-fill min-h-12 min-w-[14rem] rounded-lg border-0 bg-gradient-to-r from-pebol-accent via-emerald-300 to-pebol-gold px-5 py-3 font-display text-sm font-black uppercase tracking-[0.08em] text-black shadow-glow transition-all duration-300 hover:-translate-y-0.5"
-          onClick={onRematch}
-        >
-          Jogar de novo
-        </button>
-        <ShareResultButton
-          title={shareTitle}
-          text={shareText}
-          targetRef={shareRef}
-          imageFactory={buildShareImage}
-          className="pebol-glow-button min-h-12 min-w-[14rem] rounded-lg border border-white/10 bg-white/[0.045] px-5 py-3 font-display text-sm font-black uppercase tracking-[0.08em] text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/[0.08] hover:text-white"
-        />
-        <button
-          type="button"
-          className="pebol-glow-button min-h-12 min-w-[14rem] rounded-lg border border-white/10 bg-white/[0.045] px-5 py-3 font-display text-sm font-black uppercase tracking-[0.08em] text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/[0.08] hover:text-white"
-          onClick={onHome}
-        >
-          Tela inicial
-        </button>
       </div>
 
       <details

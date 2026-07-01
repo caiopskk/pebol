@@ -1,5 +1,6 @@
 import type { Express, Response } from "express";
 import express from "express";
+import type { NextFunction } from "express";
 import bcrypt from "bcryptjs";
 import { signup, login, authMiddleware, requireAuth, issueToken, type AuthRequest, type AuthUser } from "./auth.js";
 import {
@@ -53,6 +54,10 @@ const FEEDBACK_CATEGORY_LABELS = new Set([
   "other",
 ]);
 const MAX_FEEDBACK_PER_USER = 3;
+const AVATAR_UPLOAD_WINDOW_MS = 60 * 60 * 1000;
+const AVATAR_UPLOAD_MIN_INTERVAL_MS = 30 * 1000;
+const MAX_AVATAR_UPLOADS_PER_WINDOW = 5;
+const avatarUploadAttempts = new Map<string, number[]>();
 
 function validateTeam(t: TeamInput): string | null {
   if (!t || typeof t.name !== "string" || !t.name.trim()) return "Nome do time é obrigatório.";
@@ -99,6 +104,53 @@ function requireAdminUser(req: AuthRequest, res: Response): AuthUser | null {
     return null;
   }
   return u;
+}
+
+function avatarUploadRateLimit(
+  req: AuthRequest,
+  res: Response,
+  next: NextFunction,
+) {
+  const userId = req.authUser?.id;
+  if (!userId) {
+    res.status(401).json({ error: "Faça login para continuar." });
+    return;
+  }
+
+  const now = Date.now();
+  const recent = (avatarUploadAttempts.get(userId) ?? []).filter(
+    (timestamp) => now - timestamp < AVATAR_UPLOAD_WINDOW_MS,
+  );
+  const lastAttempt = recent.at(-1);
+
+  if (
+    lastAttempt !== undefined &&
+    now - lastAttempt < AVATAR_UPLOAD_MIN_INTERVAL_MS
+  ) {
+    const retryAfter = Math.ceil(
+      (AVATAR_UPLOAD_MIN_INTERVAL_MS - (now - lastAttempt)) / 1000,
+    );
+    res.setHeader("Retry-After", String(retryAfter));
+    res.status(429).json({
+      error: `Aguarde ${retryAfter}s antes de enviar outra imagem.`,
+    });
+    return;
+  }
+
+  if (recent.length >= MAX_AVATAR_UPLOADS_PER_WINDOW) {
+    const retryAfter = Math.ceil(
+      (AVATAR_UPLOAD_WINDOW_MS - (now - recent[0])) / 1000,
+    );
+    res.setHeader("Retry-After", String(retryAfter));
+    res.status(429).json({
+      error: "Limite de 5 uploads de avatar por hora atingido.",
+    });
+    return;
+  }
+
+  recent.push(now);
+  avatarUploadAttempts.set(userId, recent);
+  next();
 }
 
 /** Register auth + team CRUD routes. `onOfficialChange` refreshes the game's team cache. */
@@ -168,6 +220,7 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
   app.put(
     "/api/profile/avatar",
     requireAuth,
+    avatarUploadRateLimit,
     express.raw({ type: ["image/jpeg", "image/png", "image/webp"], limit: "2mb" }),
     async (req: AuthRequest, res) => {
       const contentType = String(req.get("content-type") ?? "").split(";")[0].trim();

@@ -36,6 +36,7 @@ interface HomeProps {
   onLogout: () => void;
   onWorldCup: () => void;
   onOpenUpdates: () => void;
+  onOpenHowToPlay: () => void;
   onOpenFeedback: () => void;
   onOpenLegal: (kind: "terms" | "privacy") => void;
   onSoon: (mode: "carreira" | "liga") => void;
@@ -645,6 +646,7 @@ export function Home({
   onLogout,
   onWorldCup,
   onOpenUpdates,
+  onOpenHowToPlay,
   onOpenFeedback,
   onOpenLegal,
   onSoon,
@@ -763,6 +765,9 @@ export function Home({
           <span className="font-display font-extrabold uppercase tracking-[0.14em]">Pebol</span>
           <button type="button" className="transition-colors duration-300 hover:text-pebol-accent" onClick={onOpenUpdates}>
             Novidades
+          </button>
+          <button type="button" className="transition-colors duration-300 hover:text-pebol-accent" onClick={onOpenHowToPlay}>
+            Como jogar
           </button>
           <button type="button" className="transition-colors duration-300 hover:text-pebol-accent" onClick={onOpenFeedback}>
             Feedback

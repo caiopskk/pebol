@@ -13,49 +13,63 @@ interface UpdateEntry {
 
 const UPDATES: UpdateEntry[] = [
   {
-    date: "24 de junho de 2026",
-    title: "Interface renovada e temas",
+    date: "1 de julho de 2026",
+    title: "Perfil, avatar e compartilhamento",
     summary:
-      "A experiência visual foi revisada para ficar mais clara, premium e confortável em diferentes ambientes.",
+      "As contas ganharam mais presença dentro do jogo e nas telas finais.",
     items: [
-      "A home, a Copa e as telas finais ganharam um visual mais moderno, com melhor hierarquia e microinterações.",
-      "O tema escuro segue como padrão, e agora existe tema claro com switch no topo da interface.",
-      "Cards, botões, listas do draft e modais foram revisados para manter boa leitura nos dois temas.",
-      "As telas de vitória e derrota ficaram mais equilibradas para print e compartilhamento.",
+      "Agora é possível editar perfil, trocar senha e enviar imagem de perfil.",
+      "Avatares aparecem na home, no ranking, nas telas de partida e na imagem copiada do resultado PvP.",
+      "A tela final do PvP passou a mostrar os nomes dos usuários em vez de rótulos genéricos.",
+      "Uploads de avatar têm limite por usuário para reduzir spam e uso abusivo.",
     ],
   },
   {
-    date: "24 de junho de 2026",
-    title: "Elencos mais ricos e partidas mais inteligentes",
+    date: "1 de julho de 2026",
+    title: "Resultados e imagens mais fiéis",
     summary:
-      "Os jogadores agora têm atributos no estilo EA FC, e esses números entram no cálculo da partida.",
+      "As telas finais foram ajustadas para ficarem melhores na tela e no compartilhamento.",
     items: [
-      "Cada jogador pode ter PAC, SHO, PAS, DRI, DEF e PHY além do overall principal.",
-      "A força de ataque, meio, defesa e goleiro considera o perfil certo para cada função.",
-      "Pênaltis passaram a comparar cobrador e goleiro, em vez de usar uma chance fixa.",
-      "O foco de ataque agora lê melhor se o seu elenco rende mais pelos lados ou pelo meio.",
+      "O botão Copiar imagem usa um card dedicado para evitar cortes e textos desalinhados.",
+      "As telas finais da Copa e do PvP ficaram mais compactas e prontas para compartilhar.",
+      "Os botões de ação do resultado PvP agora aparecem logo abaixo do placar, como nas telas da Copa.",
+      "Escalações, destaques e comparação de forças foram reorganizados para reduzir scroll.",
     ],
   },
   {
-    date: "24 de junho de 2026",
-    title: "Telas finais prontas para compartilhar",
+    date: "30 de junho de 2026",
+    title: "Copa do Mundo 48 seleções",
     summary:
-      "As telas de vitória e derrota da Copa ficaram mais compactas e mostram o elenco montado na campanha.",
+      "A campanha solo recebeu um fluxo completo de draft, grupos, mata-mata e final.",
     items: [
-      "A tela final exibe seu XI da campanha para facilitar print e compartilhamento.",
-      "O chaveamento e os destaques da jornada foram reorganizados para ocupar menos altura.",
-      "A borda ganhou movimento sutil, sem cantos arredondados, para dar mais presença ao card final.",
+      "Você monta uma seleção em 11 rodadas e joga 3 partidas de fase de grupos.",
+      "Depois da classificação, a rota segue por 16-avos, oitavas, quartas, semifinal e final.",
+      "O pré-jogo mostra tabela, adversário, mentalidade, foco de ataque e dicas de encaixe.",
+      "As telas de vitória e derrota exibem elenco montado, destaques da campanha e chaveamento.",
     ],
   },
   {
-    date: "24 de junho de 2026",
-    title: "Conta, progresso e administração mais claros",
+    date: "30 de junho de 2026",
+    title: "Tática, intervalo e partida ao vivo",
     summary:
-      "A home ficou mais focada no jogador comum e separa melhor recursos administrativos.",
+      "A partida ganhou mais leitura tática e controle durante o intervalo.",
     items: [
-      "A opção de gerenciar times agora aparece apenas para administradores.",
-      "O progresso por XP, conquistas e leaderboard seguem visíveis para jogadores logados.",
-      "Termos de Uso e Política de Privacidade foram adicionados ao rodapé.",
+      "Mentalidades agora interagem por counters: pressão, posse e contra-ataque têm vantagem entre si.",
+      "O foco de ataque permite escolher jogo equilibrado, pelos lados ou pelo meio.",
+      "No intervalo, é possível trocar formação, mentalidade, foco e fazer até 5 substituições.",
+      "A bola animada e o feed de eventos deixam a partida mais clara minuto a minuto.",
+    ],
+  },
+  {
+    date: "30 de junho de 2026",
+    title: "Conta, progresso e administração",
+    summary:
+      "A home ficou mais focada no jogador e separa melhor recursos de conta e administração.",
+    items: [
+      "Contas salvam XP, nível, título, conquistas e posição no ranking.",
+      "Hardcore desbloqueia por nível e oculta ratings durante o draft.",
+      "Administradores têm painel para importar, criar, editar e remover elencos oficiais.",
+      "Feedbacks enviados pelos jogadores ficam organizados em um painel administrativo.",
     ],
   },
 ];
