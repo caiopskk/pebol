@@ -1,6 +1,7 @@
 import type { Express, Response } from "express";
 import express from "express";
-import { signup, login, authMiddleware, requireAuth, type AuthRequest, type AuthUser } from "./auth.js";
+import bcrypt from "bcryptjs";
+import { signup, login, authMiddleware, requireAuth, issueToken, type AuthRequest, type AuthUser } from "./auth.js";
 import {
   getVisibleTeams,
   getTeamById,
@@ -18,10 +19,20 @@ import {
   getFeedbackCountForUser,
   normalizeFeedbackInput,
   maskTeamName,
+  getPublicUser,
+  getUserPasswordHash,
+  updatePublicUserProfile,
+  updateUserAvatar,
+  updateUserPasswordHash,
   type DbTeam,
   type FeedbackInput,
   type TeamInput,
 } from "./db.js";
+import {
+  localUploadsDir,
+  saveAvatarImage,
+  validateAvatarUpload,
+} from "./storage.js";
 
 // Non-admins never receive the real name of an official club (copyright); they get the
 // generic alias as the name. Admins get the full record (real name + alias) to edit.
@@ -92,6 +103,7 @@ function requireAdminUser(req: AuthRequest, res: Response): AuthUser | null {
 /** Register auth + team CRUD routes. `onOfficialChange` refreshes the game's team cache. */
 export function registerApi(app: Express, onOfficialChange: () => void): void {
   app.use(express.json({ limit: "256kb" }));
+  app.use("/uploads", express.static(localUploadsDir(), { maxAge: "1y", immutable: true }));
   app.use(authMiddleware);
 
   app.post("/api/auth/signup", async (req, res) => {
@@ -102,7 +114,71 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
     const r = await login(req.body?.username, req.body?.password);
     res.status("error" in r ? 401 : 200).json(r);
   });
-  app.get("/api/me", (req: AuthRequest, res) => res.json({ user: req.authUser ?? null }));
+  app.get("/api/me", async (req: AuthRequest, res) => {
+    if (!req.authUser) return res.json({ user: null });
+    res.json({ user: await getPublicUser(req.authUser.id) });
+  });
+
+  app.put("/api/profile", requireAuth, async (req: AuthRequest, res) => {
+    const current = await getPublicUser(req.authUser!.id);
+    if (!current) return res.status(404).json({ error: "Usuário não encontrado." });
+
+    const username = String(req.body?.username ?? current.username).trim();
+    const currentPassword = String(req.body?.currentPassword ?? "");
+    const newPassword = String(req.body?.newPassword ?? "");
+
+    if (username.length < 3 || username.length > 20) {
+      return res.status(400).json({ error: "Usuário deve ter 3 a 20 caracteres." });
+    }
+
+    if (newPassword) {
+      if (newPassword.length < 4)
+        return res.status(400).json({ error: "Senha muito curta (mínimo 4)." });
+      const hash = await getUserPasswordHash(current.id);
+      if (!hash || !bcrypt.compareSync(currentPassword, hash)) {
+        return res.status(400).json({ error: "Senha atual inválida." });
+      }
+      await updateUserPasswordHash(current.id, bcrypt.hashSync(newPassword, 10));
+    }
+
+    let user = current;
+    if (username !== current.username) {
+      const updated = await updatePublicUserProfile(current.id, username);
+      if ("error" in updated) return res.status(409).json(updated);
+      user = updated;
+    }
+
+    res.json({ user, token: issueToken(user) });
+  });
+
+  app.put(
+    "/api/profile/avatar",
+    requireAuth,
+    express.raw({ type: ["image/jpeg", "image/png", "image/webp"], limit: "2mb" }),
+    async (req: AuthRequest, res) => {
+      const contentType = String(req.get("content-type") ?? "").split(";")[0].trim();
+      const bytes = Buffer.isBuffer(req.body) ? req.body : Buffer.from([]);
+      const validation = validateAvatarUpload(contentType, bytes.length);
+      if ("error" in validation) return res.status(400).json(validation);
+
+      const saved = await saveAvatarImage({
+        userId: req.authUser!.id,
+        bytes,
+        contentType,
+        ext: validation.ext,
+      });
+      const avatarUrl = saved.url.startsWith("/")
+        ? `${req.protocol}://${req.get("host")}${saved.url}`
+        : saved.url;
+      const user = await updateUserAvatar(req.authUser!.id, avatarUrl, saved.key);
+      if (!user) return res.status(404).json({ error: "Usuário não encontrado." });
+      res.json({
+        user,
+        token: issueToken(user),
+        avatar: { ...saved, url: avatarUrl },
+      });
+    },
+  );
 
   app.get("/api/leaderboard", async (req, res) => {
     res.json({ leaderboard: await getLeaderboard(Number(req.query.limit) || 10) });

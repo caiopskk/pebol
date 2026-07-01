@@ -92,8 +92,8 @@ export function CampaignDraft({
         </button>
       </div>
       <div className="cup-draft-layout grid gap-3 xl:grid-cols-[minmax(22rem,0.95fr)_minmax(23rem,1fr)_minmax(19rem,.85fr)] xl:items-start">
-        <section className="cup-draft-source min-w-0 rounded-lg border border-white/10 bg-pebol-panel p-4 shadow-premium backdrop-blur-xl">
-          <div className="grid gap-2 rounded-lg border border-white/10 bg-white/[0.04] p-3">
+        <section className="cup-draft-source grid min-w-0 gap-4 rounded-lg border border-white/10 bg-pebol-panel p-4 shadow-premium backdrop-blur-xl">
+          <div className="grid gap-2.5 rounded-lg border border-white/10 bg-white/[0.04] p-4">
             <span className="font-display text-[0.65rem] font-black uppercase tracking-[0.16em] text-pebol-faint">Saiu no sorteio</span>
             <h2 className="m-0 min-h-7 [overflow-wrap:anywhere] font-title text-2xl uppercase leading-none tracking-[0.02em] text-white">
               {sourceName} {sourceSeason}
@@ -101,7 +101,7 @@ export function CampaignDraft({
             <span className="min-h-4 text-left text-xs font-semibold text-pebol-muted">{sourceLeague}</span>
             <button
               type="button"
-              className="mt-1 min-h-9 w-full rounded-lg border-0 bg-white/5 px-4 py-2 font-display text-sm font-extrabold text-slate-200 shadow-none transition-all duration-300 hover:bg-pebol-blue/10 disabled:cursor-default disabled:opacity-45"
+              className="mt-2 min-h-9 w-full rounded-lg border-0 bg-white/5 px-4 py-2 font-display text-sm font-extrabold text-slate-200 shadow-none transition-all duration-300 hover:bg-pebol-blue/10 disabled:cursor-default disabled:opacity-45"
               disabled={rerollsRemaining <= 0}
               onClick={onReroll}
             >
@@ -109,14 +109,14 @@ export function CampaignDraft({
             </button>
           </div>
           <ul
-            className="player-list grid max-h-[34rem] gap-2 overflow-auto pr-1"
+            className="player-list grid max-h-[34rem] gap-2.5 overflow-auto pr-1"
             ref={listRef}
             onScroll={(event) => onScrollPersist(event.currentTarget.scrollTop)}
           >
             {players.map((p) => (
               <li
                 key={p.name}
-                className={`pl-item grid min-h-10 grid-cols-[minmax(4.5rem,auto)_minmax(0,1fr)_2.5rem] items-center gap-2 rounded-lg border bg-white/[0.045] px-3 py-2 transition-all duration-200 ${p.clickable ? "clickable" : "taken opacity-50"} ${
+                className={`pl-item grid min-h-14 grid-cols-[minmax(4.5rem,auto)_minmax(0,1fr)_2.5rem] items-center gap-2.5 rounded-lg border bg-white/[0.045] px-3.5 py-2.5 transition-all duration-200 ${p.clickable ? "clickable" : "taken opacity-50"} ${
                   p.selected ? "selected" : ""
                 }`}
                 data-player={p.name}
@@ -139,7 +139,7 @@ export function CampaignDraft({
               </li>
             ))}
           </ul>
-          <p className="mt-3 flex min-h-[4.25rem] flex-wrap items-center justify-center gap-x-1 rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-center text-sm font-semibold leading-tight text-pebol-muted text-balance">{hint}</p>
+          <p className="flex min-h-[4.25rem] flex-wrap items-center justify-center gap-x-1 rounded-lg border border-white/10 bg-black/15 px-3 py-2 text-center text-sm font-semibold leading-tight text-pebol-muted text-balance">{hint}</p>
         </section>
 
         <section className="min-w-0 overflow-hidden rounded-lg border border-white/10 bg-pebol-panel p-4 shadow-premium backdrop-blur-xl">
@@ -152,7 +152,7 @@ export function CampaignDraft({
             <span className="font-display text-[0.65rem] font-black uppercase tracking-[0.16rem] text-pebol-faint">Overall time</span>
             <CampaignStrengthSummary data={strength} />
           </div>
-          <CampaignSquadRows rows={squadRows} />
+          <CampaignSquadRows rows={squadRows} grouped />
           <CupProgress won={progressRound} />
           {complete ? (
             <div className="grid gap-2">

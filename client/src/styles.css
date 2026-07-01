@@ -824,10 +824,6 @@ label {
   color: var(--accent);
 }
 
-.cup-draft-source .pl-item {
-  border-radius: 0.45rem;
-  padding: 0.68rem 0.75rem;
-}
 .cup-draft-rating {
   display: grid;
   grid-template-columns: auto 1fr;

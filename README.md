@@ -347,10 +347,19 @@ TURSO_DATABASE_URL=libsql://...
 TURSO_AUTH_TOKEN=...
 JWT_SECRET=um-segredo-forte
 ADMIN_USERS=admin,caio
+R2_ACCOUNT_ID=...
+R2_ACCESS_KEY_ID=...
+R2_SECRET_ACCESS_KEY=...
+R2_BUCKET=pebol
+R2_PUBLIC_BASE_URL=https://cdn.seu-dominio.com
 ```
 
-`ADMIN_USERS` é opcional. O seed roda na inicialização quando a tabela de times está vazia,
-criando times oficiais, seleções históricas e conquistas.
+`ADMIN_USERS` é opcional. As variáveis `R2_*` são opcionais em desenvolvimento: sem elas,
+uploads de imagem de perfil são salvos em `data/uploads`. Em produção, configure um bucket
+Cloudflare R2 e exponha um domínio público em `R2_PUBLIC_BASE_URL`.
+
+O seed roda na inicialização quando a tabela de times está vazia, criando times oficiais,
+seleções históricas e conquistas.
 
 ### Schema e migrações (deploy)
 
@@ -360,8 +369,9 @@ vez que o servidor inicia e é idempotente:
 - Cria tabelas que faltam com `CREATE TABLE IF NOT EXISTS` (inclui `user_xp_events`,
   `user_achievements`, etc.) — uma versão nova com tabelas novas as cria sozinha no Turso já
   existente, sem apagar dados.
-- Roda `migrateDb()` para colunas adicionadas em tabelas existentes (ex.: `alt_pos`, `pac`,
-  `sho`, `pas`, `dri`, `def`, `phy`), ignorando o erro de coluna duplicada.
+- Roda `migrateDb()` para colunas adicionadas em tabelas existentes: atributos de jogador na
+  tabela `players` (`alt_pos`, `pac`, `sho`, `pas`, `dri`, `def`, `phy`) e o upload de imagem de
+  perfil na tabela `users` (`avatar_url`, `avatar_key`), ignorando o erro de coluna duplicada.
 - Preenche atributos ausentes de jogadores já existentes com valores derivados, sem apagar
   jogadores ou times.
 - Re-semeia conquistas com `INSERT OR IGNORE` (novas conquistas entram; as existentes ficam).
@@ -383,6 +393,8 @@ Rotas principais:
 - `POST /api/auth/signup`
 - `POST /api/auth/login`
 - `GET /api/me`
+- `PUT /api/profile`
+- `PUT /api/profile/avatar`
 - `GET /api/achievements`
 - `POST /api/achievements/:id/unlock`
 - `GET /api/leaderboard`

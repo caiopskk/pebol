@@ -11,6 +11,7 @@ export interface AccountUser {
   id: string;
   username: string;
   role: Role;
+  avatarUrl: string | null;
 }
 export interface AdminTeam extends Team {
   kind: "club" | "national";
@@ -49,6 +50,11 @@ export interface FeedbackEntry extends FeedbackPayload {
   userAgent: string;
   status: "new" | "reviewed" | "archived";
   createdAt: number;
+}
+export interface ProfilePayload {
+  username: string;
+  currentPassword?: string;
+  newPassword?: string;
 }
 
 let token: string | null = localStorage.getItem("pebol_token");
@@ -105,6 +111,33 @@ export const api = {
       body: JSON.stringify({ username, password }),
     }),
   me: () => req<{ user: AccountUser | null }>("/api/me"),
+  updateProfile: (payload: ProfilePayload) =>
+    req<{ user: AccountUser; token: string }>("/api/profile", {
+      method: "PUT",
+      body: JSON.stringify(payload),
+    }),
+  uploadAvatar: async (file: File) => {
+    writeRequestLock?.begin();
+    try {
+      const res = await fetch(API_BASE + "/api/profile/avatar", {
+        method: "PUT",
+        headers: {
+          "Content-Type": file.type,
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: file,
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error((data as { error?: string }).error || "Erro de rede.");
+      return data as {
+        user: AccountUser;
+        token: string;
+        avatar: { key: string; url: string; provider: "r2" | "local" };
+      };
+    } finally {
+      writeRequestLock?.end();
+    }
+  },
   leaderboard: () => req<{ leaderboard: LeaderboardEntry[] }>("/api/leaderboard"),
   progress: () => req<{ progress: UserProgress }>("/api/progress"),
   achievements: () => req<{ achievements: AchievementProgress[] }>("/api/achievements"),

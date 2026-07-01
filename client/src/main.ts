@@ -66,6 +66,7 @@ import {
 } from "./net.js";
 import { Home } from "./components/Home.js";
 import { Login } from "./components/Login.js";
+import { Profile } from "./components/Profile.js";
 import { Achievements } from "./components/Achievements.js";
 import { AdminTeams } from "./components/AdminTeams.js";
 import { AdminFeedbacks } from "./components/AdminFeedbacks.js";
@@ -274,6 +275,7 @@ interface Local {
   leaderboard: LeaderboardEntry[] | null;
   accountScreen:
     | "login"
+    | "profile"
     | "admin"
     | "admin-feedback"
     | "achievements"
@@ -368,6 +370,7 @@ function render() {
   // account / team admin owns the screen when open
   if (L.accountScreen) {
     if (L.accountScreen === "login") renderLogin();
+    else if (L.accountScreen === "profile") renderProfile();
     else if (L.accountScreen === "admin") renderAdmin();
     else if (L.accountScreen === "admin-feedback") renderAdminFeedback();
     else if (L.accountScreen === "terms" || L.accountScreen === "privacy")
@@ -469,6 +472,7 @@ function renderHome() {
       onCreateRoom,
       onJoinRoom,
       onOpenLogin: openLogin,
+      onOpenProfile: openProfile,
       onOpenAdmin: () => void openAdmin(),
       onOpenAchievements: () => void openAchievements(),
       onLogout: logout,
@@ -557,6 +561,11 @@ function canUseHardcore(): boolean {
 
 function openLogin() {
   L.accountScreen = "login";
+  render();
+}
+function openProfile() {
+  if (!L.account) return openLogin();
+  L.accountScreen = "profile";
   render();
 }
 function openLegal(kind: "terms" | "privacy") {
@@ -709,6 +718,44 @@ function renderLogin() {
         } catch (e) {
           showToast((e as Error).message);
         }
+      },
+    }),
+  );
+}
+function renderProfile() {
+  if (!L.account) return openLogin();
+  renderReact(
+    createElement(Profile, {
+      account: L.account,
+      onBack: closeAccount,
+      onSaveProfile: async (username) => {
+        const u = username.trim();
+        if (!u) return showToast("Digite seu nome de usuário.");
+        const r = await api.updateProfile({ username: u });
+        setToken(r.token);
+        L.account = r.user;
+        showToast("Perfil atualizado.");
+        render();
+      },
+      onSavePassword: async (currentPassword, newPassword) => {
+        if (!currentPassword || !newPassword)
+          return showToast("Preencha a senha atual e a nova senha.");
+        const r = await api.updateProfile({
+          username: L.account!.username,
+          currentPassword,
+          newPassword,
+        });
+        setToken(r.token);
+        L.account = r.user;
+        showToast("Senha alterada.");
+        render();
+      },
+      onUploadAvatar: async (file) => {
+        const r = await api.uploadAvatar(file);
+        setToken(r.token);
+        L.account = r.user;
+        showToast("Imagem atualizada.");
+        render();
       },
     }),
   );

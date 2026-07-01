@@ -1,3 +1,4 @@
+import type { PosGroup } from "../../../shared/types.js";
 import { Flag, hasFlag } from "./Flag.js";
 
 export interface GroupRow {
@@ -253,43 +254,70 @@ export function CampaignStrengthSummary({ data }: { data: CampaignStrengthData }
 export interface CampaignSquadRow {
   slotId: string;
   pos: string;
+  posGroup: PosGroup;
   name: string | null;
   rating: number | null;
   hideRating: boolean;
 }
 
+const SQUAD_GROUP_LABELS: Record<PosGroup, string> = {
+  GK: "Goleiro",
+  DEF: "Defesa",
+  MID: "Meio-campo",
+  ATT: "Ataque",
+};
+const SQUAD_GROUP_ORDER: PosGroup[] = ["GK", "DEF", "MID", "ATT"];
+
 export function CampaignSquadRows({
   rows,
   compact = false,
+  grouped = false,
 }: {
   rows: CampaignSquadRow[];
   compact?: boolean;
+  /** Split rows into Goleiro/Defesa/Meio-campo/Ataque sections instead of one flat list. */
+  grouped?: boolean;
 }) {
+  const rowClass = `grid items-center rounded-lg border border-l-2 bg-black/20 ${
+    compact ? "grid-cols-[1.8rem_minmax(0,1fr)_1.8rem] gap-1" : "grid-cols-[2.25rem_minmax(0,1fr)_2.5rem] gap-2"
+  } ${compact ? "min-h-7 px-2.5 py-1.5" : "min-h-9 px-3 py-2"}`;
+
+  const row = (r: CampaignSquadRow) => (
+    <li
+      key={r.slotId}
+      className={`${rowClass} ${r.name ? "border-white/10 border-l-pebol-gold/75" : "border-white/10 border-l-white/20"}`}
+    >
+      <span className={`font-display font-black uppercase text-pebol-muted ${compact ? "text-[0.62rem]" : "text-xs tracking-[0.08em]"}`}>
+        {r.pos}
+      </span>
+      <strong className={`min-w-0 truncate font-black text-white ${compact ? "text-xs" : "text-sm"}`}>
+        {r.name ?? "--"}
+      </strong>
+      <em className={`text-right font-black not-italic text-pebol-gold ${compact ? "text-xs" : "text-sm"}`}>
+        {r.name ? (r.hideRating ? "??" : r.rating) : "--"}
+      </em>
+    </li>
+  );
+
+  if (!grouped) {
+    return <ol className={`grid ${compact ? "grid-cols-2 gap-1" : "gap-1.5"}`}>{rows.map(row)}</ol>;
+  }
+
   return (
-    <ol className={`grid ${compact ? "grid-cols-2 gap-1" : "gap-1.5"}`}>
-      {rows.map((r) => (
-        <li
-          key={r.slotId}
-          className={`grid items-center rounded-lg border border-l-2 bg-black/20 ${
-            compact ? "grid-cols-[1.8rem_minmax(0,1fr)_1.8rem] gap-1" : "grid-cols-[2.25rem_minmax(0,1fr)_2.5rem] gap-2"
-          } ${
-            compact ? "min-h-7 px-2.5 py-1.5" : "min-h-9 px-3 py-2"
-          } ${
-            r.name ? "border-white/10 border-l-pebol-gold/75" : "border-white/10 border-l-white/20"
-          }`}
-        >
-          <span className={`font-display font-black uppercase text-pebol-muted ${compact ? "text-[0.62rem]" : "text-xs tracking-[0.08em]"}`}>
-            {r.pos}
-          </span>
-          <strong className={`min-w-0 truncate font-black text-white ${compact ? "text-xs" : "text-sm"}`}>
-            {r.name ?? "--"}
-          </strong>
-          <em className={`text-right font-black not-italic text-pebol-gold ${compact ? "text-xs" : "text-sm"}`}>
-            {r.name ? (r.hideRating ? "??" : r.rating) : "--"}
-          </em>
-        </li>
-      ))}
-    </ol>
+    <div className="grid gap-3">
+      {SQUAD_GROUP_ORDER.map((group) => {
+        const groupRows = rows.filter((r) => r.posGroup === group);
+        if (!groupRows.length) return null;
+        return (
+          <div key={group} className="grid gap-1.5">
+            <span className="font-display text-[0.62rem] font-black uppercase tracking-[0.14em] text-pebol-faint">
+              {SQUAD_GROUP_LABELS[group]}
+            </span>
+            <ol className="grid gap-1.5">{groupRows.map(row)}</ol>
+          </div>
+        );
+      })}
+    </div>
   );
 }
 

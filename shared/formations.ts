@@ -198,6 +198,40 @@ export const FORMATIONS: Formation[] = [
       { id: "ST", pos: "ST", x: 50, y: 86 },
     ],
   },
+  {
+    id: "4-4-1-1",
+    name: "4-4-1-1",
+    slots: [
+      { id: "GK", pos: "GK", x: 50, y: 6 },
+      { id: "LB", pos: "LB", x: 16, y: 26 },
+      { id: "CB1", pos: "CB", x: 38, y: 20 },
+      { id: "CB2", pos: "CB", x: 62, y: 20 },
+      { id: "RB", pos: "RB", x: 84, y: 26 },
+      { id: "LM", pos: "LM", x: 18, y: 50 },
+      { id: "CM1", pos: "CM", x: 40, y: 46 },
+      { id: "CM2", pos: "CM", x: 60, y: 46 },
+      { id: "RM", pos: "RM", x: 82, y: 50 },
+      { id: "CF", pos: "CF", x: 50, y: 68 },
+      { id: "ST", pos: "ST", x: 50, y: 86 },
+    ],
+  },
+  {
+    id: "4-3-1-2",
+    name: "4-3-1-2",
+    slots: [
+      { id: "GK", pos: "GK", x: 50, y: 6 },
+      { id: "LB", pos: "LB", x: 16, y: 26 },
+      { id: "CB1", pos: "CB", x: 38, y: 20 },
+      { id: "CB2", pos: "CB", x: 62, y: 20 },
+      { id: "RB", pos: "RB", x: 84, y: 26 },
+      { id: "CM1", pos: "CM", x: 30, y: 46 },
+      { id: "CDM", pos: "CDM", x: 50, y: 40 },
+      { id: "CM2", pos: "CM", x: 70, y: 46 },
+      { id: "CAM", pos: "CAM", x: 50, y: 62 },
+      { id: "ST", pos: "ST", x: 38, y: 84 },
+      { id: "CF", pos: "CF", x: 62, y: 80 },
+    ],
+  },
 ];
 
 export function getFormation(id: string): Formation | undefined {

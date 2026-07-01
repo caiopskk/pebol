@@ -87,6 +87,12 @@ export interface LeaderboardEntry extends UserProgress {
   username: string;
   rank: number;
 }
+export interface PublicUser {
+  id: string;
+  username: string;
+  role: "user" | "admin";
+  avatarUrl: string | null;
+}
 export type FeedbackCategory = "suggestion" | "bug" | "balance" | "other";
 export interface FeedbackInput {
   category: FeedbackCategory;
@@ -116,7 +122,8 @@ export async function initDb(): Promise<void> {
     [
       `CREATE TABLE IF NOT EXISTS users (
         id TEXT PRIMARY KEY, username TEXT UNIQUE NOT NULL, password_hash TEXT NOT NULL,
-        role TEXT NOT NULL DEFAULT 'user', created_at INTEGER NOT NULL)`,
+        role TEXT NOT NULL DEFAULT 'user', avatar_url TEXT NOT NULL DEFAULT '',
+        avatar_key TEXT NOT NULL DEFAULT '', created_at INTEGER NOT NULL)`,
       `CREATE TABLE IF NOT EXISTS teams (
         id TEXT PRIMARY KEY, name TEXT NOT NULL, season TEXT NOT NULL DEFAULT '',
         league TEXT NOT NULL DEFAULT '', kind TEXT NOT NULL DEFAULT 'club',
@@ -157,18 +164,20 @@ export async function initDb(): Promise<void> {
 }
 
 async function migrateDb(): Promise<void> {
-  const columns = [
-    "alt_pos TEXT NOT NULL DEFAULT ''",
-    "pac INTEGER",
-    "sho INTEGER",
-    "pas INTEGER",
-    "dri INTEGER",
-    "def INTEGER",
-    "phy INTEGER",
+  const addedColumns = [
+    "players ADD COLUMN alt_pos TEXT NOT NULL DEFAULT ''",
+    "players ADD COLUMN pac INTEGER",
+    "players ADD COLUMN sho INTEGER",
+    "players ADD COLUMN pas INTEGER",
+    "players ADD COLUMN dri INTEGER",
+    "players ADD COLUMN def INTEGER",
+    "players ADD COLUMN phy INTEGER",
+    "users ADD COLUMN avatar_url TEXT NOT NULL DEFAULT ''",
+    "users ADD COLUMN avatar_key TEXT NOT NULL DEFAULT ''",
   ];
-  for (const column of columns) {
+  for (const column of addedColumns) {
     try {
-      await db.execute(`ALTER TABLE players ADD COLUMN ${column}`);
+      await db.execute(`ALTER TABLE ${column}`);
     } catch (err) {
       const msg = (
         err instanceof Error ? err.message : String(err)
@@ -176,6 +185,76 @@ async function migrateDb(): Promise<void> {
       if (!msg.includes("duplicate column")) throw err;
     }
   }
+}
+
+function publicUserFromRow(row: Record<string, unknown>): PublicUser {
+  return {
+    id: String(row.id),
+    username: String(row.username),
+    role: String(row.role) === "admin" ? "admin" : "user",
+    avatarUrl: row.avatar_url ? String(row.avatar_url) : null,
+  };
+}
+
+export async function getPublicUser(userId: string): Promise<PublicUser | null> {
+  const rows = (
+    await db.execute({
+      sql: "SELECT id, username, role, avatar_url FROM users WHERE id = ? LIMIT 1",
+      args: [userId],
+    })
+  ).rows as unknown as Record<string, unknown>[];
+  return rows[0] ? publicUserFromRow(rows[0]) : null;
+}
+
+export async function getUserPasswordHash(userId: string): Promise<string | null> {
+  const rows = (
+    await db.execute({
+      sql: "SELECT password_hash FROM users WHERE id = ? LIMIT 1",
+      args: [userId],
+    })
+  ).rows as unknown as Record<string, unknown>[];
+  return rows[0] ? String(rows[0].password_hash) : null;
+}
+
+export async function updatePublicUserProfile(
+  userId: string,
+  username: string,
+): Promise<PublicUser | { error: string }> {
+  try {
+    await db.execute({
+      sql: "UPDATE users SET username = ? WHERE id = ?",
+      args: [username, userId],
+    });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("UNIQUE") || msg.includes("users.username")) {
+      return { error: "Esse usuário já existe." };
+    }
+    throw err;
+  }
+  return (await getPublicUser(userId))!;
+}
+
+export async function updateUserPasswordHash(
+  userId: string,
+  passwordHash: string,
+): Promise<void> {
+  await db.execute({
+    sql: "UPDATE users SET password_hash = ? WHERE id = ?",
+    args: [passwordHash, userId],
+  });
+}
+
+export async function updateUserAvatar(
+  userId: string,
+  avatarUrl: string,
+  avatarKey: string,
+): Promise<PublicUser | null> {
+  await db.execute({
+    sql: "UPDATE users SET avatar_url = ?, avatar_key = ? WHERE id = ?",
+    args: [avatarUrl, avatarKey, userId],
+  });
+  return getPublicUser(userId);
 }
 
 async function seedAchievements(): Promise<void> {

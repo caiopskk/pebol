@@ -1,5 +1,17 @@
 import { useRef, useState, type FormEvent, type RefObject } from "react";
 import { motion } from "framer-motion";
+import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
+import {
+  faBolt,
+  faGear,
+  faMedal,
+  faPenToSquare,
+  faRankingStar,
+  faRightFromBracket,
+  faRightToBracket,
+  faTrophy,
+  type IconDefinition,
+} from "@fortawesome/free-solid-svg-icons";
 import type { GameMode } from "../../../shared/types.js";
 import type {
   AccountUser,
@@ -18,6 +30,7 @@ interface HomeProps {
   onCreateRoom: (name: string, mode: GameMode, solo: boolean) => void;
   onJoinRoom: (name: string, code: string) => void;
   onOpenLogin: () => void;
+  onOpenProfile: () => void;
   onOpenAdmin: () => void;
   onOpenAchievements: () => void;
   onLogout: () => void;
@@ -107,10 +120,65 @@ function medalClass(rank: number) {
   return "border-white/10 bg-white/[0.055] text-pebol-muted";
 }
 
+/** Short "why sign up" bullet shown next to the login button when logged out. */
+function ValueProp({
+  icon,
+  iconClass,
+  text,
+}: {
+  icon: IconDefinition;
+  iconClass: string;
+  text: string;
+}) {
+  return (
+    <li className="flex items-center gap-2.5 text-sm font-semibold text-pebol-muted">
+      <span
+        className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.045] ${iconClass}`}
+      >
+        <FontAwesomeIcon icon={icon} />
+      </span>
+      {text}
+    </li>
+  );
+}
+
+/** Compact icon + value + label stat, shown between the profile and its actions. */
+function StatChip({
+  icon,
+  iconClass,
+  value,
+  label,
+}: {
+  icon: IconDefinition;
+  iconClass: string;
+  value: string;
+  label: string;
+}) {
+  return (
+    <div className="flex flex-col items-center gap-1.5 text-center sm:flex-row sm:items-center sm:gap-2.5 sm:text-left">
+      <span
+        className={`grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-white/[0.045] ${iconClass}`}
+      >
+        <FontAwesomeIcon icon={icon} />
+      </span>
+      <div className="min-w-0">
+        <strong className="block truncate font-display text-sm font-extrabold text-white">
+          {value}
+        </strong>
+        <span className="block text-[0.62rem] font-semibold uppercase tracking-[0.08em] text-pebol-muted">
+          {label}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function AccountProfile({
   account,
   progress,
+  leaderboard,
   onOpenLogin,
+  onOpenProfile,
   onOpenAdmin,
   onOpenAchievements,
   onLogout,
@@ -118,7 +186,9 @@ function AccountProfile({
   HomeProps,
   | "account"
   | "progress"
+  | "leaderboard"
   | "onOpenLogin"
+  | "onOpenProfile"
   | "onOpenAdmin"
   | "onOpenAchievements"
   | "onLogout"
@@ -128,19 +198,28 @@ function AccountProfile({
   const xp = progress?.currentLevelXp ?? 0;
   const nextXp = progress?.nextLevelXp ?? 100;
   const xpWidth = `${xpPercent(progress)}%`;
+  const myRank = account
+    ? (leaderboard?.find((p) => p.userId === account.id)?.rank ?? null)
+    : null;
+  const rankLabel = myRank ? `#${myRank}` : "—";
 
   return (
-    <motion.section
-      variants={cardMotion}
-      className="grid gap-3 lg:grid-cols-[minmax(22rem,1fr)_auto] lg:items-center"
-    >
+    <motion.section variants={cardMotion} className={`${panel} p-3 sm:p-4`}>
       {account ? (
-        <>
-          <div className={`${panel} flex min-w-0 items-center gap-3 p-3`}>
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <div className="flex min-w-0 items-center gap-3">
             <div className="home-avatar-frame relative grid h-16 w-16 shrink-0 place-items-center rounded-lg border border-pebol-accent/40 bg-gradient-to-br from-pebol-accent/25 via-pebol-blue/15 to-black shadow-glow">
-              <span className="home-avatar-initials font-display text-xl font-extrabold text-white">
-                {initials(account.username)}
-              </span>
+              {account.avatarUrl ? (
+                <img
+                  className="h-full w-full rounded-lg object-cover"
+                  src={account.avatarUrl}
+                  alt={`Imagem de perfil de ${account.username}`}
+                />
+              ) : (
+                <span className="home-avatar-initials font-display text-xl font-extrabold text-white">
+                  {initials(account.username)}
+                </span>
+              )}
               <em className="home-level-badge absolute -bottom-2 rounded-full border border-pebol-gold/50 bg-black px-2 py-0.5 font-display text-[0.65rem] font-bold not-italic text-pebol-gold">
                 Nv. {level}
               </em>
@@ -155,7 +234,7 @@ function AccountProfile({
               <span className="block text-sm font-semibold text-pebol-muted">
                 {account.role === "admin" ? "Administrador" : "Usuário"} · {title}
               </span>
-              <div className="mt-2">
+              <div className="mt-2 sm:min-w-[16rem]">
                 <div className="mb-1 flex items-center justify-between gap-3 text-xs font-medium text-slate-300">
                   <span>XP da temporada</span>
                   <strong className="font-display font-semibold text-pebol-gold">
@@ -171,24 +250,62 @@ function AccountProfile({
               </div>
             </div>
           </div>
-          <div className="grid gap-2 sm:grid-cols-3 lg:min-w-[26rem]">
+          <div className="grid shrink-0 grid-cols-3 gap-3 sm:gap-4 xl:border-l xl:border-white/10 xl:px-5">
+            <StatChip icon={faRankingStar} iconClass="text-pebol-blue" value={rankLabel} label="Ranking" />
+            <StatChip
+              icon={faMedal}
+              iconClass="text-pebol-gold"
+              value={`${progress?.achievementXp ?? 0}`}
+              label="XP conquistas"
+            />
+            <StatChip
+              icon={faBolt}
+              iconClass="text-pebol-accent"
+              value={`${progress?.activityXp ?? 0}`}
+              label="XP atividade"
+            />
+          </div>
+          <div className="grid shrink-0 grid-cols-2 gap-2 sm:grid-cols-3 xl:min-w-[24rem] xl:border-l xl:border-white/10 xl:pl-4">
+            <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} type="button" onClick={onOpenProfile} className={secondaryAction}>
+              <span className="inline-flex items-center justify-center gap-2">
+                <FontAwesomeIcon icon={faPenToSquare} className="text-pebol-muted" />
+                Editar perfil
+              </span>
+            </motion.button>
             <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} type="button" onClick={onOpenAchievements} className={secondaryAction}>
-              Progresso
+              <span className="inline-flex items-center justify-center gap-2">
+                <FontAwesomeIcon icon={faTrophy} className="text-pebol-gold" />
+                Progresso
+              </span>
             </motion.button>
             {account.role === "admin" ? (
               <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} type="button" onClick={onOpenAdmin} className={primaryAction}>
-                Gerenciar
+                <span className="inline-flex items-center justify-center gap-2">
+                  <FontAwesomeIcon icon={faGear} />
+                  Gerenciar
+                </span>
               </motion.button>
             ) : null}
             <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} type="button" onClick={onLogout} className={secondaryAction}>
-              Sair
+              <span className="inline-flex items-center justify-center gap-2">
+                <FontAwesomeIcon icon={faRightFromBracket} className="text-pebol-muted" />
+                Sair
+              </span>
             </motion.button>
           </div>
-        </>
+        </div>
       ) : (
-        <div className="flex justify-end">
-          <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} type="button" onClick={onOpenLogin} className={`${primaryAction} max-w-sm`}>
-            Entrar / Criar conta
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+          <ul className="grid gap-2.5 sm:grid-cols-3 sm:gap-4 xl:gap-6">
+            <ValueProp icon={faBolt} iconClass="text-pebol-accent" text="Salve seu progresso e XP" />
+            <ValueProp icon={faMedal} iconClass="text-pebol-gold" text="Desbloqueie conquistas" />
+            <ValueProp icon={faRankingStar} iconClass="text-pebol-blue" text="Suba no ranking" />
+          </ul>
+          <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.98 }} type="button" onClick={onOpenLogin} className={`${primaryAction} xl:max-w-xs xl:shrink-0`}>
+            <span className="inline-flex items-center justify-center gap-2">
+              <FontAwesomeIcon icon={faRightToBracket} />
+              Entrar / Criar conta
+            </span>
           </motion.button>
         </div>
       )}
@@ -503,6 +620,7 @@ export function Home({
   onCreateRoom,
   onJoinRoom,
   onOpenLogin,
+  onOpenProfile,
   onOpenAdmin,
   onOpenAchievements,
   onLogout,
@@ -545,7 +663,9 @@ export function Home({
         <AccountProfile
           account={account}
           progress={progress}
+          leaderboard={leaderboard}
           onOpenLogin={onOpenLogin}
+          onOpenProfile={onOpenProfile}
           onOpenAdmin={onOpenAdmin}
           onOpenAchievements={onOpenAchievements}
           onLogout={onLogout}

@@ -5,7 +5,7 @@ import type {
   Team,
 } from "../../../shared/types.js";
 import { computeStrength } from "../../../shared/engine.js";
-import { getFormation, posLabel } from "../../../shared/formations.js";
+import { getFormation, groupOf, posLabel } from "../../../shared/formations.js";
 import { wcOpponentTeam, WC_LADDER } from "../../../shared/data/worldcup.js";
 import type {
   BracketRoundData,
@@ -52,6 +52,7 @@ export function campaignSquadRowsData(c: CampaignState): CampaignSquadRow[] {
     return {
       slotId: slot.id,
       pos: posLabel(slot.pos),
+      posGroup: groupOf(slot.pos),
       name: pick?.player.name ?? null,
       rating: pick ? pick.effectiveRating : null,
       hideRating,

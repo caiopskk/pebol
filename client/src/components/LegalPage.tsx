@@ -67,7 +67,7 @@ const COPY: Record<
       {
         title: "Dados que usamos",
         body: [
-          "Quando você cria uma conta, guardamos seu nome de usuário, senha protegida por hash, papel da conta, progresso, conquistas e times personalizados.",
+          "Quando você cria uma conta, guardamos seu nome de usuário, senha protegida por hash, papel da conta, imagem de perfil, progresso, conquistas e times personalizados.",
           "Durante o uso, também podemos manter dados necessários para salas, partidas, ranking e funcionamento técnico do servidor.",
         ],
       },
@@ -88,8 +88,8 @@ const COPY: Record<
       {
         title: "Compartilhamento",
         body: [
-          "Seu nome de usuário, nível, título e alguns dados de jogo podem aparecer para outros jogadores em rankings, salas ou telas de partida.",
-          "Dados podem ser processados por serviços de hospedagem e banco de dados necessários para rodar o Pebol.",
+          "Seu nome de usuário, imagem de perfil, nível, título e alguns dados de jogo podem aparecer para outros jogadores em rankings, salas ou telas de partida.",
+          "Dados podem ser processados por serviços de hospedagem, banco de dados e armazenamento de imagens necessários para rodar o Pebol.",
         ],
       },
       {

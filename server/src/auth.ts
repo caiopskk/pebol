@@ -13,11 +13,20 @@ export interface AuthUser {
   id: string;
   username: string;
   role: Role;
+  avatarUrl?: string | null;
 }
 export type AuthResult = { user: AuthUser; token: string } | { error: string };
 
 function sign(u: AuthUser): string {
-  return jwt.sign({ sub: u.id, username: u.username, role: u.role }, JWT_SECRET, { expiresIn: "30d" });
+  return jwt.sign(
+    { sub: u.id, username: u.username, role: u.role, avatarUrl: u.avatarUrl ?? null },
+    JWT_SECRET,
+    { expiresIn: "30d" },
+  );
+}
+
+export function issueToken(u: AuthUser): string {
+  return sign(u);
 }
 
 export async function signup(username: string, password: string): Promise<AuthResult> {
@@ -42,7 +51,7 @@ export async function signup(username: string, password: string): Promise<AuthRe
     }
     throw err;
   }
-  const user: AuthUser = { id, username, role };
+  const user: AuthUser = { id, username, role, avatarUrl: null };
   return { user, token: sign(user) };
 }
 
@@ -52,15 +61,25 @@ export async function login(username: string, password: string): Promise<AuthRes
   const row = r.rows[0] as Record<string, unknown>;
   if (!bcrypt.compareSync(password || "", String(row.password_hash)))
     return { error: "Usuário ou senha inválidos." };
-  const user: AuthUser = { id: String(row.id), username: String(row.username), role: String(row.role) as Role };
+  const user: AuthUser = {
+    id: String(row.id),
+    username: String(row.username),
+    role: String(row.role) as Role,
+    avatarUrl: row.avatar_url ? String(row.avatar_url) : null,
+  };
   return { user, token: sign(user) };
 }
 
 export function userFromToken(token?: string): AuthUser | null {
   if (!token) return null;
   try {
-    const p = jwt.verify(token, JWT_SECRET) as { sub: string; username: string; role: Role };
-    return { id: p.sub, username: p.username, role: p.role };
+    const p = jwt.verify(token, JWT_SECRET) as {
+      sub: string;
+      username: string;
+      role: Role;
+      avatarUrl?: string | null;
+    };
+    return { id: p.sub, username: p.username, role: p.role, avatarUrl: p.avatarUrl ?? null };
   } catch {
     return null;
   }
