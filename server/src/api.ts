@@ -29,6 +29,7 @@ import {
   type TeamInput,
 } from "./db.js";
 import {
+  fetchAvatarImage,
   localUploadsDir,
   saveAvatarImage,
   validateAvatarUpload,
@@ -106,6 +107,18 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
   app.use("/uploads", express.static(localUploadsDir(), { maxAge: "1y", immutable: true }));
   app.use(authMiddleware);
 
+  app.get("/avatar/:userId/:fileName", async (req, res) => {
+    const key = `avatars/${req.params.userId}/${req.params.fileName}`;
+    const image = await fetchAvatarImage(key);
+    if (!image) {
+      res.sendStatus(404);
+      return;
+    }
+    res.setHeader("Content-Type", image.contentType);
+    res.setHeader("Cache-Control", "public, max-age=31536000, immutable");
+    res.send(image.buffer);
+  });
+
   app.post("/api/auth/signup", async (req, res) => {
     const r = await signup(req.body?.username, req.body?.password);
     res.status("error" in r ? 400 : 200).json(r);
@@ -167,9 +180,7 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
         contentType,
         ext: validation.ext,
       });
-      const avatarUrl = saved.url.startsWith("/")
-        ? `${req.protocol}://${req.get("host")}${saved.url}`
-        : saved.url;
+      const avatarUrl = `${req.protocol}://${req.get("host")}${saved.url}`;
       const user = await updateUserAvatar(req.authUser!.id, avatarUrl, saved.key);
       if (!user) return res.status(404).json({ error: "Usuário não encontrado." });
       res.json({
