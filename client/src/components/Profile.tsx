@@ -1,4 +1,5 @@
-import { useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import { useEffect, useMemo, useState, type ChangeEvent, type FormEvent } from "react";
+import Cropper, { type Area } from "react-easy-crop";
 import { motion } from "framer-motion";
 import type { AccountUser } from "../api.js";
 
@@ -7,7 +8,7 @@ interface ProfileProps {
   onBack: () => void;
   onSaveProfile: (username: string) => Promise<void>;
   onSavePassword: (currentPassword: string, newPassword: string) => Promise<void>;
-  onUploadAvatar: (file: File) => Promise<void>;
+  onUploadAvatar: (file: File, crop?: { x: number; y: number; size: number }) => Promise<void>;
 }
 
 const fieldClass =
@@ -33,7 +34,12 @@ export function Profile({
 }: ProfileProps) {
   const [username, setUsername] = useState(account.username);
   const [avatarPreview, setAvatarPreview] = useState<string | null>(null);
+  const [avatarFile, setAvatarFile] = useState<File | null>(null);
   const [avatarBusy, setAvatarBusy] = useState(false);
+  const [avatarCropOpen, setAvatarCropOpen] = useState(false);
+  const [crop, setCrop] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const [croppedAreaPixels, setCroppedAreaPixels] = useState<Area | null>(null);
   const [profileBusy, setProfileBusy] = useState(false);
   const [passwordBusy, setPasswordBusy] = useState(false);
 
@@ -43,14 +49,79 @@ export function Profile({
   const changeAvatar = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
+    setAvatarFile(file);
     setAvatarPreview(URL.createObjectURL(file));
+    setAvatarCropOpen(true);
+    event.target.value = "";
+  };
+
+  useEffect(() => {
+    if (!avatarPreview || !avatarCropOpen) return;
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
+  }, [avatarPreview, avatarCropOpen]);
+
+  const createImage = (url: string) =>
+    new Promise<HTMLImageElement>((resolve, reject) => {
+      const image = new Image();
+      image.addEventListener("load", () => resolve(image));
+      image.addEventListener("error", () => reject(new Error("Failed to load image")));
+      image.src = url;
+    });
+
+  const getCroppedImageBlob = async (imageSrc: string, pixelCrop: Area, type: string) => {
+    const image = await createImage(imageSrc);
+    const canvas = document.createElement("canvas");
+    canvas.width = pixelCrop.width;
+    canvas.height = pixelCrop.height;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) throw new Error("Could not get canvas context");
+    ctx.drawImage(
+      image,
+      pixelCrop.x,
+      pixelCrop.y,
+      pixelCrop.width,
+      pixelCrop.height,
+      0,
+      0,
+      pixelCrop.width,
+      pixelCrop.height,
+    );
+    return new Promise<Blob>((resolve, reject) => {
+      canvas.toBlob((blob) => {
+        if (!blob) reject(new Error("Failed to create cropped image"));
+        else resolve(blob);
+      }, type);
+    });
+  };
+
+  const applyCrop = async () => {
+    if (!avatarFile || !avatarPreview || !croppedAreaPixels) return;
     setAvatarBusy(true);
     try {
-      await onUploadAvatar(file);
+      const blob = await getCroppedImageBlob(avatarPreview, croppedAreaPixels, avatarFile.type);
+      const croppedFile = new File([blob], avatarFile.name, { type: avatarFile.type });
+      await onUploadAvatar(croppedFile, {
+        x: Math.round(croppedAreaPixels.x),
+        y: Math.round(croppedAreaPixels.y),
+        size: Math.round(croppedAreaPixels.width),
+      });
+      setAvatarCropOpen(false);
+      setAvatarFile(null);
+      setAvatarPreview(URL.createObjectURL(croppedFile));
     } finally {
       setAvatarBusy(false);
-      event.target.value = "";
     }
+  };
+
+  const cancelCrop = () => {
+    setAvatarCropOpen(false);
+    setAvatarFile(null);
+    setAvatarPreview(null);
+    setCrop({ x: 0, y: 0 });
+    setZoom(1);
+    setCroppedAreaPixels(null);
   };
 
   const submitProfile = async (event: FormEvent<HTMLFormElement>) => {
@@ -79,12 +150,13 @@ export function Profile({
   };
 
   return (
-    <motion.div
-      className="min-h-screen px-4 py-6 font-body text-pebol-text sm:px-6"
-      initial={{ opacity: 0, y: 10 }}
-      animate={{ opacity: 1, y: 0 }}
-      transition={{ duration: 0.18, ease: "easeOut" }}
-    >
+    <>
+      <motion.div
+        className="min-h-screen px-4 py-6 font-body text-pebol-text sm:px-6"
+        initial={{ opacity: 0, y: 10 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.18, ease: "easeOut" }}
+      >
       <div className="mx-auto grid max-w-3xl gap-4">
         <header className="relative overflow-hidden rounded-lg border border-white/10 bg-pebol-panel p-5 shadow-premium backdrop-blur-xl">
           <div className="absolute inset-0 bg-[radial-gradient(circle_at_88%_0%,rgba(0,255,135,.14),transparent_34%),radial-gradient(circle_at_8%_100%,rgba(255,206,84,.1),transparent_38%)]" />
@@ -177,5 +249,77 @@ export function Profile({
         </form>
       </div>
     </motion.div>
+
+    {avatarCropOpen && (
+      <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 p-4">
+        <div className="w-full max-w-4xl overflow-hidden rounded-[1.75rem] border border-white/10 bg-pebol-panel p-5 shadow-premium">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div>
+              <h2 className="text-xl font-title uppercase tracking-[0.02em] text-white">Ajustar área do avatar</h2>
+              <p className="mt-1 text-sm font-semibold text-pebol-muted">
+                Escolha a parte da imagem que vai aparecer no seu perfil.
+              </p>
+            </div>
+            <button type="button" className={secondaryClass} onClick={cancelCrop}>
+              Fechar
+            </button>
+          </div>
+
+          <div className="mt-5 grid gap-5 lg:grid-cols-[minmax(0,1fr)_18rem]">
+            <div className="mx-auto w-full max-w-[24rem] overflow-hidden rounded-3xl border border-white/10 bg-slate-950">
+              <div className="relative h-72 bg-black">
+                {avatarPreview && (
+                  <Cropper
+                    image={avatarPreview}
+                    crop={crop}
+                    zoom={zoom}
+                    aspect={1}
+                    onCropChange={setCrop}
+                    onZoomChange={setZoom}
+                    onCropComplete={(_, croppedAreaPixels) => setCroppedAreaPixels(croppedAreaPixels)}
+                    objectFit="horizontal-cover"
+                    cropShape="rect"
+                    showGrid={false}
+                  />
+                )}
+              </div>
+            </div>
+
+            <div className="grid gap-4 rounded-3xl border border-white/10 bg-black/20 p-4">
+              <div className="grid gap-3">
+                <label className="grid gap-2 text-sm font-semibold text-white">
+                  Zoom
+                  <input
+                    className="w-full rounded-lg border border-white/10 bg-black/40 px-3 py-2 text-sm text-white outline-none"
+                    type="range"
+                    min={1}
+                    max={3}
+                    step={0.01}
+                    value={zoom}
+                    onChange={(event) => setZoom(Number(event.target.value))}
+                  />
+                </label>
+              </div>
+              <div className="rounded-2xl border border-white/10 bg-white/5 p-4 text-sm leading-snug text-slate-300">
+                <p>Arraste a imagem para ajustar a área selecionada.</p>
+                <p className="mt-2 text-xs text-pebol-muted">
+                  zoom: {zoom.toFixed(2)}x
+                </p>
+              </div>
+            </div>
+          </div>
+
+          <div className="mt-5 flex flex-wrap justify-end gap-2">
+            <button type="button" className={secondaryClass} onClick={cancelCrop}>
+              Cancelar
+            </button>
+            <button type="button" className={primaryClass} onClick={applyCrop} disabled={avatarBusy}>
+              {avatarBusy ? "Aplicando..." : "Usar esta área"}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
+    </>
   );
 }

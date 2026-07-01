@@ -750,8 +750,8 @@ function renderProfile() {
         showToast("Senha alterada.");
         render();
       },
-      onUploadAvatar: async (file) => {
-        const r = await api.uploadAvatar(file);
+      onUploadAvatar: async (file, crop) => {
+        const r = await api.uploadAvatar(file, crop);
         setToken(r.token);
         L.account = r.user;
         showToast("Imagem atualizada.");

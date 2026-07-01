@@ -116,15 +116,17 @@ export const api = {
       method: "PUT",
       body: JSON.stringify(payload),
     }),
-  uploadAvatar: async (file: File) => {
+  uploadAvatar: async (file: File, crop?: { x: number; y: number; size: number }) => {
     writeRequestLock?.begin();
     try {
+      const headers: Record<string, string> = {
+        "Content-Type": file.type,
+        ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      };
+      if (crop) headers["X-Avatar-Crop"] = JSON.stringify(crop);
       const res = await fetch(API_BASE + "/api/profile/avatar", {
         method: "PUT",
-        headers: {
-          "Content-Type": file.type,
-          ...(token ? { Authorization: `Bearer ${token}` } : {}),
-        },
+        headers,
         body: file,
       });
       const data = await res.json().catch(() => ({}));
