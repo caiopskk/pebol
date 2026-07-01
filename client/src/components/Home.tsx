@@ -208,10 +208,10 @@ function AccountProfile({
       {account ? (
         <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 items-center gap-3">
-            <div className="home-avatar-frame relative grid h-16 w-16 shrink-0 place-items-center rounded-lg border border-pebol-accent/40 bg-gradient-to-br from-pebol-accent/25 via-pebol-blue/15 to-black shadow-glow">
+            <div className="home-avatar-frame relative grid h-16 w-16 shrink-0 place-items-center overflow-hidden rounded-lg border border-pebol-accent/40 bg-gradient-to-br from-pebol-accent/25 via-pebol-blue/15 to-black shadow-glow">
               {account.avatarUrl ? (
                 <img
-                  className="h-full w-full rounded-lg object-cover"
+                  className="block h-full w-full rounded-lg object-cover"
                   src={account.avatarUrl}
                   alt={`Imagem de perfil de ${account.username}`}
                 />
