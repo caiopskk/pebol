@@ -1,6 +1,9 @@
 // REST client for auth + team CRUD (separate from net.ts, which is the socket layer).
-import type { Team } from "../../shared/types.js";
+import type {
+  Team,
+} from "../../shared/types.js";
 import type { LevelProgress } from "../../shared/progression.js";
+import type { ManagerCareerState } from "./lib/managerCareer.js";
 
 const API_BASE =
   import.meta.env.VITE_SERVER_URL ||
@@ -162,4 +165,11 @@ export const api = {
   updateTeam: (id: string, t: Partial<AdminTeam>) =>
     req<{ team: AdminTeam }>(`/api/teams/${id}`, { method: "PUT", body: JSON.stringify(t) }),
   deleteTeam: (id: string) => req<{ ok: boolean }>(`/api/teams/${id}`, { method: "DELETE" }),
+  managerCareerState: () => req<{ state: ManagerCareerState | null }>("/api/manager/career-state"),
+  saveManagerCareerState: (state: ManagerCareerState) =>
+    req<{ ok: true }>("/api/manager/career-state", {
+      method: "PUT",
+      body: JSON.stringify({ state }),
+    }),
+  deleteManagerCareerState: () => req<{ ok: true }>("/api/manager/career-state", { method: "DELETE" }),
 };

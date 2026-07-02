@@ -951,6 +951,7 @@ export function simulateSecondHalf(
   p2: SimInput,
   firstGoals: Record<string, number>,
   preExpelled: Record<string, string[]> = {},
+  settleDrawWithShootout = true,
 ): SecondHalfResult {
   const a = makeSide(p1);
   const b = makeSide(p2);
@@ -979,13 +980,16 @@ export function simulateSecondHalf(
   } else if (t2 > t1) {
     winnerId = p2.id;
     summary = `${p2.name} venceu por ${t2} a ${t1}.`;
-  } else {
+  } else if (settleDrawWithShootout) {
     const so = runShootout(a.side, b.side, rng);
     shootout = so.kicks;
     penaltyScore = { [p1.id]: so.h, [p2.id]: so.a };
     winnerId = so.h > so.a ? p1.id : p2.id;
     const wName = winnerId === p1.id ? p1.name : p2.name;
     summary = `Empate em ${t1} a ${t2}. Nos pênaltis (${so.h} x ${so.a}), ${wName} levou a melhor!`;
+  } else {
+    winnerId = "";
+    summary = `Empate em ${t1} a ${t2}.`;
   }
 
   return {

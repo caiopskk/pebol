@@ -43,6 +43,155 @@ export interface Team {
   bench?: Player[]; // reserves, also available in the draft
 }
 
+// ---- Manager mode ----
+
+export interface ManagerPlayer extends Player {
+  id: string;
+  teamId: string;
+  originalTeamId: string;
+  teamName: string;
+  age: number;
+  countryOrigin: string;
+  potentialRating: number;
+  morale: number;
+  individualInstructions: Record<string, unknown>;
+  value: number;
+  isStarter: boolean;
+  lineupSlotId: string | null;
+  isListed: boolean;
+}
+
+export interface ManagerSave {
+  id: string;
+  userId: string;
+  teamId: string;
+  teamName: string;
+  money: number;
+  stadiumCapacity: number;
+  ticketPrice: number;
+  season: number;
+  round: number;
+  points: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  prestige: number;
+  boardConfidence: number;
+  supporterMembers: number;
+  fanbase: number;
+  sponsorName: string;
+  sponsorWeeklyIncome: number;
+  sponsorTier: number;
+  formationId: string;
+  mentality: Mentality;
+  attackFocus: AttackFocus;
+  trainingCenterLevel: number;
+  medicalDepartmentLevel: number;
+  youthAcademyLevel: number;
+  countryOrigin: string;
+  leagueId: string;
+  divisionId: string;
+}
+
+export interface ManagerStanding {
+  teamId: string;
+  teamName: string;
+  played: number;
+  points: number;
+  wins: number;
+  draws: number;
+  losses: number;
+  goalsFor: number;
+  goalsAgainst: number;
+  goalDifference: number;
+}
+
+export interface ManagerFixture {
+  round: number;
+  homeTeamId: string;
+  awayTeamId: string;
+  homeName: string;
+  awayName: string;
+}
+
+export interface ManagerOpponentScout {
+  teamId: string;
+  teamName: string;
+  formationId: string;
+  mentality: Mentality;
+  attackFocus: AttackFocus;
+  strength: TeamStrength;
+}
+
+export interface ManagerDashboard {
+  save: ManagerSave;
+  squad: ManagerPlayer[];
+  standings: ManagerStanding[];
+  nextFixture: ManagerFixture | null;
+  nextOpponentStrength: TeamStrength | null;
+  nextOpponentScout: ManagerOpponentScout | null;
+  inbox: ManagerInboxItem[];
+  transferWindowOpen: boolean;
+  commercial: ManagerCommercialSnapshot;
+}
+
+export interface ManagerRoundResult {
+  save: ManagerSave;
+  timeline: MatchEvent[];
+  goals: Record<string, number>;
+  fixtures: Array<ManagerFixture & {
+    homeGoals: number;
+    awayGoals: number;
+    winnerTeamId?: string | null;
+    wentToExtraTime?: boolean;
+  }>;
+  standings: ManagerStanding[];
+  summary: string;
+}
+
+export type ManagerSeasonPhase =
+  | "preseason"
+  | "league"
+  | "national-cup"
+  | "continental"
+  | "season-end";
+
+export type ManagerInboxType =
+  | "board"
+  | "finance"
+  | "match"
+  | "sponsor"
+  | "player_offer"
+  | "manager_offer";
+
+export interface ManagerInboxItem {
+  id: string;
+  type: ManagerInboxType;
+  title: string;
+  body: string;
+  createdAt: number;
+  unread: boolean;
+  handled?: boolean;
+  playerId?: string;
+  playerName?: string;
+  fromTeamId?: string;
+  fromTeamName?: string;
+  targetTeamId?: string;
+  targetTeamName?: string;
+  amount?: number;
+}
+
+export interface ManagerCommercialSnapshot {
+  reputation: number;
+  supporterMembers: number;
+  supporterIncome: number;
+  sponsorName: string;
+  sponsorIncome: number;
+  projectedHomeIncome: number;
+}
+
 export type Mentality =
   | "aura"
   | "equilibrada"

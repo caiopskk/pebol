@@ -32,7 +32,7 @@ export interface LogEventItem {
 
 interface ResultSummaryProps {
   account: AccountUser | null;
-  outcome: "win" | "lose";
+  outcome: "win" | "draw" | "lose";
   youName: string;
   opponentName: string;
   youInitials: string;
@@ -53,6 +53,10 @@ interface ResultSummaryProps {
   opponentPitchSlots: PitchSlot[];
   onRematch: () => void;
   onHome: () => void;
+  contextLabel?: string;
+  primaryActionLabel?: string;
+  homeActionLabel?: string;
+  brandSubtitle?: string;
 }
 
 function LeaderCard({ data }: { data: LeaderCardData }) {
@@ -188,6 +192,8 @@ function PvpShareCard({
   strengths,
   youPitchSlots,
   opponentPitchSlots,
+  contextLabel = "Arena Pebol · Partida única",
+  brandSubtitle = "Draft de futebol 1v1",
 }: { innerRef: RefObject<HTMLDivElement | null> } & Pick<
   ResultSummaryProps,
   | "outcome"
@@ -207,7 +213,10 @@ function PvpShareCard({
   | "strengths"
   | "youPitchSlots"
   | "opponentPitchSlots"
+  | "contextLabel"
+  | "brandSubtitle"
 >) {
+  const resultText = outcome === "draw" ? "Você empatou" : youWon ? "Você venceu" : "Você perdeu";
   return (
     <div className="cup-share-capture" aria-hidden="true">
       <div ref={innerRef} className="pvp-share-card rounded-lg border border-white/10 bg-pebol-panel">
@@ -231,9 +240,9 @@ function PvpShareCard({
               {opponentGoals}
             </div>
             <div className="hero-sub">
-              Arena Pebol · Partida única
+              {contextLabel}
               <br />
-              {youWon ? "Você venceu" : "Você perdeu"}
+              {resultText}
             </div>
             {penaltyLabel ? (
               <div className="mt-1 text-xs font-semibold text-pebol-gold">{penaltyLabel}</div>
@@ -279,7 +288,7 @@ function PvpShareCard({
             PEBOL
           </span>
           <span className="font-display text-sm font-black text-pebol-gold">
-            Draft de futebol 1v1
+            {brandSubtitle}
           </span>
         </div>
       </div>
@@ -310,6 +319,10 @@ export function ResultSummary({
   opponentPitchSlots,
   onRematch,
   onHome,
+  contextLabel = "Arena Pebol · Partida única",
+  primaryActionLabel = "Jogar de novo",
+  homeActionLabel = "Tela inicial",
+  brandSubtitle = "Draft de futebol 1v1",
 }: ResultSummaryProps) {
   const [showFullLog, setShowFullLog] = useState(false);
   const [logExpanded, setLogExpanded] = useState(false);
@@ -317,7 +330,9 @@ export function ResultSummary({
   const shareCardRef = useRef<HTMLDivElement | null>(null);
   const log = showFullLog ? fullLog : importantLog;
   const shareTitle = `Pebol: ${youName} ${youGoals} x ${opponentGoals} ${opponentName}`;
-  const shareText = `${youWon ? "Vitória" : "Derrota"} no PvP: ${youName} ${youGoals} x ${opponentGoals} ${opponentName}${penaltyLabel ? ` (${penaltyLabel})` : ""}.`;
+  const resultWord = outcome === "draw" ? "Empate" : youWon ? "Vitória" : "Derrota";
+  const resultText = outcome === "draw" ? "Você empatou" : youWon ? "Você venceu" : "Você perdeu";
+  const shareText = `${resultWord} no Pebol: ${youName} ${youGoals} x ${opponentGoals} ${opponentName}${penaltyLabel ? ` (${penaltyLabel})` : ""}.`;
   const buildShareImage = async () =>
     shareCardRef.current ? captureNodeToBlob(shareCardRef.current) : null;
 
@@ -347,6 +362,8 @@ export function ResultSummary({
         strengths={strengths}
         youPitchSlots={youPitchSlots}
         opponentPitchSlots={opponentPitchSlots}
+        contextLabel={contextLabel}
+        brandSubtitle={brandSubtitle}
       />
       <div className="mx-auto w-full max-w-[75rem]" ref={shareRef}>
         <motion.div
@@ -372,9 +389,9 @@ export function ResultSummary({
               {opponentGoals}
             </div>
             <div className="hero-sub">
-              Arena Pebol · Partida única
+              {contextLabel}
               <br />
-              {youWon ? "Você venceu" : "Você perdeu"}
+              {resultText}
             </div>
             {penaltyLabel ? (
               <div className="mt-1 text-xs font-semibold text-pebol-gold">{penaltyLabel}</div>
@@ -401,7 +418,7 @@ export function ResultSummary({
             className="pebol-glow-button pebol-glow-fill min-h-12 min-w-[14rem] rounded-lg border-0 bg-gradient-to-r from-pebol-accent via-emerald-300 to-pebol-gold px-5 py-3 font-display text-sm font-black uppercase tracking-[0.08em] text-black shadow-glow transition-all duration-300 hover:-translate-y-0.5"
             onClick={onRematch}
           >
-            Jogar de novo
+            {primaryActionLabel}
           </button>
           <ShareResultButton
             title={shareTitle}
@@ -415,7 +432,7 @@ export function ResultSummary({
             className="pebol-glow-button min-h-12 min-w-[14rem] rounded-lg border border-white/10 bg-white/[0.045] px-5 py-3 font-display text-sm font-black uppercase tracking-[0.08em] text-slate-200 transition-all duration-300 hover:-translate-y-0.5 hover:bg-white/[0.08] hover:text-white"
             onClick={onHome}
           >
-            Tela inicial
+            {homeActionLabel}
           </button>
         </div>
 

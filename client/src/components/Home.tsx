@@ -39,6 +39,7 @@ interface HomeProps {
   onOpenHowToPlay: () => void;
   onOpenFeedback: () => void;
   onOpenLegal: (kind: "terms" | "privacy") => void;
+  onCareer: () => void;
   onSoon: (mode: "carreira" | "liga") => void;
 }
 
@@ -451,10 +452,18 @@ function RoomPanel({
   );
 }
 
-function SecondaryModes({ solo, onSoon }: { solo: () => void; onSoon: HomeProps["onSoon"] }) {
+function SecondaryModes({
+  solo,
+  onCareer,
+  onSoon,
+}: {
+  solo: () => void;
+  onCareer: HomeProps["onCareer"];
+  onSoon: HomeProps["onSoon"];
+}) {
   const modes = [
     { id: "c-solo", icon: "AI", title: "Jogar sozinho", sub: "Vs Máquina", onClick: solo },
-    { id: undefined, icon: "CR", title: "Modo carreira", sub: "Em breve", onClick: () => onSoon("carreira") },
+    { id: "c-manager", icon: "CR", title: "Modo carreira", sub: "Manager", badge: "Beta", onClick: onCareer },
     { id: undefined, icon: "LG", title: "Modo liga", sub: "Em breve", onClick: () => onSoon("liga") },
   ];
   return (
@@ -481,6 +490,11 @@ function SecondaryModes({ solo, onSoon }: { solo: () => void; onSoon: HomeProps[
                 {mode.sub}
               </em>
             </span>
+            {"badge" in mode ? (
+              <span className="ml-auto rounded-full border border-pebol-gold/30 bg-pebol-gold/10 px-2 py-0.5 font-display text-[0.62rem] font-black uppercase tracking-[0.08em] text-pebol-gold">
+                {mode.badge}
+              </span>
+            ) : null}
           </motion.button>
         ))}
       </div>
@@ -649,6 +663,7 @@ export function Home({
   onOpenHowToPlay,
   onOpenFeedback,
   onOpenLegal,
+  onCareer,
   onSoon,
 }: HomeProps) {
   const [selectedPool, setSelectedPool] = useState<RoomPool>("clubs");
@@ -708,7 +723,7 @@ export function Home({
               submitCreate={submitCreate}
               submitJoin={submitJoin}
             />
-            <SecondaryModes solo={solo} onSoon={onSoon} />
+            <SecondaryModes solo={solo} onCareer={onCareer} onSoon={onSoon} />
           </div>
 
           <div className="grid gap-3">

@@ -16,6 +16,8 @@ import type {
   ShootoutKick,
   Team,
   GauntletResult,
+  ManagerDashboard as ManagerDashboardData,
+  ManagerPlayer,
 } from "../../shared/types.js";
 import {
   FORMATIONS,
@@ -103,6 +105,10 @@ import { LegalPage } from "./components/LegalPage.js";
 import { UpdatesPage } from "./components/UpdatesPage.js";
 import { HowToPlayPage } from "./components/HowToPlayPage.js";
 import { FeedbackPage } from "./components/FeedbackPage.js";
+import { ManagerDashboard } from "./components/ManagerDashboard.js";
+import { ManagerMarket } from "./components/ManagerMarket.js";
+import { ManagerPreMatch } from "./components/ManagerPreMatch.js";
+import { ManagerSquad } from "./components/ManagerSquad.js";
 import { initializeTheme, ThemeSwitch } from "./components/ThemeSwitch.js";
 import {
   devPreviewFromHash,
@@ -202,6 +208,31 @@ import {
   blankTeam,
   canEditTeam as canEditTeamBase,
 } from "./lib/adminTeamState.js";
+import {
+  acceptManagerInboxOffer,
+  buyManagerClientPlayer,
+  createManagerCareer,
+  deleteManagerCareer,
+  exportManagerCareer,
+  importManagerCareer,
+  loadManagerCareer,
+  managerDashboard as managerDashboardData,
+  managerClientBench,
+  managerStartTeams,
+  markManagerInboxRead,
+  completeManagerClientSecondHalf,
+  persistManagerCareer,
+  rejectManagerInboxOffer,
+  searchManagerClientMarket,
+  sellManagerClientPlayer,
+  skipManagerClientPreseason,
+  startManagerClientRound,
+  updateManagerClientLineup,
+  upgradeManagerClientStadium,
+  type ManagerCareerState,
+  type ManagerRoundSession,
+  type ManagerStartTeam,
+} from "./lib/managerCareer.js";
 
 const app = document.getElementById("app")!;
 const overlaysRoot = createRoot(document.getElementById("overlays")!);
@@ -286,6 +317,10 @@ interface Local {
     | "updates"
     | "how-to-play"
     | "feedback"
+    | "manager"
+    | "manager-prematch"
+    | "manager-squad"
+    | "manager-market"
     | null;
   adminTeams: AdminTeam[] | null;
   adminFeedback: FeedbackEntry[] | null;
@@ -294,6 +329,12 @@ interface Local {
   editingTeam: AdminTeam | "new" | null;
   achievements: AchievementProgress[] | null;
   achievementAwardKeys: Set<string>;
+  managerData: ManagerDashboardData | null;
+  managerCareer: ManagerCareerState | null;
+  managerRoundSession: ManagerRoundSession | null;
+  managerTeams: ManagerStartTeam[];
+  managerMarket: ManagerPlayer[];
+  managerLoading: boolean;
 }
 
 const L: Local = {
@@ -324,6 +365,12 @@ const L: Local = {
   editingTeam: null,
   achievements: null,
   achievementAwardKeys: new Set(),
+  managerData: null,
+  managerCareer: null,
+  managerRoundSession: null,
+  managerTeams: [],
+  managerMarket: [],
+  managerLoading: false,
 };
 
 onRoomUpdate((s) => {
@@ -390,6 +437,10 @@ function render() {
     else if (L.accountScreen === "updates") renderUpdates();
     else if (L.accountScreen === "how-to-play") renderHowToPlay();
     else if (L.accountScreen === "feedback") renderFeedback();
+    else if (L.accountScreen === "manager") renderManager();
+    else if (L.accountScreen === "manager-prematch") renderManagerPreMatch();
+    else if (L.accountScreen === "manager-squad") renderManagerSquad();
+    else if (L.accountScreen === "manager-market") renderManagerMarket();
     else renderAchievements();
     return;
   }
@@ -494,6 +545,7 @@ function renderHome() {
       onOpenHowToPlay: openHowToPlay,
       onOpenFeedback: openFeedback,
       onOpenLegal: openLegal,
+      onCareer: () => void openManager(),
       onSoon: (mode) =>
         showToast(
           `Modo ${mode === "carreira" ? "carreira" : "liga"} estará disponível em breve.`,
@@ -598,6 +650,31 @@ function openFeedback() {
   L.accountScreen = "feedback";
   render();
 }
+async function openManager() {
+  L.accountScreen = "manager";
+  L.managerLoading = true;
+  L.managerTeams = managerStartTeams();
+  L.managerCareer = null;
+  L.managerData = null;
+  render();
+  const userId = managerUserId();
+  try {
+    if (L.account) {
+      const { state } = await api.managerCareerState();
+      L.managerCareer = state ? persistManagerCareer(state, userId) : loadManagerCareer(userId);
+      if (!state && L.managerCareer) syncManagerCareerToServer();
+    } else {
+      L.managerCareer = loadManagerCareer(null);
+    }
+    refreshManagerData();
+  } catch (e) {
+    L.managerCareer = loadManagerCareer(L.account ? userId : null);
+    refreshManagerData();
+    showToast((e as Error).message);
+  }
+  L.managerLoading = false;
+  render();
+}
 function closeAccount() {
   L.accountScreen = null;
   L.editingTeam = null;
@@ -613,8 +690,31 @@ function goHome() {
   L.campaign = null;
   L.accountScreen = null;
   L.editingTeam = null;
+  L.managerData = null;
+  L.managerCareer = null;
+  L.managerRoundSession = null;
+  L.managerMarket = [];
   syncLiveUi = null;
   leaveCurrentRoom();
+  render();
+}
+
+function returnToManagerDashboard() {
+  L.state = null;
+  L.youId = null;
+  L.playing = false;
+  L.matchPlayed = false;
+  L.halftimeAdjusted = false;
+  L.intervalBench = null;
+  L.selectedSubOut = null;
+  L.selectedSubIn = null;
+  L.intervalSubCount = 0;
+  L.managerRoundSession = null;
+  L.accountScreen = "manager";
+  if (L.managerCareer) refreshManagerData();
+  syncLiveUi = null;
+  halftimeStore.reset();
+  liveStore.reset();
   render();
 }
 function logout() {
@@ -624,6 +724,10 @@ function logout() {
   L.accountScreen = null;
   L.adminTeams = null;
   L.adminFeedback = null;
+  L.managerData = null;
+  L.managerCareer = null;
+  L.managerTeams = [];
+  L.managerMarket = [];
   render();
 }
 async function openAchievements() {
@@ -643,6 +747,330 @@ async function loadAchievements() {
     L.achievements = [];
   }
   if (L.accountScreen === "achievements") render();
+}
+
+function refreshManagerData() {
+  L.managerData = L.managerCareer ? managerDashboardData(L.managerCareer) : null;
+}
+
+function managerUserId(): string {
+  return L.account?.id ?? "local";
+}
+
+function syncManagerCareerToServer(): void {
+  if (!L.account || !L.managerCareer) return;
+  void api.saveManagerCareerState(L.managerCareer).catch(() => {
+    /* local cache remains available if the server sync fails */
+  });
+}
+
+function setManagerCareer(state: ManagerCareerState): void {
+  L.managerCareer = persistManagerCareer(state, managerUserId());
+  refreshManagerData();
+  syncManagerCareerToServer();
+}
+
+async function deleteCurrentManagerCareer(): Promise<void> {
+  if (!L.managerCareer) return;
+  const userId = managerUserId();
+  try {
+    if (L.account) await api.deleteManagerCareerState();
+    deleteManagerCareer(userId);
+    L.managerCareer = null;
+    L.managerData = null;
+    L.managerRoundSession = null;
+    L.managerMarket = [];
+    L.accountScreen = "manager";
+    showToast("Carreira apagada.");
+  } catch (e) {
+    showToast((e as Error).message);
+  }
+  render();
+}
+
+function exportManagerSaveFile() {
+  if (!L.managerCareer) return;
+  const json = exportManagerCareer(L.managerCareer);
+  const blob = new Blob([json], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const fileTeam = L.managerCareer.save.teamName
+    .toLowerCase()
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "") || "clube";
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `pebol-carreira-${fileTeam}-t${L.managerCareer.save.season}.json`;
+  link.click();
+  URL.revokeObjectURL(url);
+  showToast("Save exportado.");
+}
+
+async function importManagerSaveFile(input: HTMLInputElement) {
+  const file = input.files?.[0];
+  input.value = "";
+  if (!file) return;
+  try {
+    const raw = await file.text();
+    setManagerCareer(importManagerCareer(raw, managerUserId()));
+    L.managerTeams = managerStartTeams();
+    L.managerMarket = [];
+    L.accountScreen = "manager";
+    showToast("Carreira importada.");
+  } catch (e) {
+    showToast((e as Error).message);
+  }
+  render();
+}
+
+function managerPhaseLabel() {
+  const phase = L.managerCareer?.phase;
+  const round = L.managerCareer?.phaseRound ?? 1;
+  if (phase === "preseason") return `Pré-temporada · Jogo ${round}`;
+  if (phase === "league") return `Liga Nacional · Rodada ${round}`;
+  if (phase === "national-cup") return `Copa Nacional · Fase ${round}`;
+  if (phase === "continental") return `Continental · Fase ${round}`;
+  if (phase === "season-end") return "Fim da temporada";
+  return "Carreira";
+}
+
+function managerActionLabel() {
+  const phase = L.managerCareer?.phase;
+  if (phase === "preseason") return "Pré-jogo amistoso";
+  if (phase === "league") return "Pré-jogo";
+  if (phase === "national-cup") return "Pré-jogo copa";
+  if (phase === "continental") return "Pré-jogo continental";
+  if (phase === "season-end") return "Temporada encerrada";
+  return "Avançar";
+}
+
+function beginManagerRound(): void {
+  if (!L.managerCareer) return;
+  try {
+    const started = startManagerClientRound(L.managerCareer);
+    setManagerCareer(started.state);
+    if (started.session) {
+      L.managerRoundSession = started.session;
+      L.state = started.session.room;
+      L.youId = started.session.state.save.teamId;
+      L.accountScreen = null;
+      L.matchPlayed = false;
+      L.playing = false;
+      L.halftimeAdjusted = false;
+      L.intervalBench = managerClientBench(started.session.state);
+      L.selectedSubOut = null;
+      L.selectedSubIn = null;
+      L.intervalSubCount = 0;
+      L.formationId = started.session.state.save.formationId;
+      L.mentality = started.session.state.save.mentality;
+      L.attackFocus = started.session.state.save.attackFocus;
+    } else {
+      L.accountScreen = "manager";
+      showToast(started.result.summary || "Rodada simulada.");
+    }
+  } catch (e) {
+    showToast((e as Error).message);
+  }
+  render();
+}
+
+function renderManager() {
+  renderReact(
+    createElement(ManagerDashboard, {
+      data: L.managerData,
+      teams: L.managerTeams,
+      loading: L.managerLoading,
+      seasonPhase: L.managerCareer?.phase ?? null,
+      phaseLabel: managerPhaseLabel(),
+      actionLabel: managerActionLabel(),
+      onStart: (teamId: string) => {
+        try {
+          setManagerCareer(createManagerCareer(teamId, managerUserId()));
+          showToast("Carreira iniciada.");
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+        render();
+      },
+      onPlayRound: () => {
+        if (!L.managerCareer) return;
+        if (L.managerData?.nextFixture && L.managerCareer.phase !== "season-end") {
+          L.accountScreen = "manager-prematch";
+        } else {
+          beginManagerRound();
+          return;
+        }
+        render();
+      },
+      onSkipPreseason: () => {
+        if (!L.managerCareer) return;
+        setManagerCareer(skipManagerClientPreseason(L.managerCareer));
+        showToast("Pré-temporada pulada.");
+        render();
+      },
+      onExport: exportManagerSaveFile,
+      onImportFile: (input: HTMLInputElement) => {
+        void importManagerSaveFile(input);
+      },
+      onDeleteCareer: () => {
+        void deleteCurrentManagerCareer();
+      },
+      onReadInbox: (id: string) => {
+        if (!L.managerCareer) return;
+        setManagerCareer(markManagerInboxRead(L.managerCareer, id));
+      },
+      onAcceptInbox: (id: string) => {
+        if (!L.managerCareer) return;
+        try {
+          setManagerCareer(acceptManagerInboxOffer(L.managerCareer, id));
+          L.managerTeams = managerStartTeams();
+          showToast("Resposta enviada.");
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+        render();
+      },
+      onRejectInbox: (id: string) => {
+        if (!L.managerCareer) return;
+        try {
+          setManagerCareer(rejectManagerInboxOffer(L.managerCareer, id));
+          showToast("Proposta recusada.");
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+        render();
+      },
+      onOpenSquad: () => {
+        if (!L.managerData) return;
+        L.accountScreen = "manager-squad";
+        render();
+      },
+      onOpenMarket: async () => {
+        if (!L.managerData) return;
+        L.accountScreen = "manager-market";
+        L.managerLoading = true;
+        render();
+        await searchManagerMarket({});
+      },
+      onUpgradeStadium: async () => {
+        if (!L.managerCareer) return;
+        try {
+          setManagerCareer(upgradeManagerClientStadium(L.managerCareer));
+          showToast("Estádio ampliado.");
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+        render();
+      },
+      onBack: closeAccount,
+    }),
+  );
+}
+
+function renderManagerPreMatch() {
+  if (!L.managerData || !L.managerCareer) return renderManager();
+  renderReact(
+    createElement(ManagerPreMatch, {
+      data: L.managerData,
+      phaseLabel: managerPhaseLabel(),
+      onSave: (payload) => {
+        try {
+          setManagerCareer(updateManagerClientLineup(L.managerCareer!, payload));
+          showToast("Plano de jogo salvo.");
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+        render();
+      },
+      onConfirm: (payload) => {
+        try {
+          setManagerCareer(updateManagerClientLineup(L.managerCareer!, payload));
+          beginManagerRound();
+        } catch (e) {
+          showToast((e as Error).message);
+          render();
+        }
+      },
+      onBack: () => {
+        L.accountScreen = "manager";
+        render();
+      },
+    }),
+  );
+}
+
+function renderManagerSquad() {
+  if (!L.managerData || !L.managerCareer) return renderManager();
+  renderReact(
+    createElement(ManagerSquad, {
+      data: L.managerData,
+      onSave: (payload) => {
+        try {
+          setManagerCareer(updateManagerClientLineup(L.managerCareer!, payload));
+          showToast("Escalação salva.");
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+        render();
+      },
+      onSell: (playerId: string) => {
+        try {
+          setManagerCareer(sellManagerClientPlayer(L.managerCareer!, playerId));
+          showToast("Jogador vendido.");
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+        render();
+      },
+      onBack: () => {
+        L.accountScreen = "manager";
+        render();
+      },
+    }),
+  );
+}
+
+function searchManagerMarket(filters: { pos?: string; minRating?: number; maxRating?: number }) {
+  try {
+    L.managerMarket = L.managerCareer ? searchManagerClientMarket(L.managerCareer, filters) : [];
+  } catch (e) {
+    showToast((e as Error).message);
+    L.managerMarket = [];
+  }
+  L.managerLoading = false;
+  render();
+}
+
+function renderManagerMarket() {
+  if (!L.managerData || !L.managerCareer) return renderManager();
+  renderReact(
+    createElement(ManagerMarket, {
+      data: L.managerData,
+      players: L.managerMarket,
+      loading: L.managerLoading,
+      transferWindowOpen: L.managerData.transferWindowOpen,
+      onSearch: (filters) => {
+        L.managerLoading = true;
+        render();
+        searchManagerMarket(filters);
+      },
+      onBuy: (playerId: string) => {
+        try {
+          setManagerCareer(buyManagerClientPlayer(L.managerCareer!, playerId));
+          showToast("Contratação fechada.");
+          searchManagerMarket({});
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+        render();
+      },
+      onBack: () => {
+        L.accountScreen = "manager";
+        render();
+      },
+    }),
+  );
 }
 async function openAdmin() {
   L.accountScreen = "admin";
@@ -2354,24 +2782,36 @@ function renderLiveMatch() {
       current.mentality = L.mentality;
       current.attackFocus = L.attackFocus;
     }
-    sendHalftimeReady({
-      formationId: L.formationId,
-      mentality: L.mentality,
-      attackFocus: L.attackFocus,
-      picks: you.picks.map((pk) => ({
-        slotId: pk.slotId,
-        name: pk.player.name,
-        pos: pk.player.pos,
-        rating: pk.player.rating,
-        pac: pk.player.pac,
-        sho: pk.player.sho,
-        pas: pk.player.pas,
-        dri: pk.player.dri,
-        def: pk.player.def,
-        phy: pk.player.phy,
-        fromTeamId: pk.fromTeamId,
-      })),
-    });
+    if (L.managerRoundSession) {
+      const completed = completeManagerClientSecondHalf(L.managerRoundSession, {
+        formationId: L.formationId,
+        mentality: L.mentality,
+        attackFocus: L.attackFocus,
+        picks: you.picks,
+      });
+      L.managerRoundSession = completed.session;
+      setManagerCareer(completed.state);
+      L.state = completed.session.room;
+    } else {
+      sendHalftimeReady({
+        formationId: L.formationId,
+        mentality: L.mentality,
+        attackFocus: L.attackFocus,
+        picks: you.picks.map((pk) => ({
+          slotId: pk.slotId,
+          name: pk.player.name,
+          pos: pk.player.pos,
+          rating: pk.player.rating,
+          pac: pk.player.pac,
+          sho: pk.player.sho,
+          pas: pk.player.pas,
+          dri: pk.player.dri,
+          def: pk.player.def,
+          phy: pk.player.phy,
+          fromTeamId: pk.fromTeamId,
+        })),
+      });
+    }
     syncHalftimeReadyUi();
   }
 
@@ -2480,9 +2920,11 @@ function renderSummary() {
   const r = s.result!;
   const you = me()!;
   const opp = opponent()!;
-  awardRegularMatchAchievements();
+  if (!L.managerRoundSession) awardRegularMatchAchievements();
   const youWon = r.winnerId === you.id;
-  const outcome = youWon ? "win" : "lose";
+  const isDraw = !r.penaltyScore && (r.goals[you.id] ?? 0) === (r.goals[opp.id] ?? 0);
+  const outcome = isDraw ? "draw" : youWon ? "win" : "lose";
+  const managerMatch = !!L.managerRoundSession;
   const ys = r.strengths[you.id];
   const os = r.strengths[opp.id];
   const { scorer, assist, motm } = computeLeaders(r, you.id, s.players);
@@ -2525,7 +2967,13 @@ function renderSummary() {
         opp.picks,
         { forceShowRatings: true },
       ),
-      onRematch: () => sendRematch(),
+      contextLabel: managerMatch
+        ? `${managerPhaseLabel()} · Rodada ${L.managerRoundSession?.userFixture.round ?? L.state?.round ?? 1}`
+        : undefined,
+      primaryActionLabel: managerMatch ? "Voltar ao clube" : undefined,
+      homeActionLabel: managerMatch ? "Tela inicial" : undefined,
+      brandSubtitle: managerMatch ? "Modo carreira" : undefined,
+      onRematch: managerMatch ? returnToManagerDashboard : () => sendRematch(),
       onHome: goHome,
     }),
   );

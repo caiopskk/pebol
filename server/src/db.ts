@@ -7,6 +7,7 @@ import {
   WC_BOSS,
   WC_OPPONENT_TEAMS,
 } from "../../shared/data/worldcup.js";
+import { LEAGUE_STRUCTURES } from "../../shared/leagueStructures.js";
 import { CLUB_ALIASES } from "../../shared/data/aliases.js";
 import { ACHIEVEMENTS, type AchievementDefinition } from "../../shared/achievements.js";
 import { buildLevelProgress, type LevelProgress } from "../../shared/progression.js";
@@ -14,7 +15,16 @@ import {
   PLAYER_ATTRIBUTE_KEYS,
   withDerivedAttributes,
 } from "../../shared/playerAttributes.js";
-import type { Team, Player, Position } from "../../shared/types.js";
+import type {
+  AttackFocus,
+  ManagerPlayer,
+  ManagerSave,
+  ManagerStanding,
+  Mentality,
+  Team,
+  Player,
+  Position,
+} from "../../shared/types.js";
 
 // Turso/libSQL in production (TURSO_DATABASE_URL + TURSO_AUTH_TOKEN), local file in dev.
 const url = process.env.TURSO_DATABASE_URL || "file:./data/pebol.db";
@@ -149,12 +159,85 @@ export async function initDb(): Promise<void> {
         message TEXT NOT NULL, contact TEXT NOT NULL DEFAULT '',
         page TEXT NOT NULL DEFAULT '', user_agent TEXT NOT NULL DEFAULT '',
         status TEXT NOT NULL DEFAULT 'new', created_at INTEGER NOT NULL)`,
+      `CREATE TABLE IF NOT EXISTS manager_career_states (
+        user_id TEXT PRIMARY KEY,
+        state_json TEXT NOT NULL,
+        updated_at INTEGER NOT NULL)`,
+      `CREATE TABLE IF NOT EXISTS manager_saves (
+        id TEXT PRIMARY KEY, user_id TEXT NOT NULL, time_escolhido_id TEXT NOT NULL,
+        dinheiro_clube INTEGER NOT NULL DEFAULT 25000000,
+        capacidade_estadio INTEGER NOT NULL DEFAULT 15000,
+        preco_ingresso INTEGER NOT NULL DEFAULT 35,
+        temporada_atual INTEGER NOT NULL DEFAULT 1,
+        rodada_atual INTEGER NOT NULL DEFAULT 1,
+        pontos INTEGER NOT NULL DEFAULT 0,
+        vitorias INTEGER NOT NULL DEFAULT 0,
+        empates INTEGER NOT NULL DEFAULT 0,
+        derrotas INTEGER NOT NULL DEFAULT 0,
+        gols_pro INTEGER NOT NULL DEFAULT 0,
+        gols_contra INTEGER NOT NULL DEFAULT 0,
+        formation_id TEXT NOT NULL DEFAULT '4-3-3',
+        mentality TEXT NOT NULL DEFAULT 'equilibrada',
+        attack_focus TEXT NOT NULL DEFAULT 'equilibrado',
+        training_center_level INTEGER NOT NULL DEFAULT 1,
+        medical_department_level INTEGER NOT NULL DEFAULT 1,
+        youth_academy_level INTEGER NOT NULL DEFAULT 1,
+        country_origin TEXT NOT NULL DEFAULT 'brasil',
+        league_id TEXT NOT NULL DEFAULT 'brasil',
+        division_id TEXT NOT NULL DEFAULT 'brasil-serie-a',
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL)`,
+      `CREATE TABLE IF NOT EXISTS manager_roster_players (
+        id TEXT PRIMARY KEY, save_id TEXT NOT NULL, source_player_id TEXT NOT NULL DEFAULT '',
+        original_team_id TEXT NOT NULL, team_id TEXT NOT NULL, team_name TEXT NOT NULL,
+        name TEXT NOT NULL, pos TEXT NOT NULL, rating INTEGER NOT NULL, alt_pos TEXT NOT NULL DEFAULT '',
+        pac INTEGER, sho INTEGER, pas INTEGER, dri INTEGER, def INTEGER, phy INTEGER,
+        value INTEGER NOT NULL, is_starter INTEGER NOT NULL DEFAULT 0,
+        lineup_slot_id TEXT NOT NULL DEFAULT '', is_listed INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0)`,
+      `CREATE TABLE IF NOT EXISTS manager_standings (
+        save_id TEXT NOT NULL, team_id TEXT NOT NULL, team_name TEXT NOT NULL,
+        played INTEGER NOT NULL DEFAULT 0, points INTEGER NOT NULL DEFAULT 0,
+        wins INTEGER NOT NULL DEFAULT 0, draws INTEGER NOT NULL DEFAULT 0,
+        losses INTEGER NOT NULL DEFAULT 0, goals_for INTEGER NOT NULL DEFAULT 0,
+        goals_against INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (save_id, team_id))`,
+      `CREATE TABLE IF NOT EXISTS league_tables (
+        save_id TEXT NOT NULL, division_id TEXT NOT NULL, team_id TEXT NOT NULL,
+        team_name TEXT NOT NULL, played INTEGER NOT NULL DEFAULT 0,
+        points INTEGER NOT NULL DEFAULT 0, wins INTEGER NOT NULL DEFAULT 0,
+        draws INTEGER NOT NULL DEFAULT 0, losses INTEGER NOT NULL DEFAULT 0,
+        goals_for INTEGER NOT NULL DEFAULT 0, goals_against INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (save_id, division_id, team_id))`,
+      `CREATE TABLE IF NOT EXISTS club_staff (
+        id TEXT PRIMARY KEY, save_id TEXT NOT NULL, team_id TEXT NOT NULL,
+        role TEXT NOT NULL, name TEXT NOT NULL, efficiency_multiplier REAL NOT NULL DEFAULT 1,
+        weekly_salary INTEGER NOT NULL DEFAULT 0, hired_at INTEGER NOT NULL,
+        UNIQUE(save_id, team_id, role))`,
+      `CREATE TABLE IF NOT EXISTS player_career_instances (
+        id TEXT PRIMARY KEY, save_id TEXT NOT NULL, source_player_id TEXT NOT NULL DEFAULT '',
+        original_team_id TEXT NOT NULL, team_id TEXT NOT NULL, team_name TEXT NOT NULL,
+        name TEXT NOT NULL, pos TEXT NOT NULL, rating INTEGER NOT NULL, alt_pos TEXT NOT NULL DEFAULT '',
+        pac INTEGER, sho INTEGER, pas INTEGER, dri INTEGER, def INTEGER, phy INTEGER,
+        age INTEGER NOT NULL DEFAULT 24, country_origin TEXT NOT NULL DEFAULT '',
+        potential_rating INTEGER NOT NULL DEFAULT 75, moral INTEGER NOT NULL DEFAULT 70,
+        individual_instructions TEXT NOT NULL DEFAULT '{}',
+        value INTEGER NOT NULL, is_starter INTEGER NOT NULL DEFAULT 0,
+        lineup_slot_id TEXT NOT NULL DEFAULT '', is_listed INTEGER NOT NULL DEFAULT 0,
+        sort_order INTEGER NOT NULL DEFAULT 0)`,
       `CREATE INDEX IF NOT EXISTS idx_players_team ON players(team_id)`,
       `CREATE INDEX IF NOT EXISTS idx_teams_owner ON teams(owner_id)`,
       `CREATE INDEX IF NOT EXISTS idx_user_achievements_user ON user_achievements(user_id)`,
       `CREATE INDEX IF NOT EXISTS idx_user_xp_events_user ON user_xp_events(user_id)`,
       `CREATE INDEX IF NOT EXISTS idx_feedback_created ON feedback_messages(created_at)`,
       `CREATE INDEX IF NOT EXISTS idx_feedback_user ON feedback_messages(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_manager_career_states_updated ON manager_career_states(updated_at)`,
+      `CREATE INDEX IF NOT EXISTS idx_manager_saves_user ON manager_saves(user_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_manager_roster_save_team ON manager_roster_players(save_id, team_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_manager_standings_save ON manager_standings(save_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_league_tables_save_division ON league_tables(save_id, division_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_club_staff_save_team ON club_staff(save_id, team_id)`,
+      `CREATE INDEX IF NOT EXISTS idx_player_career_save_team ON player_career_instances(save_id, team_id)`,
     ],
     "write",
   );
@@ -175,6 +258,18 @@ async function migrateDb(): Promise<void> {
     "players ADD COLUMN phy INTEGER",
     "users ADD COLUMN avatar_url TEXT NOT NULL DEFAULT ''",
     "users ADD COLUMN avatar_key TEXT NOT NULL DEFAULT ''",
+    "manager_saves ADD COLUMN rodada_atual INTEGER NOT NULL DEFAULT 1",
+    "manager_saves ADD COLUMN gols_pro INTEGER NOT NULL DEFAULT 0",
+    "manager_saves ADD COLUMN gols_contra INTEGER NOT NULL DEFAULT 0",
+    "manager_saves ADD COLUMN formation_id TEXT NOT NULL DEFAULT '4-3-3'",
+    "manager_saves ADD COLUMN mentality TEXT NOT NULL DEFAULT 'equilibrada'",
+    "manager_saves ADD COLUMN attack_focus TEXT NOT NULL DEFAULT 'equilibrado'",
+    "manager_saves ADD COLUMN training_center_level INTEGER NOT NULL DEFAULT 1",
+    "manager_saves ADD COLUMN medical_department_level INTEGER NOT NULL DEFAULT 1",
+    "manager_saves ADD COLUMN youth_academy_level INTEGER NOT NULL DEFAULT 1",
+    "manager_saves ADD COLUMN country_origin TEXT NOT NULL DEFAULT 'brasil'",
+    "manager_saves ADD COLUMN league_id TEXT NOT NULL DEFAULT 'brasil'",
+    "manager_saves ADD COLUMN division_id TEXT NOT NULL DEFAULT 'brasil-serie-a'",
   ];
   for (const column of addedColumns) {
     try {
@@ -205,6 +300,37 @@ export async function getPublicUser(userId: string): Promise<PublicUser | null> 
     })
   ).rows as unknown as Record<string, unknown>[];
   return rows[0] ? publicUserFromRow(rows[0]) : null;
+}
+
+export async function getManagerCareerState(userId: string): Promise<string | null> {
+  const rows = (
+    await db.execute({
+      sql: "SELECT state_json FROM manager_career_states WHERE user_id = ? LIMIT 1",
+      args: [userId],
+    })
+  ).rows as unknown as Record<string, unknown>[];
+  return rows[0] ? String(rows[0].state_json) : null;
+}
+
+export async function saveManagerCareerState(userId: string, stateJson: string): Promise<void> {
+  await db.execute({
+    sql: `INSERT INTO manager_career_states (user_id, state_json, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(user_id) DO UPDATE SET
+            state_json = excluded.state_json,
+            updated_at = excluded.updated_at`,
+    args: [userId, stateJson, Date.now()],
+  });
+}
+
+export async function deleteManagerCareer(userId: string): Promise<void> {
+  await db.execute({ sql: "DELETE FROM manager_career_states WHERE user_id = ?", args: [userId] });
+  await db.execute({ sql: "DELETE FROM manager_roster_players WHERE save_id IN (SELECT id FROM manager_saves WHERE user_id = ?)", args: [userId] });
+  await db.execute({ sql: "DELETE FROM manager_standings WHERE save_id IN (SELECT id FROM manager_saves WHERE user_id = ?)", args: [userId] });
+  await db.execute({ sql: "DELETE FROM league_tables WHERE save_id IN (SELECT id FROM manager_saves WHERE user_id = ?)", args: [userId] });
+  await db.execute({ sql: "DELETE FROM club_staff WHERE save_id IN (SELECT id FROM manager_saves WHERE user_id = ?)", args: [userId] });
+  await db.execute({ sql: "DELETE FROM player_career_instances WHERE save_id IN (SELECT id FROM manager_saves WHERE user_id = ?)", args: [userId] });
+  await db.execute({ sql: "DELETE FROM manager_saves WHERE user_id = ?", args: [userId] });
 }
 
 export async function getUserPasswordHash(userId: string): Promise<string | null> {
@@ -783,4 +909,538 @@ export async function getFeedback(limit = 50): Promise<FeedbackEntry[]> {
     status: String(row.status ?? "new") as FeedbackEntry["status"],
     createdAt: Number(row.created_at),
   }));
+}
+
+const MANAGER_INITIAL_MONEY = 25_000_000;
+const MANAGER_INITIAL_STADIUM = 15_000;
+const MANAGER_INITIAL_TICKET = 35;
+const DEFAULT_MANAGER_COUNTRY = "brasil";
+const DEFAULT_MANAGER_LEAGUE = "brasil";
+const DEFAULT_MANAGER_DIVISION = "brasil-serie-a";
+
+function countryForTeam(teamId: string): string {
+  for (const league of LEAGUE_STRUCTURES) {
+    for (const division of league.divisions) {
+      if (division.teams.some((team) => team.playableTeamId === teamId || team.id === teamId)) {
+        return league.country;
+      }
+    }
+  }
+  return DEFAULT_MANAGER_COUNTRY;
+}
+
+function leagueForTeam(teamId: string): { leagueId: string; divisionId: string } {
+  for (const league of LEAGUE_STRUCTURES) {
+    for (const division of league.divisions) {
+      if (division.teams.some((team) => team.playableTeamId === teamId || team.id === teamId)) {
+        return { leagueId: league.id, divisionId: division.id };
+      }
+    }
+  }
+  return { leagueId: DEFAULT_MANAGER_LEAGUE, divisionId: DEFAULT_MANAGER_DIVISION };
+}
+
+function inferredPlayerAge(rating: number, index: number): number {
+  const base = rating >= 86 ? 27 : rating >= 80 ? 25 : 23;
+  return Math.max(17, Math.min(38, base + (index % 7) - 3));
+}
+
+function inferredPotential(rating: number, age: number): number {
+  const growth = age <= 21 ? 8 : age <= 24 ? 5 : age <= 27 ? 2 : 0;
+  return Math.max(rating, Math.min(99, rating + growth));
+}
+
+function safeInstructions(value: unknown): Record<string, unknown> {
+  try {
+    const parsed = JSON.parse(String(value || "{}")) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {};
+  } catch {
+    return {};
+  }
+}
+
+function managerPlayerValue(rating: number): number {
+  const r = Math.max(40, Math.min(99, Math.round(rating)));
+  return Math.round(((r - 45) ** 2 * 12500 + 150000) / 1000) * 1000;
+}
+
+function managerSaveFromRow(row: Record<string, unknown>, teamName: string): ManagerSave {
+  return {
+    id: String(row.id),
+    userId: String(row.user_id),
+    teamId: String(row.time_escolhido_id),
+    teamName,
+    money: Number(row.dinheiro_clube),
+    stadiumCapacity: Number(row.capacidade_estadio),
+    ticketPrice: Number(row.preco_ingresso),
+    season: Number(row.temporada_atual),
+    round: Number(row.rodada_atual ?? 1),
+    points: Number(row.pontos),
+    wins: Number(row.vitorias),
+    draws: Number(row.empates),
+    losses: Number(row.derrotas),
+    goalsFor: Number(row.gols_pro ?? 0),
+    goalsAgainst: Number(row.gols_contra ?? 0),
+    prestige: Number(row.prestige ?? 58),
+    boardConfidence: Number(row.board_confidence ?? 65),
+    supporterMembers: Number(row.supporter_members ?? 12000),
+    fanbase: Number(row.fanbase ?? 180000),
+    sponsorName: String(row.sponsor_name ?? "Pebol Bank"),
+    sponsorWeeklyIncome: Number(row.sponsor_weekly_income ?? 450000),
+    sponsorTier: Number(row.sponsor_tier ?? 2),
+    formationId: String(row.formation_id ?? "4-3-3"),
+    mentality: String(row.mentality ?? "equilibrada") as Mentality,
+    attackFocus: String(row.attack_focus ?? "equilibrado") as AttackFocus,
+    trainingCenterLevel: Number(row.training_center_level ?? 1),
+    medicalDepartmentLevel: Number(row.medical_department_level ?? 1),
+    youthAcademyLevel: Number(row.youth_academy_level ?? 1),
+    countryOrigin: String(row.country_origin ?? DEFAULT_MANAGER_COUNTRY),
+    leagueId: String(row.league_id ?? DEFAULT_MANAGER_LEAGUE),
+    divisionId: String(row.division_id ?? DEFAULT_MANAGER_DIVISION),
+  };
+}
+
+function managerPlayerFromRow(row: Record<string, unknown>): ManagerPlayer {
+  const pos = String(row.pos) as Position;
+  return {
+    id: String(row.id),
+    teamId: String(row.team_id),
+    originalTeamId: String(row.original_team_id),
+    teamName: String(row.team_name),
+    age: Number(row.age ?? 24),
+    countryOrigin: String(row.country_origin ?? ""),
+    potentialRating: Number(row.potential_rating ?? row.rating ?? 75),
+    morale: Number(row.moral ?? 70),
+    individualInstructions: safeInstructions(row.individual_instructions),
+    name: String(row.name),
+    pos,
+    altPositions: parseAltPositions(row.alt_pos, pos),
+    rating: Number(row.rating),
+    pac: row.pac == null ? undefined : Number(row.pac),
+    sho: row.sho == null ? undefined : Number(row.sho),
+    pas: row.pas == null ? undefined : Number(row.pas),
+    dri: row.dri == null ? undefined : Number(row.dri),
+    def: row.def == null ? undefined : Number(row.def),
+    phy: row.phy == null ? undefined : Number(row.phy),
+    value: Number(row.value),
+    isStarter: Number(row.is_starter) === 1,
+    lineupSlotId: row.lineup_slot_id ? String(row.lineup_slot_id) : null,
+    isListed: Number(row.is_listed) === 1,
+  };
+}
+
+export async function listManagerStartTeams(): Promise<Array<{ id: string; name: string; season: string; league: string }>> {
+  const rows = (
+    await db.execute({
+      sql: "SELECT id, alias, name, season, league FROM teams WHERE owner_id IS NULL AND kind = 'club' ORDER BY league, alias, name",
+      args: [],
+    })
+  ).rows as unknown as Record<string, unknown>[];
+  return rows.map((row) => ({
+    id: String(row.id),
+    name: String(row.alias || row.name),
+    season: String(row.season ?? ""),
+    league: String(row.league ?? ""),
+  }));
+}
+
+export async function getManagerSave(userId: string): Promise<ManagerSave | null> {
+  const rows = (
+    await db.execute({
+      sql: `SELECT ms.*, COALESCE(t.alias, t.name, ms.time_escolhido_id) AS team_name
+            FROM manager_saves ms
+            LEFT JOIN teams t ON t.id = ms.time_escolhido_id
+            WHERE ms.user_id = ?
+            ORDER BY ms.updated_at DESC
+            LIMIT 1`,
+      args: [userId],
+    })
+  ).rows as unknown as Record<string, unknown>[];
+  return rows[0] ? managerSaveFromRow(rows[0], String(rows[0].team_name)) : null;
+}
+
+export async function getManagerSaveById(saveId: string): Promise<ManagerSave | null> {
+  const rows = (
+    await db.execute({
+      sql: `SELECT ms.*, COALESCE(t.alias, t.name, ms.time_escolhido_id) AS team_name
+            FROM manager_saves ms
+            LEFT JOIN teams t ON t.id = ms.time_escolhido_id
+            WHERE ms.id = ?
+            LIMIT 1`,
+      args: [saveId],
+    })
+  ).rows as unknown as Record<string, unknown>[];
+  return rows[0] ? managerSaveFromRow(rows[0], String(rows[0].team_name)) : null;
+}
+
+export async function createManagerSave(userId: string, teamId: string): Promise<ManagerSave | { error: string }> {
+  const team = await getTeamById(teamId);
+  if (!team || team.kind !== "club" || team.ownerId) {
+    return { error: "Escolha um clube oficial para iniciar a carreira." };
+  }
+  const clubs = await getOfficialTeams("club");
+  if (clubs.length < 4) return { error: "Não há clubes suficientes para montar a liga." };
+
+  const id = randomUUID();
+  const now = Date.now();
+  const countryOrigin = countryForTeam(teamId);
+  const leagueMeta = leagueForTeam(teamId);
+  await db.execute({ sql: "DELETE FROM manager_roster_players WHERE save_id IN (SELECT id FROM manager_saves WHERE user_id = ?)", args: [userId] });
+  await db.execute({ sql: "DELETE FROM manager_standings WHERE save_id IN (SELECT id FROM manager_saves WHERE user_id = ?)", args: [userId] });
+  await db.execute({ sql: "DELETE FROM league_tables WHERE save_id IN (SELECT id FROM manager_saves WHERE user_id = ?)", args: [userId] });
+  await db.execute({ sql: "DELETE FROM club_staff WHERE save_id IN (SELECT id FROM manager_saves WHERE user_id = ?)", args: [userId] });
+  await db.execute({ sql: "DELETE FROM player_career_instances WHERE save_id IN (SELECT id FROM manager_saves WHERE user_id = ?)", args: [userId] });
+  await db.execute({ sql: "DELETE FROM manager_saves WHERE user_id = ?", args: [userId] });
+  await db.execute({
+    sql: `INSERT INTO manager_saves
+          (id,user_id,time_escolhido_id,dinheiro_clube,capacidade_estadio,preco_ingresso,
+           temporada_atual,rodada_atual,pontos,vitorias,empates,derrotas,gols_pro,gols_contra,
+           formation_id,mentality,attack_focus,training_center_level,medical_department_level,
+           youth_academy_level,country_origin,league_id,division_id,created_at,updated_at)
+          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+    args: [
+      id,
+      userId,
+      teamId,
+      MANAGER_INITIAL_MONEY,
+      MANAGER_INITIAL_STADIUM,
+      MANAGER_INITIAL_TICKET,
+      1,
+      1,
+      0,
+      0,
+      0,
+      0,
+      0,
+      0,
+      "4-3-3",
+      "equilibrada",
+      "equilibrado",
+      1,
+      1,
+      1,
+      countryOrigin,
+      leagueMeta.leagueId,
+      leagueMeta.divisionId,
+      now,
+      now,
+    ],
+  });
+
+  for (const club of clubs) {
+    await db.execute({
+      sql: `INSERT INTO manager_standings
+            (save_id,team_id,team_name,played,points,wins,draws,losses,goals_for,goals_against)
+            VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      args: [id, club.id, club.alias || club.name, 0, 0, 0, 0, 0, 0, 0],
+    });
+    await db.execute({
+      sql: `INSERT INTO league_tables
+            (save_id,division_id,team_id,team_name,played,points,wins,draws,losses,goals_for,goals_against)
+            VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      args: [
+        id,
+        leagueForTeam(club.id).divisionId,
+        club.id,
+        club.alias || club.name,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+        0,
+      ],
+    });
+    const players = [...club.players, ...(club.bench ?? [])];
+    for (const [index, playerInput] of players.entries()) {
+      const player = withDerivedAttributes(playerInput);
+      const isUserTeam = club.id === teamId;
+      const starterSlot = isUserTeam && index < 11 ? ["GK", "LB", "CB1", "CB2", "RB", "CM1", "CM2", "CM3", "LW", "ST", "RW"][index] : "";
+      const age = inferredPlayerAge(player.rating, index);
+      const potential = inferredPotential(player.rating, age);
+      await db.execute({
+        sql: `INSERT INTO player_career_instances
+              (id,save_id,source_player_id,original_team_id,team_id,team_name,name,pos,rating,alt_pos,
+               pac,sho,pas,dri,def,phy,age,country_origin,potential_rating,moral,
+               individual_instructions,value,is_starter,lineup_slot_id,is_listed,sort_order)
+              VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        args: [
+          randomUUID(),
+          id,
+          "",
+          club.id,
+          club.id,
+          club.alias || club.name,
+          player.name,
+          player.pos,
+          player.rating,
+          normalizeAltPositions(player).join(","),
+          clampAttribute(player.pac),
+          clampAttribute(player.sho),
+          clampAttribute(player.pas),
+          clampAttribute(player.dri),
+          clampAttribute(player.def),
+          clampAttribute(player.phy),
+          age,
+          countryForTeam(club.id),
+          potential,
+          70,
+          "{}",
+          managerPlayerValue(player.rating),
+          starterSlot ? 1 : 0,
+          starterSlot,
+          index >= 11 || player.rating < 76 ? 1 : 0,
+          index,
+        ],
+      });
+    }
+  }
+
+  for (const staff of [
+    ["youth_coach", "Treinador de Base", 1.02, 18_000],
+    ["physio", "Fisioterapeuta", 1.02, 16_000],
+    ["scout", "Olheiro", 1.02, 14_000],
+    ["assistant", "Auxiliar Técnico", 1.02, 20_000],
+  ] as const) {
+    await db.execute({
+      sql: `INSERT INTO club_staff
+            (id,save_id,team_id,role,name,efficiency_multiplier,weekly_salary,hired_at)
+            VALUES (?,?,?,?,?,?,?,?)`,
+      args: [randomUUID(), id, teamId, staff[0], staff[1], staff[2], staff[3], now],
+    });
+  }
+
+  return (await getManagerSaveById(id))!;
+}
+
+export async function getManagerSquad(saveId: string, teamId?: string): Promise<ManagerPlayer[]> {
+  let rows = (
+    await db.execute({
+      sql: `SELECT * FROM player_career_instances
+            WHERE save_id = ? ${teamId ? "AND team_id = ?" : ""}
+            ORDER BY is_starter DESC, rating DESC, sort_order ASC, name ASC`,
+      args: teamId ? [saveId, teamId] : [saveId],
+    })
+  ).rows as unknown as Record<string, unknown>[];
+  if (!rows.length) {
+    rows = (
+      await db.execute({
+        sql: `SELECT * FROM manager_roster_players
+              WHERE save_id = ? ${teamId ? "AND team_id = ?" : ""}
+              ORDER BY is_starter DESC, rating DESC, sort_order ASC, name ASC`,
+        args: teamId ? [saveId, teamId] : [saveId],
+      })
+    ).rows as unknown as Record<string, unknown>[];
+  }
+  return rows.map(managerPlayerFromRow);
+}
+
+export async function getManagerStandings(saveId: string): Promise<ManagerStanding[]> {
+  let rows = (
+    await db.execute({
+      sql: `SELECT * FROM league_tables
+            WHERE save_id = ?
+              AND division_id = (SELECT division_id FROM manager_saves WHERE id = ? LIMIT 1)
+            ORDER BY points DESC, (goals_for - goals_against) DESC, goals_for DESC, team_name ASC`,
+      args: [saveId, saveId],
+    })
+  ).rows as unknown as Record<string, unknown>[];
+  if (!rows.length) {
+    rows = (
+      await db.execute({
+        sql: `SELECT * FROM manager_standings WHERE save_id = ?
+              ORDER BY points DESC, (goals_for - goals_against) DESC, goals_for DESC, team_name ASC`,
+        args: [saveId],
+      })
+    ).rows as unknown as Record<string, unknown>[];
+  }
+  return rows.map((row) => ({
+    teamId: String(row.team_id),
+    teamName: String(row.team_name),
+    played: Number(row.played),
+    points: Number(row.points),
+    wins: Number(row.wins),
+    draws: Number(row.draws),
+    losses: Number(row.losses),
+    goalsFor: Number(row.goals_for),
+    goalsAgainst: Number(row.goals_against),
+    goalDifference: Number(row.goals_for) - Number(row.goals_against),
+  }));
+}
+
+export async function searchManagerMarket(
+  save: ManagerSave,
+  filters: { pos?: string; minRating?: number; maxRating?: number },
+): Promise<ManagerPlayer[]> {
+  const args: Array<string | number> = [save.id, save.teamId];
+  let where = "save_id = ? AND team_id <> ? AND is_listed = 1";
+  if (filters.pos) {
+    where += " AND pos = ?";
+    args.push(filters.pos);
+  }
+  if (filters.minRating) {
+    where += " AND rating >= ?";
+    args.push(filters.minRating);
+  }
+  if (filters.maxRating) {
+    where += " AND rating <= ?";
+    args.push(filters.maxRating);
+  }
+  const rows = (
+    await db.execute({
+      sql: `SELECT * FROM player_career_instances WHERE ${where}
+            ORDER BY rating DESC, value ASC, name ASC LIMIT 80`,
+      args,
+    })
+  ).rows as unknown as Record<string, unknown>[];
+  return rows.map(managerPlayerFromRow);
+}
+
+export async function buyManagerPlayer(userId: string, playerId: string): Promise<ManagerSave | { error: string }> {
+  const save = await getManagerSave(userId);
+  if (!save) return { error: "Crie uma carreira antes de comprar jogadores." };
+  const rows = (
+    await db.execute({
+      sql: "SELECT * FROM player_career_instances WHERE save_id = ? AND id = ? LIMIT 1",
+      args: [save.id, playerId],
+    })
+  ).rows as unknown as Record<string, unknown>[];
+  const player = rows[0] ? managerPlayerFromRow(rows[0]) : null;
+  if (!player) return { error: "Jogador não encontrado no mercado." };
+  if (player.teamId === save.teamId) return { error: "Esse jogador já é do seu clube." };
+  if (!player.isListed) return { error: "Esse jogador não está à venda." };
+  const price = Math.round(player.value * 1.08);
+  if (save.money < price) return { error: "Saldo insuficiente para fechar a compra." };
+  await db.execute({
+    sql: "UPDATE player_career_instances SET team_id = ?, team_name = ?, is_starter = 0, lineup_slot_id = '', is_listed = 0 WHERE id = ?",
+    args: [save.teamId, save.teamName, player.id],
+  });
+  await db.execute({
+    sql: "UPDATE manager_saves SET dinheiro_clube = dinheiro_clube - ?, updated_at = ? WHERE id = ?",
+    args: [price, Date.now(), save.id],
+  });
+  return (await getManagerSaveById(save.id))!;
+}
+
+export async function sellManagerPlayer(userId: string, playerId: string): Promise<ManagerSave | { error: string }> {
+  const save = await getManagerSave(userId);
+  if (!save) return { error: "Crie uma carreira antes de vender jogadores." };
+  const squad = await getManagerSquad(save.id, save.teamId);
+  const player = squad.find((p) => p.id === playerId);
+  if (!player) return { error: "Jogador não pertence ao seu clube." };
+  if (squad.length <= 14) return { error: "Você precisa manter pelo menos 14 jogadores no elenco." };
+  const destination = player.originalTeamId === save.teamId
+    ? (await getManagerStandings(save.id)).find((s) => s.teamId !== save.teamId)?.teamId
+    : player.originalTeamId;
+  if (!destination) return { error: "Não foi possível encontrar um clube comprador." };
+  const destinationName = (await getManagerStandings(save.id)).find((s) => s.teamId === destination)?.teamName ?? "Mercado";
+  const price = Math.round(player.value * 0.72);
+  await db.execute({
+    sql: "UPDATE player_career_instances SET team_id = ?, team_name = ?, is_starter = 0, lineup_slot_id = '', is_listed = 1 WHERE id = ?",
+    args: [destination, destinationName, player.id],
+  });
+  await db.execute({
+    sql: "UPDATE manager_saves SET dinheiro_clube = dinheiro_clube + ?, updated_at = ? WHERE id = ?",
+    args: [price, Date.now(), save.id],
+  });
+  return (await getManagerSaveById(save.id))!;
+}
+
+export async function upgradeManagerStadium(userId: string): Promise<ManagerSave | { error: string }> {
+  const save = await getManagerSave(userId);
+  if (!save) return { error: "Crie uma carreira antes de ampliar o estádio." };
+  const seats = 2500;
+  const cost = Math.round(seats * (780 + save.stadiumCapacity / 90));
+  if (save.money < cost) return { error: "Saldo insuficiente para ampliar o estádio." };
+  await db.execute({
+    sql: "UPDATE manager_saves SET dinheiro_clube = dinheiro_clube - ?, capacidade_estadio = capacidade_estadio + ?, updated_at = ? WHERE id = ?",
+    args: [cost, seats, Date.now(), save.id],
+  });
+  return (await getManagerSaveById(save.id))!;
+}
+
+export async function updateManagerLineup(
+  userId: string,
+  data: {
+    formationId: string;
+    mentality: Mentality;
+    attackFocus: AttackFocus;
+    starters: Array<{ playerId: string; slotId: string }>;
+  },
+): Promise<ManagerSave | { error: string }> {
+  const save = await getManagerSave(userId);
+  if (!save) return { error: "Crie uma carreira antes de salvar escalação." };
+  if (data.starters.length !== 11) return { error: "Escolha exatamente 11 titulares." };
+  const ids = new Set(data.starters.map((s) => s.playerId));
+  if (ids.size !== 11) return { error: "A escalação tem jogadores repetidos." };
+  const squad = await getManagerSquad(save.id, save.teamId);
+  if (![...ids].every((id) => squad.some((p) => p.id === id))) {
+    return { error: "A escalação contém jogador fora do seu elenco." };
+  }
+  await db.execute({
+    sql: "UPDATE player_career_instances SET is_starter = 0, lineup_slot_id = '' WHERE save_id = ? AND team_id = ?",
+    args: [save.id, save.teamId],
+  });
+  for (const starter of data.starters) {
+    await db.execute({
+      sql: "UPDATE player_career_instances SET is_starter = 1, lineup_slot_id = ? WHERE save_id = ? AND id = ?",
+      args: [starter.slotId, save.id, starter.playerId],
+    });
+  }
+  await db.execute({
+    sql: "UPDATE manager_saves SET formation_id = ?, mentality = ?, attack_focus = ?, updated_at = ? WHERE id = ?",
+    args: [data.formationId, data.mentality, data.attackFocus, Date.now(), save.id],
+  });
+  return (await getManagerSaveById(save.id))!;
+}
+
+export async function applyManagerMatchResult(
+  save: ManagerSave,
+  homeTeamId: string,
+  awayTeamId: string,
+  homeGoals: number,
+  awayGoals: number,
+): Promise<void> {
+  const apply = async (teamId: string, gf: number, ga: number) => {
+    const win = gf > ga ? 1 : 0;
+    const draw = gf === ga ? 1 : 0;
+    const loss = gf < ga ? 1 : 0;
+    await db.execute({
+      sql: `UPDATE league_tables
+            SET played = played + 1, points = points + ?, wins = wins + ?,
+                draws = draws + ?, losses = losses + ?, goals_for = goals_for + ?,
+                goals_against = goals_against + ?
+            WHERE save_id = ? AND team_id = ?`,
+      args: [win ? 3 : draw ? 1 : 0, win, draw, loss, gf, ga, save.id, teamId],
+    });
+  };
+  await apply(homeTeamId, homeGoals, awayGoals);
+  await apply(awayTeamId, awayGoals, homeGoals);
+  if (homeTeamId === save.teamId || awayTeamId === save.teamId) {
+    const gf = homeTeamId === save.teamId ? homeGoals : awayGoals;
+    const ga = homeTeamId === save.teamId ? awayGoals : homeGoals;
+    const win = gf > ga ? 1 : 0;
+    const draw = gf === ga ? 1 : 0;
+    const loss = gf < ga ? 1 : 0;
+    const income = Math.round(save.stadiumCapacity * save.ticketPrice * (win ? 0.92 : draw ? 0.82 : 0.74));
+    await db.execute({
+      sql: `UPDATE manager_saves
+            SET pontos = pontos + ?, vitorias = vitorias + ?, empates = empates + ?,
+                derrotas = derrotas + ?, gols_pro = gols_pro + ?, gols_contra = gols_contra + ?,
+                dinheiro_clube = dinheiro_clube + ?, updated_at = ?
+            WHERE id = ?`,
+      args: [win ? 3 : draw ? 1 : 0, win, draw, loss, gf, ga, income, Date.now(), save.id],
+    });
+  }
+}
+
+export async function advanceManagerRound(saveId: string, nextRound: number): Promise<ManagerSave | null> {
+  await db.execute({
+    sql: "UPDATE manager_saves SET rodada_atual = ?, updated_at = ? WHERE id = ?",
+    args: [nextRound, Date.now(), saveId],
+  });
+  return getManagerSaveById(saveId);
 }

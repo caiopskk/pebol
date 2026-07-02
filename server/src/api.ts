@@ -9,6 +9,7 @@ import {
   createTeam,
   updateTeam,
   deleteTeam,
+  deleteManagerCareer,
   findTeamByNameSeason,
   getAchievementProgress,
   unlockAchievement,
@@ -18,6 +19,7 @@ import {
   createFeedback,
   getFeedback,
   getFeedbackCountForUser,
+  getManagerCareerState,
   normalizeFeedbackInput,
   maskTeamName,
   getPublicUser,
@@ -25,10 +27,22 @@ import {
   updatePublicUserProfile,
   updateUserAvatar,
   updateUserPasswordHash,
+  buyManagerPlayer,
+  createManagerSave,
+  getManagerSave,
+  getManagerSquad,
+  getManagerStandings,
+  listManagerStartTeams,
+  searchManagerMarket,
+  sellManagerPlayer,
+  saveManagerCareerState,
+  updateManagerLineup,
+  upgradeManagerStadium,
   type DbTeam,
   type FeedbackInput,
   type TeamInput,
 } from "./db.js";
+import { managerNextOpponentStrength, managerSchedule, playManagerRound } from "./managerEngine.js";
 import {
   fetchAvatarImage,
   localUploadsDir,
@@ -106,6 +120,24 @@ function requireAdminUser(req: AuthRequest, res: Response): AuthUser | null {
   return u;
 }
 
+async function managerDashboard(userId: string) {
+  const save = await getManagerSave(userId);
+  if (!save) return { save: null };
+  const standings = await getManagerStandings(save.id);
+  const squad = await getManagerSquad(save.id, save.teamId);
+  const nextFixture =
+    managerSchedule(standings, save.round).find(
+      (f) => f.homeTeamId === save.teamId || f.awayTeamId === save.teamId,
+    ) ?? null;
+  return {
+    save,
+    squad,
+    standings,
+    nextFixture,
+    nextOpponentStrength: await managerNextOpponentStrength(save),
+  };
+}
+
 function avatarUploadRateLimit(
   req: AuthRequest,
   res: Response,
@@ -155,7 +187,7 @@ function avatarUploadRateLimit(
 
 /** Register auth + team CRUD routes. `onOfficialChange` refreshes the game's team cache. */
 export function registerApi(app: Express, onOfficialChange: () => void): void {
-  app.use(express.json({ limit: "256kb" }));
+  app.use(express.json({ limit: "2mb" }));
   app.use("/uploads", express.static(localUploadsDir(), { maxAge: "1y", immutable: true }));
   app.use(authMiddleware);
 
@@ -296,6 +328,92 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
     const u = requireAdminUser(req, res);
     if (!u) return;
     res.json({ feedback: await getFeedback(Number(req.query.limit) || 50) });
+  });
+
+  app.get("/api/manager/teams", requireAuth, async (_req: AuthRequest, res) => {
+    res.json({ teams: await listManagerStartTeams() });
+  });
+
+  app.get("/api/manager/save", requireAuth, async (req: AuthRequest, res) => {
+    res.json(await managerDashboard(req.authUser!.id));
+  });
+
+  app.get("/api/manager/career-state", requireAuth, async (req: AuthRequest, res) => {
+    const raw = await getManagerCareerState(req.authUser!.id);
+    if (!raw) return res.json({ state: null });
+    try {
+      res.json({ state: JSON.parse(raw) });
+    } catch {
+      res.json({ state: null });
+    }
+  });
+
+  app.put("/api/manager/career-state", requireAuth, async (req: AuthRequest, res) => {
+    const state = req.body?.state;
+    if (!state || typeof state !== "object" || Array.isArray(state)) {
+      return res.status(400).json({ error: "Save de carreira inválido." });
+    }
+    await saveManagerCareerState(req.authUser!.id, JSON.stringify(state));
+    res.json({ ok: true });
+  });
+
+  app.delete("/api/manager/career-state", requireAuth, async (req: AuthRequest, res) => {
+    await deleteManagerCareer(req.authUser!.id);
+    res.json({ ok: true });
+  });
+
+  app.post("/api/manager/start", requireAuth, async (req: AuthRequest, res) => {
+    const teamId = String(req.body?.teamId ?? "");
+    const save = await createManagerSave(req.authUser!.id, teamId);
+    if ("error" in save) return res.status(400).json(save);
+    res.json(await managerDashboard(req.authUser!.id));
+  });
+
+  app.get("/api/manager/market", requireAuth, async (req: AuthRequest, res) => {
+    const save = await getManagerSave(req.authUser!.id);
+    if (!save) return res.status(404).json({ error: "Crie uma carreira primeiro." });
+    const pos = String(req.query.pos ?? "");
+    const players = await searchManagerMarket(save, {
+      pos: VALID_POS.has(pos) ? pos : undefined,
+      minRating: Number(req.query.minRating) || undefined,
+      maxRating: Number(req.query.maxRating) || undefined,
+    });
+    res.json({ players });
+  });
+
+  app.post("/api/manager/buy", requireAuth, async (req: AuthRequest, res) => {
+    const result = await buyManagerPlayer(req.authUser!.id, String(req.body?.playerId ?? ""));
+    if ("error" in result) return res.status(400).json(result);
+    res.json(await managerDashboard(req.authUser!.id));
+  });
+
+  app.post("/api/manager/sell", requireAuth, async (req: AuthRequest, res) => {
+    const result = await sellManagerPlayer(req.authUser!.id, String(req.body?.playerId ?? ""));
+    if ("error" in result) return res.status(400).json(result);
+    res.json(await managerDashboard(req.authUser!.id));
+  });
+
+  app.post("/api/manager/stadium", requireAuth, async (req: AuthRequest, res) => {
+    const result = await upgradeManagerStadium(req.authUser!.id);
+    if ("error" in result) return res.status(400).json(result);
+    res.json(await managerDashboard(req.authUser!.id));
+  });
+
+  app.post("/api/manager/squad", requireAuth, async (req: AuthRequest, res) => {
+    const result = await updateManagerLineup(req.authUser!.id, {
+      formationId: String(req.body?.formationId ?? "4-3-3"),
+      mentality: String(req.body?.mentality ?? "equilibrada") as any,
+      attackFocus: String(req.body?.attackFocus ?? "equilibrado") as any,
+      starters: Array.isArray(req.body?.starters) ? req.body.starters : [],
+    });
+    if ("error" in result) return res.status(400).json(result);
+    res.json(await managerDashboard(req.authUser!.id));
+  });
+
+  app.post("/api/manager/round", requireAuth, async (req: AuthRequest, res) => {
+    const result = await playManagerRound(req.authUser!.id);
+    if ("error" in result) return res.status(400).json(result);
+    res.json({ result });
   });
 
   app.get("/api/teams", async (req: AuthRequest, res) => {
