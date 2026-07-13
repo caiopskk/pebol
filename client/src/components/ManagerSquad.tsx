@@ -10,6 +10,7 @@ import { MENTALITIES } from "../../../shared/mentalities.js";
 import { Pitch } from "./Pitch.js";
 import { managerPitchSlots } from "../lib/managerData.js";
 import { ATTACK_FOCUS_OPTIONS } from "./SetupBoard.js";
+import { effectiveRating } from "../../../shared/engine.js";
 
 interface ManagerSquadProps {
   data: ManagerDashboard;
@@ -40,8 +41,10 @@ export function ManagerSquad({ data, onSave, onSell, onBack }: ManagerSquadProps
     [formation, squad, selectedId],
   );
   const starters = squad.filter((p) => p.isStarter);
+  const available = (player: ManagerPlayer) => player.injuryRounds <= 0 && player.suspensionMatches <= 0;
 
   const selectPlayer = (playerId: string) => {
+    if (!available(squad.find((player) => player.id === playerId)!)) return;
     setSelectedId((current) => (current === playerId ? null : playerId));
   };
 
@@ -62,19 +65,24 @@ export function ManagerSquad({ data, onSave, onSell, onBack }: ManagerSquadProps
   };
 
   const autoPick = () => {
-    const sorted = [...squad].sort((a, b) => b.rating - a.rating);
     const used = new Set<string>();
-    setSquad((current) =>
-      current.map((player) => ({ ...player, isStarter: false, lineupSlotId: null })).map((player) => {
-        const slot = formation.slots.find((candidate) => {
-          const best = sorted.find((p) => !used.has(p.id));
-          return best?.id === player.id && candidate;
-        });
-        if (!slot) return player;
-        used.add(player.id);
-        return { ...player, isStarter: true, lineupSlotId: slot.id };
-      }),
-    );
+    const slotByPlayer = new Map<string, string>();
+    for (const slot of formation.slots) {
+      const best = [...squad]
+        .filter((player) => available(player) && !used.has(player.id))
+        .sort((a, b) =>
+          effectiveRating(b, slot.pos) + b.fitness / 25 + b.sharpness / 50 -
+          (effectiveRating(a, slot.pos) + a.fitness / 25 + a.sharpness / 50)
+        )[0];
+      if (!best) continue;
+      used.add(best.id);
+      slotByPlayer.set(best.id, slot.id);
+    }
+    setSquad((current) => current.map((player) => ({
+      ...player,
+      isStarter: slotByPlayer.has(player.id),
+      lineupSlotId: slotByPlayer.get(player.id) ?? null,
+    })));
   };
 
   const save = () => {
@@ -126,19 +134,24 @@ export function ManagerSquad({ data, onSave, onSell, onBack }: ManagerSquadProps
             <div
               key={player.id}
               className={`grid grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border p-3 ${
-                selectedId === player.id
+                !available(player)
+                  ? "border-red-300/25 bg-red-400/[0.06] opacity-75"
+                  : selectedId === player.id
                   ? "border-pebol-accent bg-pebol-accent/10"
                   : player.isStarter
                     ? "border-pebol-blue/35 bg-pebol-blue/10"
                     : "border-white/10 bg-white/[0.04]"
               }`}
             >
-              <button className="grid h-11 w-11 place-items-center rounded-lg border border-white/10 bg-black/30 font-display text-sm font-black text-pebol-gold" onClick={() => selectPlayer(player.id)}>
+              <button disabled={!available(player)} className="grid h-11 w-11 place-items-center rounded-lg border border-white/10 bg-black/30 font-display text-sm font-black text-pebol-gold" onClick={() => selectPlayer(player.id)}>
                 {player.rating}
               </button>
-              <button className="min-w-0 text-left" onClick={() => selectPlayer(player.id)}>
+              <button disabled={!available(player)} className="min-w-0 text-left" onClick={() => selectPlayer(player.id)}>
                 <strong className="block truncate font-display text-sm font-extrabold text-white">{player.name}</strong>
-                <span className="text-xs font-bold text-pebol-muted">{posLabel(player.pos)} {player.lineupSlotId ? `· ${player.lineupSlotId}` : ""}</span>
+                <span className="text-xs font-bold text-pebol-muted">
+                  {posLabel(player.pos)} · {player.age} anos · POT {player.potentialRating} · CON {player.fitness} · RIT {player.sharpness}
+                  {player.injuryRounds ? ` · LES ${player.injuryRounds}` : player.suspensionMatches ? ` · SUS ${player.suspensionMatches}` : player.lineupSlotId ? ` · ${player.lineupSlotId}` : ""}
+                </span>
               </button>
               <button className={secondary} onClick={() => onSell(player.id)}>Vender</button>
             </div>

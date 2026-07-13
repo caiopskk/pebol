@@ -25,6 +25,7 @@ if (!globalThis.crypto?.randomUUID) {
 
 const manager = await import("./lib/managerCareer.js");
 const { getLeagueDivision } = await import("../../shared/leagueStructures.js");
+const { TEAMS } = await import("../../shared/data/teams.js");
 
 function rate(n: number, total: number): number {
   return Math.round((n / total) * 1000) / 10;
@@ -38,6 +39,9 @@ function tablePlayed(state: ManagerCareerState): number {
 function assertCreateExportImport(): ManagerCareerState {
   const startTeams = manager.managerStartTeams();
   assert.ok(startTeams.length > 0, "manager mode needs playable start teams");
+  const playableIds = new Set(startTeams.map((team) => team.id));
+  const missingSeeds = TEAMS.map((team) => team.id).filter((teamId) => !playableIds.has(teamId));
+  assert.deepEqual(missingSeeds, [], "every seeded club should be playable in manager season structures");
   const chosen = startTeams.find((team) => team.id === "flamengo") ?? startTeams[0];
   const state = manager.createManagerCareer(chosen.id, "manager-user-a");
   const dashboard = manager.managerDashboard(state);
@@ -52,6 +56,10 @@ function assertCreateExportImport(): ManagerCareerState {
   assert.equal(dashboard.transferWindowOpen, true, "preseason should open the transfer window");
   assert.ok(dashboard.inbox.length >= 2, "career should start with board/sponsor emails");
   assert.ok(dashboard.squad.length >= 14, "user squad should have enough players for transfers");
+  assert.equal(dashboard.trainingPlans.length, 5, "career should offer distinct weekly training plans");
+  assert.equal(dashboard.boardObjectives.length, 3, "board should set sporting, development and finance goals");
+  assert.equal(dashboard.facilityUpgradeOptions.length, 3, "club should expose training, medical and academy facilities");
+  assert.ok(dashboard.squad.every((player) => player.fitness > 0 && player.sharpness > 0));
   assert.equal(dashboard.squad.filter((player) => player.isStarter).length, 11);
   assert.ok(state.preseasonFixtures.length >= 3, "preseason should offer short friendly slate");
   assert.ok(state.leagueFixtures.length > 0, "league calendar should be generated");
@@ -121,9 +129,19 @@ function assertMarketAndEconomy(initial: ManagerCareerState): ManagerCareerState
 
   const beforeUpgradeMoney = state.save.money;
   const beforeCapacity = state.save.stadiumCapacity;
-  state = manager.upgradeManagerClientStadium(state);
+  const stadiumOptions = manager.managerDashboard(state).stadiumUpgradeOptions;
+  assert.ok(stadiumOptions.length >= 4, "stadium should expose multiple upgrade options");
+  state = manager.upgradeManagerClientStadium(state, stadiumOptions[0].id);
   assert.equal(state.save.stadiumCapacity, beforeCapacity + 2500);
   assert.ok(state.save.money < beforeUpgradeMoney, "stadium upgrade must spend money");
+
+  const trainingLevel = state.save.trainingCenterLevel;
+  const facilityMoney = state.save.money;
+  state = manager.upgradeManagerFacility(state, "training");
+  assert.equal(state.save.trainingCenterLevel, trainingLevel + 1);
+  assert.ok(state.save.money < facilityMoney, "facility upgrade must spend money");
+  state = manager.setManagerTrainingFocus(state, "development");
+  assert.equal(state.trainingFocus, "development");
 
   const offer = state.inbox.find((item) => item.type === "player_offer" && !item.handled);
   if (offer) {
@@ -140,6 +158,7 @@ function assertRoundScenarios(initial: ManagerCareerState): ManagerCareerState {
     manager.managerDashboard(state).commercial.sponsorIncome +
     manager.managerDashboard(state).commercial.projectedHomeIncome;
   const pointsBeforeFriendly = state.save.points;
+  const fitnessBeforeFriendly = state.squads[state.save.teamId].find((player) => player.isStarter)!.fitness;
   const tableBeforeFriendly = tablePlayed(state);
   let played = manager.playManagerClientRound(state);
   state = played.state;
@@ -148,6 +167,11 @@ function assertRoundScenarios(initial: ManagerCareerState): ManagerCareerState {
   assert.ok(played.result.fixtures.length > 0, "preseason round should simulate fixtures");
   assert.equal(state.save.points, pointsBeforeFriendly, "preseason friendlies must not award league points");
   assert.equal(tablePlayed(state), tableBeforeFriendly, "preseason must not update the league table");
+  assert.notEqual(
+    state.squads[state.save.teamId].find((player) => player.isStarter)!.fitness,
+    fitnessBeforeFriendly,
+    "matches and training should update player condition",
+  );
   assert.equal(
     state.save.money,
     moneyBeforeFriendly + expectedFriendlyIncome,
@@ -236,6 +260,21 @@ function assertRoundScenarios(initial: ManagerCareerState): ManagerCareerState {
     }
   }
   assert.equal(state.phase, "season-end", "continental phase should close the season");
+  assert.ok(manager.managerDashboard(state).sponsorOffers.length >= 3, "season end should generate sponsor options");
+  const offer = manager.managerDashboard(state).sponsorOffers[0];
+  const moneyBeforeSponsor = state.save.money;
+  state = manager.chooseManagerSponsor(state, offer.id);
+  assert.equal(state.save.sponsorName, offer.name);
+  assert.equal(manager.managerDashboard(state).sponsorOffers.length, 0, "chosen sponsor should clear pending offers");
+  assert.equal(state.save.money, moneyBeforeSponsor + offer.signingBonus);
+
+  const previousSeason = state.save.season;
+  const previousSquadSize = state.squads[state.save.teamId].length;
+  state = manager.advanceManagerSeason(state);
+  assert.equal(state.save.season, previousSeason + 1);
+  assert.equal(state.phase, "preseason");
+  assert.equal(state.squads[state.save.teamId].length, previousSquadSize + 2, "academy should promote two prospects");
+  assert.ok(state.squads[state.save.teamId].some((player) => player.age === 17 && player.potentialRating > player.rating));
 
   return state;
 }

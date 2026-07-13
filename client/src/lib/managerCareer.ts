@@ -2,13 +2,20 @@ import type {
   AttackFocus,
   ManagerDashboard,
   ManagerFixture,
+  ManagerFacilityKind,
+  ManagerFacilityUpgradeOption,
   ManagerInboxItem,
   ManagerOpponentScout,
   ManagerPlayer,
   ManagerRoundResult,
   ManagerSave,
   ManagerSeasonPhase,
+  ManagerSponsorOffer,
   ManagerStanding,
+  ManagerStadiumUpgradeOption,
+  ManagerTrainingFocus,
+  ManagerTrainingPlan,
+  ManagerBoardObjective,
   MatchResult,
   MatchEvent,
   Mentality,
@@ -52,6 +59,18 @@ const START_FORMATION = "4-3-3";
 const EXPORT_KIND = "pebol-manager-career";
 const EXPORT_VERSION = 1;
 const SPONSORS = ["Pebol Bank", "Aurora Sports", "NorteBet", "VerdePay", "Atlântico Energia", "Prime Arena"];
+const SPONSOR_OFFER_BRANDS = [
+  "Pebol Bank",
+  "Aurora Sports",
+  "NorteBet",
+  "VerdePay",
+  "Atlântico Energia",
+  "Prime Arena",
+  "Canarinho Mobile",
+  "Litoral Seguros",
+  "Volta Redonda Tech",
+  "SulBet Arena",
+];
 
 export interface ManagerStartTeam {
   id: string;
@@ -76,6 +95,12 @@ export interface ManagerCareerState {
   continentalFixtures: LeagueFixture[];
   nationalCupChampionId: string | null;
   continentalQualifiedIds: string[];
+  sponsorOffers: ManagerSponsorOffer[];
+  sponsorOfferSeason: number;
+  trainingFocus: ManagerTrainingFocus;
+  playersDevelopedThisSeason: number;
+  seasonStartMoney: number;
+  leaguePositionTarget: number;
   lastSummary: string;
 }
 
@@ -129,6 +154,10 @@ function clamp(n: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, Math.round(n)));
 }
 
+function roundMoney(value: number): number {
+  return Math.round(value / 1000) * 1000;
+}
+
 function valueForRating(rating: number): number {
   return Math.round(((rating - 45) ** 2 * 12500 + 150000) / 1000) * 1000;
 }
@@ -140,7 +169,7 @@ function teamScale(teamId: string, division: LeagueDivision): number {
   ]);
   const big = new Set([
     "botafogo", "fluminense", "atletico-mg", "gremio", "internacional", "cruzeiro", "vasco",
-    "chelsea", "arsenal", "atletico-madrid", "dortmund", "benfica", "sporting", "porto-2004",
+    "chelsea", "arsenal", "atletico-madrid", "dortmund", "benfica", "sporting", "braga",
   ]);
   const tier = division.tier === 1 ? 1 : 0.72;
   return giant.has(teamId) ? 1.55 * tier : big.has(teamId) ? 1.22 * tier : tier;
@@ -183,6 +212,11 @@ function playerMeta(player: Player, teamId: string, index: number) {
     countryOrigin: playerCountryForTeam(teamId),
     potentialRating: clamp(player.rating + growth, player.rating, 99),
     morale: 70,
+    fitness: 92,
+    sharpness: 62,
+    developmentProgress: 0,
+    injuryRounds: 0,
+    suspensionMatches: 0,
   };
 }
 
@@ -283,6 +317,21 @@ function hydrateManagerCareer(state: ManagerCareerState): ManagerCareerState {
   state.save.sponsorName ??= defaults.sponsorName;
   state.save.sponsorTier ??= defaults.sponsorTier;
   state.save.sponsorWeeklyIncome ??= defaults.sponsorWeeklyIncome;
+  state.sponsorOffers ??= [];
+  state.sponsorOfferSeason ??= state.save.season;
+  state.trainingFocus ??= "balanced";
+  state.playersDevelopedThisSeason ??= 0;
+  state.seasonStartMoney ??= state.save.money;
+  state.leaguePositionTarget ??= leaguePositionTarget(state);
+  for (const squad of Object.values(state.squads)) {
+    for (const player of squad) {
+      player.fitness ??= 92;
+      player.sharpness ??= 62;
+      player.developmentProgress ??= 0;
+      player.injuryRounds ??= 0;
+      player.suspensionMatches ??= 0;
+    }
+  }
   if (!state.standingsByDivision[state.save.divisionId]) {
     state.standingsByDivision[state.save.divisionId] = standingsForDivision(division);
   }
@@ -338,6 +387,255 @@ function commercialSnapshot(state: ManagerCareerState) {
     sponsorIncome: sponsorIncome(state),
     projectedHomeIncome: projectedHomeIncome(state),
   };
+}
+
+const TRAINING_PLANS: ManagerTrainingPlan[] = [
+  {
+    id: "balanced",
+    name: "Equilibrado",
+    description: "Mantém condição, ritmo e evolução em níveis seguros.",
+    fitnessEffect: 3,
+    sharpnessEffect: 3,
+    developmentEffect: 4,
+    injuryRiskLabel: "Normal",
+  },
+  {
+    id: "recovery",
+    name: "Recuperação",
+    description: "Reduz carga, recupera titulares e diminui o risco médico.",
+    fitnessEffect: 9,
+    sharpnessEffect: -2,
+    developmentEffect: 1,
+    injuryRiskLabel: "Muito baixo",
+  },
+  {
+    id: "physical",
+    name: "Físico",
+    description: "Melhora resistência e desenvolvimento, com carga mais agressiva.",
+    fitnessEffect: 5,
+    sharpnessEffect: 1,
+    developmentEffect: 6,
+    injuryRiskLabel: "Alto",
+  },
+  {
+    id: "tactical",
+    name: "Tático",
+    description: "Aumenta ritmo e preparação imediata para o próximo adversário.",
+    fitnessEffect: 1,
+    sharpnessEffect: 8,
+    developmentEffect: 2,
+    injuryRiskLabel: "Baixo",
+  },
+  {
+    id: "development",
+    name: "Desenvolvimento",
+    description: "Prioriza jovens e potencial, sacrificando parte da recuperação.",
+    fitnessEffect: 1,
+    sharpnessEffect: 3,
+    developmentEffect: 10,
+    injuryRiskLabel: "Normal",
+  },
+];
+
+function leaguePositionTarget(state: ManagerCareerState): number {
+  const size = currentDivision(state).teams.length;
+  if (state.save.prestige >= 82) return 1;
+  if (state.save.prestige >= 70) return Math.min(4, size);
+  if (state.save.prestige >= 58) return Math.min(8, size);
+  return Math.max(1, size - Math.max(2, currentDivision(state).relegationSlots));
+}
+
+function managerBoardObjectives(state: ManagerCareerState): ManagerBoardObjective[] {
+  const position = Math.max(1, currentStandings(state).findIndex((row) => row.teamId === state.save.teamId) + 1);
+  const seasonFinished = state.phase === "season-end";
+  const financeTarget = Math.round(state.seasonStartMoney * 0.82);
+  return [
+    {
+      id: "league",
+      title: `Terminar entre os ${state.leaguePositionTarget}`,
+      description: "A campanha na liga é a principal medida da diretoria.",
+      progressLabel: `${position}º lugar agora`,
+      completed: position <= state.leaguePositionTarget,
+      failed: seasonFinished && position > state.leaguePositionTarget,
+    },
+    {
+      id: "development",
+      title: "Evoluir um atleta",
+      description: "Transforme treino e estrutura em pelo menos +1 de overall.",
+      progressLabel: `${state.playersDevelopedThisSeason}/1 evolução`,
+      completed: state.playersDevelopedThisSeason >= 1,
+      failed: seasonFinished && state.playersDevelopedThisSeason < 1,
+    },
+    {
+      id: "finance",
+      title: "Preservar o caixa",
+      description: "Feche a temporada com pelo menos 82% do orçamento inicial.",
+      progressLabel: `${moneyText(state.save.money)} de ${moneyText(financeTarget)}`,
+      completed: state.save.money >= financeTarget,
+      failed: seasonFinished && state.save.money < financeTarget,
+    },
+  ];
+}
+
+export function managerFacilityUpgradeOptions(state: ManagerCareerState): ManagerFacilityUpgradeOption[] {
+  const options: Array<{ kind: ManagerFacilityKind; title: string; description: string; benefit: string; level: number }> = [
+    {
+      kind: "training",
+      title: "Centro de treinamento",
+      description: "Campos, análise de desempenho e preparação individual.",
+      benefit: "+20% de evolução e mais ritmo por nível",
+      level: state.save.trainingCenterLevel,
+    },
+    {
+      kind: "medical",
+      title: "Departamento médico",
+      description: "Prevenção, diagnóstico e recuperação de atletas.",
+      benefit: "Menos lesões e recuperação mais rápida",
+      level: state.save.medicalDepartmentLevel,
+    },
+    {
+      kind: "academy",
+      title: "Divisão de base",
+      description: "Captação regional e formação de novos talentos.",
+      benefit: "Regens melhores a cada nova temporada",
+      level: state.save.youthAcademyLevel,
+    },
+  ];
+  return options.map((option) => ({
+    id: option.kind,
+    title: option.title,
+    description: option.description,
+    currentLevel: option.level,
+    nextLevel: Math.min(5, option.level + 1),
+    cost: option.level >= 5 ? 0 : roundMoney((2_400_000 + option.level * 2_100_000) * teamScale(state.save.teamId, currentDivision(state))),
+    benefit: option.benefit,
+    maxed: option.level >= 5,
+  }));
+}
+
+export function managerStadiumUpgradeOptions(state: ManagerCareerState): ManagerStadiumUpgradeOption[] {
+  const capacity = state.save.stadiumCapacity;
+  const scale = teamScale(state.save.teamId, currentDivision(state));
+  const capacityCost = 650 + capacity / 115;
+  return [
+    {
+      id: "arquibancada-modular",
+      kind: "capacity",
+      title: "Arquibancada modular",
+      description: "Aumenta a lotação com obra rápida e pouco impacto comercial.",
+      cost: roundMoney(2_150_000 + 2500 * capacityCost * scale),
+      capacityGain: 2500,
+      ticketPriceGain: 0,
+      supporterBoost: 650,
+      sponsorIncomeBoostPct: 0,
+      prestigeGain: 1,
+      boardConfidenceGain: 0,
+    },
+    {
+      id: "anel-superior",
+      kind: "capacity",
+      title: "Anel superior",
+      description: "Obra grande para clubes que querem crescer bilheteria no longo prazo.",
+      cost: roundMoney(5_900_000 + 7000 * capacityCost * scale),
+      capacityGain: 7000,
+      ticketPriceGain: 1,
+      supporterBoost: 1400,
+      sponsorIncomeBoostPct: 1,
+      prestigeGain: 2,
+      boardConfidenceGain: -1,
+    },
+    {
+      id: "hospitalidade-vip",
+      kind: "premium",
+      title: "Setor VIP e camarotes",
+      description: "Menos lugares novos, mas melhora preço médio, prestígio e patrocínio.",
+      cost: roundMoney(4_350_000 + capacity * 92 * scale),
+      capacityGain: 900,
+      ticketPriceGain: 5,
+      supporterBoost: 450,
+      sponsorIncomeBoostPct: 5,
+      prestigeGain: 2,
+      boardConfidenceGain: 1,
+    },
+    {
+      id: "experiencia-torcedor",
+      kind: "comfort",
+      title: "Experiência do torcedor",
+      description: "Acessos, bares e tecnologia para converter público em sócio torcedor.",
+      cost: roundMoney(3_150_000 + capacity * 68 * scale),
+      capacityGain: 500,
+      ticketPriceGain: 2,
+      supporterBoost: 2200,
+      sponsorIncomeBoostPct: 2,
+      prestigeGain: 1,
+      boardConfidenceGain: 2,
+    },
+    {
+      id: "midia-arena",
+      kind: "commercial",
+      title: "Mídia da arena",
+      description: "Painéis, naming assets e ativações que valorizam contratos comerciais.",
+      cost: roundMoney(2_850_000 + capacity * 54 * scale),
+      capacityGain: 0,
+      ticketPriceGain: 1,
+      supporterBoost: 300,
+      sponsorIncomeBoostPct: 8,
+      prestigeGain: 1,
+      boardConfidenceGain: 1,
+    },
+  ];
+}
+
+function sponsorOffersForSeason(state: ManagerCareerState): ManagerSponsorOffer[] {
+  const rng = rngFor(`sponsor-offers:${state.save.teamId}:${state.save.season}:${state.save.prestige}:${state.save.boardConfidence}`);
+  const currentBase = Math.max(state.save.sponsorWeeklyIncome, 320000);
+  const appeal = 0.92 + state.save.prestige / 210 + state.save.supporterMembers / 900000;
+  const nextBrand = (slot: number) => SPONSOR_OFFER_BRANDS[
+    (Math.floor(rng() * SPONSOR_OFFER_BRANDS.length) + slot * 3 + state.save.season) % SPONSOR_OFFER_BRANDS.length
+  ];
+  const tierBase = clamp(1 + state.save.prestige / 21, 1, 5);
+  return [
+    {
+      id: `seguro-${state.save.season + 1}`,
+      name: nextBrand(0),
+      tier: clamp(tierBase, 1, 5),
+      weeklyIncome: roundMoney(currentBase * (0.9 + rng() * 0.12) * appeal),
+      signingBonus: roundMoney(currentBase * (1.6 + rng())),
+      durationSeasons: 2,
+      description: "Contrato estável, boa luva inicial e baixa pressão por resultado.",
+      riskLabel: "Seguro",
+    },
+    {
+      id: `crescimento-${state.save.season + 1}`,
+      name: nextBrand(1),
+      tier: clamp(tierBase + 1, 1, 5),
+      weeklyIncome: roundMoney(currentBase * (1.08 + rng() * 0.18) * appeal),
+      signingBonus: roundMoney(currentBase * (0.75 + rng() * 0.5)),
+      durationSeasons: 1,
+      description: "Paga melhor por rodada e acompanha clubes em alta, mas oferece luva menor.",
+      riskLabel: "Crescimento",
+    },
+    {
+      id: `impacto-${state.save.season + 1}`,
+      name: nextBrand(2),
+      tier: clamp(tierBase + 1, 1, 5),
+      weeklyIncome: roundMoney(currentBase * (0.78 + rng() * 0.14) * appeal),
+      signingBonus: roundMoney(currentBase * (3.2 + rng() * 1.4)),
+      durationSeasons: 1,
+      description: "Muito dinheiro imediato para reforços, com receita recorrente menor.",
+      riskLabel: "Impacto",
+    },
+  ];
+}
+
+function generateSponsorOffers(state: ManagerCareerState): void {
+  state.sponsorOffers = sponsorOffersForSeason(state);
+  state.sponsorOfferSeason = state.save.season + 1;
+  addInbox(state, {
+    type: "sponsor",
+    title: "Novas propostas de patrocínio",
+    body: `A área comercial recebeu ${state.sponsorOffers.length} propostas para a próxima temporada. Compare luva, receita por rodada e perfil de risco antes de assinar.`,
+  });
 }
 
 function applyOperatingRevenue(state: ManagerCareerState, fixture: LeagueFixture): number {
@@ -490,6 +788,41 @@ function tacticFor(teamId: string): { formationId: string; mentality: Mentality;
   };
 }
 
+function playerAvailable(player: ManagerPlayer): boolean {
+  return player.injuryRounds <= 0 && player.suspensionMatches <= 0;
+}
+
+function conditionedPlayer(player: ManagerPlayer): ManagerPlayer {
+  const fitnessMod = player.fitness >= 88 ? 1 : player.fitness >= 72 ? 0 : -Math.ceil((72 - player.fitness) / 7);
+  const sharpnessMod = player.sharpness >= 82 ? 1 : player.sharpness < 45 ? -2 : 0;
+  const moraleMod = player.morale >= 82 ? 1 : player.morale < 42 ? -1 : 0;
+  return { ...player, rating: clamp(player.rating + fitnessMod + sharpnessMod + moraleMod, 40, 99) };
+}
+
+function ensureAvailableUserLineup(state: ManagerCareerState): void {
+  const squad = state.squads[state.save.teamId] ?? [];
+  const formation = getFormation(state.save.formationId) ?? FORMATIONS[0];
+  const slotIds = new Set(formation.slots.map((slot) => slot.id));
+  const occupied = new Set<string>();
+  for (const player of squad) {
+    if (!player.isStarter || !player.lineupSlotId || !slotIds.has(player.lineupSlotId) || !playerAvailable(player) || occupied.has(player.lineupSlotId)) {
+      player.isStarter = false;
+      player.lineupSlotId = null;
+      continue;
+    }
+    occupied.add(player.lineupSlotId);
+  }
+  for (const slot of formation.slots.filter((candidate) => !occupied.has(candidate.id))) {
+    const replacement = squad
+      .filter((player) => !player.isStarter && playerAvailable(player))
+      .sort((a, b) => effectiveRating(b, slot.pos) - effectiveRating(a, slot.pos) || b.fitness - a.fitness)[0];
+    if (!replacement) break;
+    replacement.isStarter = true;
+    replacement.lineupSlotId = slot.id;
+    occupied.add(slot.id);
+  }
+}
+
 function autoTeam(players: ManagerPlayer[], teamId: string, teamName: string, formationId: string): Team {
   const sorted = [...players].sort((a, b) => b.rating - a.rating);
   const slots = getFormation(formationId)?.slots ?? FORMATIONS[0].slots;
@@ -521,7 +854,7 @@ function simInput(state: ManagerCareerState, teamId: string): SimInput {
   const squad = state.squads[teamId] ?? [];
   if (teamId === state.save.teamId) {
     const formation = getFormation(state.save.formationId) ?? FORMATIONS[0];
-    const picks = managerPicks(formation, squad);
+    const picks = managerPicks(formation, squad.map(conditionedPlayer));
     if (picks.length === 11) {
       return {
         id: teamId,
@@ -761,8 +1094,15 @@ export function createManagerCareer(teamId: string, userId = "local"): ManagerCa
     continentalFixtures: [],
     nationalCupChampionId: null,
     continentalQualifiedIds: [],
+    sponsorOffers: [],
+    sponsorOfferSeason: 1,
+    trainingFocus: "balanced",
+    playersDevelopedThisSeason: 0,
+    seasonStartMoney: START_MONEY,
+    leaguePositionTarget: 1,
     lastSummary: "Pré-temporada aberta. Use os amistosos para testar o elenco sem perder pontos.",
   };
+  state.leaguePositionTarget = leaguePositionTarget(state);
   state.preseasonFixtures = preseasonFixtures(state);
   state.nationalCupFixtures = nationalCupFixtures(state);
   addInbox(state, {
@@ -864,6 +1204,12 @@ export function managerDashboard(state: ManagerCareerState): ManagerDashboard {
     inbox: state.inbox ?? [],
     transferWindowOpen: transferWindowOpen(state),
     commercial: commercialSnapshot(state),
+    stadiumUpgradeOptions: managerStadiumUpgradeOptions(state),
+    sponsorOffers: state.sponsorOffers ?? [],
+    trainingFocus: state.trainingFocus,
+    trainingPlans: TRAINING_PLANS,
+    boardObjectives: managerBoardObjectives(state),
+    facilityUpgradeOptions: managerFacilityUpgradeOptions(state),
   };
 }
 
@@ -906,6 +1252,70 @@ function applyUserResult(state: ManagerCareerState, gf: number, ga: number): voi
     state.save.losses += gf < ga ? 1 : 0;
     state.save.points += gf > ga ? 3 : gf === ga ? 1 : 0;
   }
+}
+
+function applySquadRoundEffects(
+  state: ManagerCareerState,
+  gf: number,
+  ga: number,
+  timeline: MatchEvent[],
+  userSide: "home" | "away",
+): void {
+  const squad = state.squads[state.save.teamId] ?? [];
+  const plan = TRAINING_PLANS.find((candidate) => candidate.id === state.trainingFocus) ?? TRAINING_PLANS[0];
+  const developmentScale = 0.8 + state.save.trainingCenterLevel * 0.2;
+  let developed = 0;
+
+  for (const player of squad) {
+    player.injuryRounds = Math.max(0, player.injuryRounds - 1);
+    player.suspensionMatches = Math.max(0, player.suspensionMatches - 1);
+    const played = player.isStarter;
+    const matchLoad = played ? (state.phase === "preseason" ? 7 : 12) : -4;
+    player.fitness = clamp(player.fitness + plan.fitnessEffect - matchLoad + state.save.medicalDepartmentLevel, 35, 100);
+    player.sharpness = clamp(player.sharpness + plan.sharpnessEffect + (played ? 4 : -2), 25, 100);
+    player.morale = clamp(player.morale + (gf > ga ? (played ? 4 : 2) : gf === ga ? 0 : played ? -3 : -1), 20, 100);
+
+    if (player.potentialRating > player.rating && player.injuryRounds === 0) {
+      const ageScale = player.age <= 21 ? 1.35 : player.age <= 24 ? 1 : 0.55;
+      player.developmentProgress += plan.developmentEffect * developmentScale * ageScale;
+      if (player.developmentProgress >= 100) {
+        player.developmentProgress -= 100;
+        player.rating++;
+        player.value = valueForRating(player.rating);
+        developed++;
+      }
+    }
+  }
+
+  if (developed) {
+    state.playersDevelopedThisSeason += developed;
+    addInbox(state, {
+      type: "board",
+      title: developed === 1 ? "Evolução no treinamento" : "Evoluções no treinamento",
+      body: `${developed} atleta(s) ganharam +1 de overall após o trabalho do centro de treinamento.`,
+    });
+  }
+
+  for (const event of timeline) {
+    if (event.type !== "card" || event.card !== "red" || event.side !== userSide || !event.player) continue;
+    const suspended = squad.find((player) => player.name === event.player);
+    if (suspended) suspended.suspensionMatches = Math.max(1, suspended.suspensionMatches);
+  }
+
+  const rng = rngFor(`medical:${state.save.id}:${state.save.season}:${state.phase}:${state.phaseRound}`);
+  const loadRisk = state.trainingFocus === "physical" ? 1.55 : state.trainingFocus === "recovery" ? 0.35 : 1;
+  const medicalProtection = 1 - (state.save.medicalDepartmentLevel - 1) * 0.11;
+  const candidates = squad.filter((player) => player.isStarter && player.injuryRounds === 0);
+  if (candidates.length && rng() < 0.065 * loadRisk * medicalProtection) {
+    const injured = candidates[Math.floor(rng() * candidates.length)];
+    injured.injuryRounds = Math.max(1, Math.ceil((1 + rng() * 3) - state.save.medicalDepartmentLevel * 0.35));
+    addInbox(state, {
+      type: "board",
+      title: `Departamento médico: ${injured.name}`,
+      body: `${injured.name} sofreu uma lesão e ficará indisponível por ${injured.injuryRounds} partida(s). Ajuste a escalação e considere reduzir a carga de treino.`,
+    });
+  }
+  ensureAvailableUserLineup(state);
 }
 
 function simulateFixture(state: ManagerCareerState, fixture: LeagueFixture, settleDraw = false) {
@@ -971,6 +1381,13 @@ function applyCompletedUserFixture(
   const revenue = applyOperatingRevenue(state, fixture);
   applyUserResult(state, gf, ga);
   updateCommercialMood(state, gf, ga, userWonKnockout);
+  applySquadRoundEffects(
+    state,
+    gf,
+    ga,
+    result.timeline,
+    fixture.homeTeamId === state.save.teamId ? "home" : "away",
+  );
   if (userWonKnockout && state.phase === "national-cup") {
     state.nationalCupChampionId = state.save.teamId;
     awardPrize(state, "Premiação da Copa Nacional", Math.round(8_000_000 * teamScale(state.save.teamId, currentDivision(state))));
@@ -1057,8 +1474,11 @@ function advancePhase(state: ManagerCareerState): void {
         [state.save.divisionId]: currentStandings(state).map((row) => row.teamId),
       });
     }
+    const completedObjectives = managerBoardObjectives(state).filter((objective) => objective.completed).length;
+    state.save.boardConfidence = clamp(state.save.boardConfidence + (completedObjectives - 1) * 4, 5, 99);
     state.phase = "season-end";
     state.lastSummary = "Temporada encerrada. A diretoria já prepara o calendário do próximo ano.";
+    generateSponsorOffers(state);
     if (state.save.boardConfidence >= 58) {
       maybeGenerateTransferEmails(state);
     }
@@ -1067,13 +1487,14 @@ function advancePhase(state: ManagerCareerState): void {
 
 export function managerClientBench(state: ManagerCareerState): Array<Player & { fromTeamId: string }> {
   return (state.squads[state.save.teamId] ?? [])
-    .filter((player) => !player.isStarter)
+    .filter((player) => !player.isStarter && playerAvailable(player))
     .sort((a, b) => b.rating - a.rating)
     .slice(0, 12)
-    .map((player) => ({ ...player, fromTeamId: player.teamId }));
+    .map((player) => ({ ...conditionedPlayer(player), fromTeamId: player.teamId }));
 }
 
 export function startManagerClientRound(state: ManagerCareerState): ManagerRoundStart {
+  ensureAvailableUserLineup(state);
   const phaseFixtures = fixturesForCurrentPhase(state);
   const fixtures = phaseFixtures.filter((fixture) => fixture.round === state.phaseRound);
   if (!fixtures.length) {
@@ -1230,6 +1651,7 @@ export function completeManagerClientSecondHalf(
 }
 
 export function playManagerClientRound(state: ManagerCareerState): { state: ManagerCareerState; result: ManagerRoundResult } {
+  ensureAvailableUserLineup(state);
   const phaseFixtures = fixturesForCurrentPhase(state);
   const fixtures = phaseFixtures.filter((fixture) => fixture.round === state.phaseRound);
   if (!fixtures.length) {
@@ -1281,6 +1703,13 @@ export function playManagerClientRound(state: ManagerCareerState): { state: Mana
       const revenue = applyOperatingRevenue(state, fixture);
       applyUserResult(state, gf, ga);
       updateCommercialMood(state, gf, ga, userWonKnockout);
+      applySquadRoundEffects(
+        state,
+        gf,
+        ga,
+        result.timeline,
+        fixture.homeTeamId === state.save.teamId ? "home" : "away",
+      );
       if (settle && userWonKnockout && state.phase === "national-cup") {
         state.nationalCupChampionId = state.save.teamId;
         awardPrize(state, "Premiação da Copa Nacional", Math.round(8_000_000 * teamScale(state.save.teamId, currentDivision(state))));
@@ -1327,13 +1756,16 @@ export function updateManagerClientLineup(
 ): ManagerCareerState {
   const ids = new Set(payload.starters.map((starter) => starter.playerId));
   if (ids.size !== 11) throw new Error("Escolha exatamente 11 titulares.");
+  const squad = state.squads[state.save.teamId] ?? [];
+  const unavailable = squad.find((player) => ids.has(player.id) && !playerAvailable(player));
+  if (unavailable) throw new Error(`${unavailable.name} está indisponível por lesão ou suspensão.`);
   const slots = new Set(payload.starters.map((starter) => starter.slotId));
   if (slots.size !== 11) throw new Error("Cada titular precisa ocupar uma posição diferente.");
   state.save.formationId = payload.formationId;
   state.save.mentality = payload.mentality;
   state.save.attackFocus = payload.attackFocus;
   const slotByPlayer = new Map(payload.starters.map((starter) => [starter.playerId, starter.slotId]));
-  state.squads[state.save.teamId] = (state.squads[state.save.teamId] ?? []).map((player) => ({
+  state.squads[state.save.teamId] = squad.map((player) => ({
     ...player,
     isStarter: ids.has(player.id),
     lineupSlotId: slotByPlayer.get(player.id) ?? null,
@@ -1413,12 +1845,146 @@ export function sellManagerClientPlayer(state: ManagerCareerState, playerId: str
   return persistManagerCareer(state);
 }
 
-export function upgradeManagerClientStadium(state: ManagerCareerState): ManagerCareerState {
-  const seats = 2500;
-  const cost = Math.round(seats * (780 + state.save.stadiumCapacity / 90));
-  if (state.save.money < cost) throw new Error("Saldo insuficiente para ampliar o estádio.");
-  state.save.money -= cost;
-  state.save.stadiumCapacity += seats;
+export function upgradeManagerClientStadium(
+  state: ManagerCareerState,
+  optionId = "arquibancada-modular",
+): ManagerCareerState {
+  const option = managerStadiumUpgradeOptions(state).find((candidate) => candidate.id === optionId);
+  if (!option) throw new Error("Opção de estádio não encontrada.");
+  if (state.save.money < option.cost) throw new Error("Saldo insuficiente para essa obra.");
+  state.save.money -= option.cost;
+  state.save.stadiumCapacity += option.capacityGain;
+  state.save.ticketPrice = clamp(state.save.ticketPrice + option.ticketPriceGain, 20, 180);
+  state.save.supporterMembers = clamp(
+    state.save.supporterMembers + option.supporterBoost,
+    1000,
+    250000,
+  );
+  state.save.sponsorWeeklyIncome = roundMoney(
+    state.save.sponsorWeeklyIncome * (1 + option.sponsorIncomeBoostPct / 100),
+  );
+  state.save.prestige = clamp(state.save.prestige + option.prestigeGain, 20, 99);
+  state.save.boardConfidence = clamp(state.save.boardConfidence + option.boardConfidenceGain, 5, 99);
+  addInbox(state, {
+    type: "finance",
+    title: `Obra aprovada: ${option.title}`,
+    body: `${option.title} custou ${moneyText(option.cost)}. Efeitos: ${option.capacityGain ? `+${option.capacityGain.toLocaleString("pt-BR")} lugares, ` : ""}${option.ticketPriceGain ? `ingresso +${moneyText(option.ticketPriceGain)}, ` : ""}${option.supporterBoost ? `+${option.supporterBoost.toLocaleString("pt-BR")} sócios, ` : ""}patrocínio ${option.sponsorIncomeBoostPct ? `+${option.sponsorIncomeBoostPct}%` : "inalterado"}.`,
+  });
+  return persistManagerCareer(state);
+}
+
+export function chooseManagerSponsor(state: ManagerCareerState, offerId: string): ManagerCareerState {
+  const offer = (state.sponsorOffers ?? []).find((candidate) => candidate.id === offerId);
+  if (!offer) throw new Error("Proposta de patrocínio não encontrada.");
+  state.save.sponsorName = offer.name;
+  state.save.sponsorTier = offer.tier;
+  state.save.sponsorWeeklyIncome = offer.weeklyIncome;
+  state.save.money += offer.signingBonus;
+  state.sponsorOffers = [];
+  state.sponsorOfferSeason = state.save.season;
+  addInbox(state, {
+    type: "sponsor",
+    title: `Patrocínio assinado: ${offer.name}`,
+    body: `${offer.name} assinou por ${offer.durationSeasons} temporada(s). Luva: ${moneyText(offer.signingBonus)}. Receita base por rodada: ${moneyText(offer.weeklyIncome)}.`,
+  });
+  return persistManagerCareer(state);
+}
+
+export function setManagerTrainingFocus(state: ManagerCareerState, focus: ManagerTrainingFocus): ManagerCareerState {
+  if (!TRAINING_PLANS.some((plan) => plan.id === focus)) throw new Error("Plano de treino inválido.");
+  state.trainingFocus = focus;
+  const plan = TRAINING_PLANS.find((candidate) => candidate.id === focus)!;
+  addInbox(state, {
+    type: "board",
+    title: `Treino definido: ${plan.name}`,
+    body: `${plan.description} A comissão aplicará esse plano até que você escolha outro.`,
+  });
+  return persistManagerCareer(state);
+}
+
+export function upgradeManagerFacility(state: ManagerCareerState, kind: ManagerFacilityKind): ManagerCareerState {
+  const option = managerFacilityUpgradeOptions(state).find((candidate) => candidate.id === kind);
+  if (!option) throw new Error("Estrutura não encontrada.");
+  if (option.maxed) throw new Error("Essa estrutura já está no nível máximo.");
+  if (state.save.money < option.cost) throw new Error("Saldo insuficiente para essa melhoria.");
+  state.save.money -= option.cost;
+  if (kind === "training") state.save.trainingCenterLevel++;
+  if (kind === "medical") state.save.medicalDepartmentLevel++;
+  if (kind === "academy") state.save.youthAcademyLevel++;
+  addInbox(state, {
+    type: "finance",
+    title: `${option.title} no nível ${option.nextLevel}`,
+    body: `A diretoria investiu ${moneyText(option.cost)}. ${option.benefit}.`,
+  });
+  return persistManagerCareer(state);
+}
+
+function createAcademyProspects(state: ManagerCareerState): ManagerPlayer[] {
+  const rng = rngFor(`academy:${state.save.id}:${state.save.season + 1}:${state.save.youthAcademyLevel}`);
+  const positions: Player["pos"][] = ["GK", "CB", "LB", "RB", "CDM", "CM", "CAM", "RW", "LW", "ST"];
+  const firstNames = ["Caio", "Davi", "Enzo", "Gabriel", "João", "Lucas", "Matheus", "Rafael"];
+  const lastNames = ["Alves", "Barbosa", "Costa", "Freitas", "Lima", "Moura", "Silva", "Souza"];
+  return [0, 1].map((index) => {
+    const rating = clamp(59 + state.save.youthAcademyLevel * 2 + Math.floor(rng() * 5), 60, 78);
+    const potential = clamp(rating + 5 + state.save.youthAcademyLevel * 2 + Math.floor(rng() * 4), rating + 2, 92);
+    const name = `${firstNames[Math.floor(rng() * firstNames.length)]} ${lastNames[Math.floor(rng() * lastNames.length)]}`;
+    return {
+      ...managerPlayer({ name, pos: positions[Math.floor(rng() * positions.length)], rating }, state.save.teamId, state.save.teamName, 100 + index, null),
+      id: `${state.save.teamId}:academy:${state.save.season + 1}:${index}:${name}`,
+      age: 17,
+      potentialRating: potential,
+      morale: 76,
+      fitness: 95,
+      sharpness: 45,
+      isListed: false,
+    };
+  });
+}
+
+export function advanceManagerSeason(state: ManagerCareerState): ManagerCareerState {
+  if (state.phase !== "season-end") throw new Error("A temporada atual ainda não terminou.");
+  const prospects = createAcademyProspects(state);
+  const squad = state.squads[state.save.teamId] ?? [];
+  for (const player of squad) {
+    player.age++;
+    player.fitness = Math.max(player.fitness, 88);
+    player.sharpness = clamp(player.sharpness - 8, 35, 85);
+    player.injuryRounds = 0;
+    player.suspensionMatches = 0;
+    if (player.age >= 32 && player.rating > 60 && player.rating >= player.potentialRating && hashStr(`${player.id}:${state.save.season}`) % 3 === 0) {
+      player.rating--;
+      player.value = valueForRating(player.rating);
+    }
+  }
+  state.squads[state.save.teamId] = [...squad, ...prospects];
+  state.save.season++;
+  state.save.round = 1;
+  state.save.points = 0;
+  state.save.wins = 0;
+  state.save.draws = 0;
+  state.save.losses = 0;
+  state.save.goalsFor = 0;
+  state.save.goalsAgainst = 0;
+  state.phase = "preseason";
+  state.phaseRound = 1;
+  state.playersDevelopedThisSeason = 0;
+  state.seasonStartMoney = state.save.money;
+  state.leaguePositionTarget = leaguePositionTarget(state);
+  state.standingsByDivision[state.save.divisionId] = standingsForDivision(currentDivision(state));
+  state.leagueFixtures = fixturesForDivision(currentDivision(state));
+  state.preseasonFixtures = preseasonFixtures(state);
+  state.nationalCupFixtures = nationalCupFixtures(state);
+  state.continentalFixtures = [];
+  state.continentalQualifiedIds = [];
+  state.nationalCupChampionId = null;
+  state.lastSummary = `Temporada ${state.save.season} aberta. Dois atletas chegaram da divisão de base.`;
+  addInbox(state, {
+    type: "board",
+    title: "Nova temporada e captação da base",
+    body: `${prospects.map((player) => `${player.name} (${player.pos}, ${player.rating}/${player.potentialRating})`).join(" e ")} foram promovidos. A meta da liga é terminar entre os ${state.leaguePositionTarget}.`,
+  });
+  ensureAvailableUserLineup(state);
+  maybeGenerateTransferEmails(state);
   return persistManagerCareer(state);
 }
 
@@ -1496,6 +2062,8 @@ export function acceptManagerInboxOffer(state: ManagerCareerState, offerId: stri
     state.nationalCupFixtures = nationalCupFixtures(state);
     state.continentalFixtures = [];
     state.continentalQualifiedIds = [];
+    state.sponsorOffers = [];
+    state.sponsorOfferSeason = state.save.season;
     offer.handled = true;
     offer.unread = false;
     addInbox(state, {

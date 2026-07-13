@@ -3,22 +3,30 @@ import { motion } from "framer-motion";
 import { FontAwesomeIcon } from "@fortawesome/react-fontawesome";
 import {
   faBolt,
+  faBriefcase,
+  faChevronRight,
   faGear,
+  faLock,
   faMedal,
   faPenToSquare,
   faRankingStar,
   faRightFromBracket,
   faRightToBracket,
+  faRobot,
   faTrophy,
   type IconDefinition,
 } from "@fortawesome/free-solid-svg-icons";
 import type { GameMode } from "../../../shared/types.js";
-import type {
-  AccountUser,
-  LeaderboardEntry,
-  UserProgress,
+import {
+  api,
+  type AccountUser,
+  type LeaderboardEntry,
+  type PublicProfile,
+  type UserProgress,
 } from "../api.js";
 import { DEV_PREVIEWS } from "../devPreviews.js";
+import { HomeSidebar } from "./HomeSidebar.js";
+import { LeaderboardProfileModal } from "./LeaderboardProfileModal.js";
 
 interface HomeProps {
   account: AccountUser | null;
@@ -33,6 +41,7 @@ interface HomeProps {
   onOpenProfile: () => void;
   onOpenAdmin: () => void;
   onOpenAchievements: () => void;
+  onOpenRanking: () => void;
   onLogout: () => void;
   onWorldCup: () => void;
   onOpenUpdates: () => void;
@@ -40,7 +49,6 @@ interface HomeProps {
   onOpenFeedback: () => void;
   onOpenLegal: (kind: "terms" | "privacy") => void;
   onCareer: () => void;
-  onSoon: (mode: "carreira" | "liga") => void;
 }
 
 const cardMotion = {
@@ -208,7 +216,7 @@ function AccountProfile({
   return (
     <motion.section variants={cardMotion} className={`${panel} p-3 sm:p-4`}>
       {account ? (
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex h-full flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
           <div className="flex min-w-0 items-center gap-3">
             <div className="home-avatar-frame relative grid h-16 w-16 shrink-0 place-items-center rounded-lg border border-pebol-accent/40 bg-gradient-to-br from-pebol-accent/25 via-pebol-blue/15 to-black shadow-glow">
               {account.avatarUrl ? (
@@ -299,7 +307,7 @@ function AccountProfile({
           </div>
         </div>
       ) : (
-        <div className="flex flex-col gap-4 xl:flex-row xl:items-center xl:justify-between">
+        <div className="flex h-full flex-col justify-center gap-4 xl:flex-row xl:items-center xl:justify-between">
           <ul className="grid gap-2.5 sm:grid-cols-3 sm:gap-4 xl:gap-6">
             <ValueProp icon={faBolt} iconClass="text-pebol-accent" text="Salve seu progresso e XP" />
             <ValueProp icon={faMedal} iconClass="text-pebol-gold" text="Desbloqueie conquistas" />
@@ -330,6 +338,7 @@ function RoomPanel({
   createNameRef,
   submitCreate,
   submitJoin,
+  onSolo,
 }: {
   selectedPool: RoomPool;
   setSelectedPool: (pool: RoomPool) => void;
@@ -343,9 +352,10 @@ function RoomPanel({
   createNameRef: RefObject<HTMLInputElement | null>;
   submitCreate: (event: FormEvent<HTMLFormElement>) => void;
   submitJoin: (event: FormEvent<HTMLFormElement>) => void;
+  onSolo: () => void;
 }) {
   return (
-    <motion.section variants={cardMotion} className={`${panel} p-4`}>
+    <motion.section variants={cardMotion} className={`${panel} h-full p-4`}>
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_85%_12%,rgba(0,255,135,.14),transparent_34%),radial-gradient(circle_at_20%_90%,rgba(255,206,84,.12),transparent_36%)]" />
       <div className="relative">
         <div className={`home-tab-control ${roomTab === "join" ? "is-join" : "is-create"}`}>
@@ -357,7 +367,7 @@ function RoomPanel({
               className={`home-tab-label ${roomTab === tab ? "active" : ""}`}
               onClick={() => setRoomTab(tab)}
             >
-              {tab === "create" ? "Criar sala" : "Entrar"}
+              {tab === "create" ? "Nova partida" : "Entrar em sala"}
             </button>
           ))}
         </div>
@@ -432,9 +442,17 @@ function RoomPanel({
                 );
               })}
             </div>
-            <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.985 }} id="c-create" className={primaryAction}>
-              Criar sala (online)
-            </motion.button>
+            <div className="grid gap-2 sm:grid-cols-2">
+              <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.985 }} type="button" id="c-solo" className={primaryAction} onClick={onSolo}>
+                <span className="inline-flex items-center justify-center gap-2">
+                  <FontAwesomeIcon icon={faRobot} />
+                  Jogar contra IA
+                </span>
+              </motion.button>
+              <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.985 }} id="c-create" className={`${secondaryAction} border border-white/10`}>
+                Criar sala online
+              </motion.button>
+            </div>
           </form>
 
           <form className={`col-start-1 row-start-1 ${roomTab === "join" ? "" : "pointer-events-none invisible opacity-0"}`} onSubmit={submitJoin}>
@@ -452,59 +470,85 @@ function RoomPanel({
   );
 }
 
-function SecondaryModes({
-  solo,
+function CareerFeature({
+  locked,
   onCareer,
-  onSoon,
+  onLogin,
 }: {
-  solo: () => void;
-  onCareer: HomeProps["onCareer"];
-  onSoon: HomeProps["onSoon"];
+  locked: boolean;
+  onCareer: () => void;
+  onLogin: () => void;
 }) {
-  const modes = [
-    { id: "c-solo", icon: "AI", title: "Jogar sozinho", sub: "Vs Máquina", onClick: solo },
-    { id: "c-manager", icon: "CR", title: "Modo carreira", sub: "Manager", badge: "Beta", onClick: onCareer },
-    { id: undefined, icon: "LG", title: "Modo liga", sub: "Em breve", onClick: () => onSoon("liga") },
-  ];
   return (
-    <motion.section variants={cardMotion} className={`${panel} p-3`}>
-      <div className="grid gap-2">
-        {modes.map((mode) => (
-          <motion.button
-            key={mode.title}
-            id={mode.id}
-            whileHover={{ y: -3, x: 2 }}
-            whileTap={{ scale: 0.985 }}
-            type="button"
-            className="group flex items-center gap-2.5 rounded-lg border border-white/10 bg-white/[0.045] p-2.5 text-left transition-all duration-300 ease-out hover:border-pebol-accent/45 hover:bg-pebol-accent/10 hover:shadow-glow"
-            onClick={mode.onClick}
-          >
-            <span className="grid h-9 w-9 shrink-0 place-items-center rounded-lg border border-white/10 bg-black/35 font-display text-xs font-bold text-pebol-accent transition-all duration-300 group-hover:border-pebol-accent/60 group-hover:bg-pebol-accent/15">
-              {mode.icon}
+    <motion.aside
+      variants={cardMotion}
+      whileHover={{ y: -2 }}
+      className={`${panel} min-h-[14rem] border-pebol-accent/25 p-4 ${locked ? "border-white/10 saturate-[.72]" : ""}`}
+    >
+      <div className="absolute inset-0 bg-pitch-lines bg-[length:42px_42px] opacity-20" />
+      <div className="absolute inset-0 bg-[radial-gradient(circle_at_88%_18%,rgba(0,255,135,.22),transparent_34%),linear-gradient(135deg,rgba(58,134,212,.14),transparent_58%)]" />
+      {locked ? <div className="pointer-events-none absolute inset-0 z-10 bg-pebol-bg/35" /> : null}
+      <div className="relative z-20 flex h-full flex-col justify-between gap-3">
+        <div>
+          <div className="flex items-center justify-between gap-3">
+            <span className="flex min-w-0 items-center gap-2.5">
+            <span className="grid h-10 w-10 shrink-0 place-items-center rounded-lg border border-pebol-accent/35 bg-pebol-accent/10 text-base text-pebol-accent shadow-glow">
+              <FontAwesomeIcon icon={faBriefcase} />
             </span>
-            <span className="min-w-0">
-              <strong className="block truncate font-display text-base font-extrabold text-white">
-                {mode.title}
-              </strong>
-              <em className="block text-xs font-semibold not-italic text-pebol-muted">
-                {mode.sub}
-              </em>
-            </span>
-            {"badge" in mode ? (
-              <span className="ml-auto rounded-full border border-pebol-gold/30 bg-pebol-gold/10 px-2 py-0.5 font-display text-[0.62rem] font-black uppercase tracking-[0.08em] text-pebol-gold">
-                {mode.badge}
+              <span className="truncate font-display text-xs font-extrabold uppercase tracking-[0.14em] text-pebol-accent">
+                Sua história no futebol
               </span>
-            ) : null}
-          </motion.button>
-        ))}
+            </span>
+            <span className="shrink-0 rounded-full border border-pebol-gold/35 bg-black/25 px-2.5 py-1 font-display text-[0.62rem] font-black uppercase tracking-[0.08em] text-pebol-gold">
+              Beta jogável
+            </span>
+          </div>
+          <h2 className="mt-2 font-title text-2xl uppercase text-white">Modo Carreira</h2>
+          <p className="mt-1 max-w-md text-sm font-semibold leading-5 text-slate-300">
+            Assuma um clube, monte o elenco e dispute temporadas completas.
+          </p>
+          <ul className="mt-2 flex flex-wrap gap-1.5">
+            {["Temporadas", "Mercado", "Gestão do clube"].map((item) => (
+              <li key={item} className="rounded-full border border-pebol-accent/20 bg-pebol-accent/[0.07] px-3 py-1 font-display text-[0.68rem] font-bold uppercase tracking-[0.05em] text-slate-200">
+                {item}
+              </li>
+            ))}
+          </ul>
+        </div>
+        {locked ? (
+          <p className="flex items-center gap-2 rounded-lg border border-pebol-gold/25 bg-black/30 px-3 py-2 text-xs font-semibold text-slate-200">
+            <FontAwesomeIcon icon={faLock} className="text-pebol-gold" />
+            Entre ou crie uma conta para salvar e jogar sua carreira.
+          </p>
+        ) : null}
+        <motion.button whileHover={{ y: -2 }} whileTap={{ scale: 0.985 }} type="button" id="c-manager" className={locked ? secondaryAction : primaryAction} onClick={locked ? onLogin : onCareer}>
+          <span className="inline-flex items-center justify-center gap-2">
+            {locked ? "Entrar para jogar" : "Abrir modo carreira"}
+            <FontAwesomeIcon icon={faChevronRight} />
+          </span>
+        </motion.button>
       </div>
-    </motion.section>
+    </motion.aside>
+  );
+}
+
+function BrandMasthead() {
+  return (
+    <motion.div variants={cardMotion} className="grid min-h-[4rem] place-items-center md:min-h-[5rem]" aria-label="Pebol">
+      <div className="relative grid h-full min-h-[4rem] place-items-center md:min-h-[4.5rem]">
+        <img
+          className="home-brand-logo w-full max-w-[17rem] object-contain drop-shadow-[0_16px_24px_rgba(0,0,0,.45)] md:max-w-[19rem]"
+          src="/brand-concepts/pebol-duel.svg"
+          alt="Pebol"
+        />
+      </div>
+    </motion.div>
   );
 }
 
 function WorldCupFeature({ onWorldCup }: { onWorldCup: () => void }) {
   return (
-    <motion.aside variants={cardMotion} whileHover={{ y: -3 }} className={`${panel} min-h-[14rem] p-4 pl-28 sm:min-h-[15rem] sm:p-5 sm:pl-32`}>
+    <motion.aside variants={cardMotion} whileHover={{ y: -3 }} className={`${panel} h-full min-h-[14rem] p-4 pl-28 sm:p-5 sm:pl-32`}>
       <div className="absolute inset-0 bg-pitch-lines bg-[length:44px_44px] opacity-25" />
       <div className="absolute inset-0 bg-[radial-gradient(circle_at_20%_48%,rgba(255,206,84,.28),transparent_32%),linear-gradient(135deg,rgba(58,134,212,.18),rgba(0,255,135,.08)_42%,rgba(0,0,0,.42))]" />
       <div className="absolute left-4 top-1/2 h-36 w-24 -translate-y-1/2 rounded-full bg-pebol-gold/20 blur-3xl" />
@@ -552,7 +596,7 @@ function FeedbackCallout({ onOpenFeedback }: { onOpenFeedback: () => void }) {
           <h2 className="mt-1 font-title text-lg uppercase tracking-[0.015em] text-pebol-text">
             Ajude a melhorar o Pebol
           </h2>
-          <p className="mt-1 text-sm font-medium leading-6 text-pebol-muted">
+          <p className="mt-1 text-sm font-medium leading-5 text-pebol-muted">
             Sugestões, bugs e balanceamento entram direto no painel de feedback.
           </p>
         </div>
@@ -560,7 +604,7 @@ function FeedbackCallout({ onOpenFeedback }: { onOpenFeedback: () => void }) {
           whileHover={{ y: -2 }}
           whileTap={{ scale: 0.985 }}
           type="button"
-          className={`${primaryAction} sm:max-w-[13rem]`}
+          className={`${primaryAction} sm:max-w-[14rem] sm:shrink-0`}
           onClick={onOpenFeedback}
         >
           Enviar feedback
@@ -573,9 +617,10 @@ function FeedbackCallout({ onOpenFeedback }: { onOpenFeedback: () => void }) {
 function LeaderboardPanel({
   leaderboard,
   account,
-}: Pick<HomeProps, "leaderboard" | "account">) {
+  onViewProfile,
+}: Pick<HomeProps, "leaderboard" | "account"> & { onViewProfile: (entry: LeaderboardEntry) => void }) {
   return (
-    <motion.section variants={cardMotion} className={`${panel} flex min-h-full flex-col p-4`}>
+    <motion.section id="home-ranking" variants={cardMotion} className={`${panel} flex min-h-full flex-col scroll-mt-4 p-4`}>
       <div className="mb-3">
         <span className="font-display text-xs font-extrabold uppercase tracking-[0.14em] text-pebol-accent">
           Ranking
@@ -592,7 +637,18 @@ function LeaderboardPanel({
               layout={!!p}
               key={p?.userId ?? `placeholder-${rank}`}
               whileHover={p ? { x: 3, scale: 1.01 } : undefined}
-              className={`home-leader-row ${p && rank <= 3 ? `home-podium home-rank-${rank}` : ""} grid min-h-10 grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border px-2.5 py-1.5 transition-all duration-300 ${
+              role={p ? "button" : undefined}
+              tabIndex={p ? 0 : undefined}
+              aria-label={p ? `Ver perfil e conquistas de ${p.username}` : undefined}
+              onClick={() => {
+                if (p) onViewProfile(p);
+              }}
+              onKeyDown={(event) => {
+                if (!p || (event.key !== "Enter" && event.key !== " ")) return;
+                event.preventDefault();
+                onViewProfile(p);
+              }}
+              className={`home-leader-row ${p && rank <= 3 ? `home-podium home-rank-${rank}` : ""} grid min-h-10 grid-cols-[2.25rem_minmax(0,1fr)_auto] items-center gap-2.5 rounded-lg border px-2.5 py-1.5 transition-all duration-300 ${p ? "cursor-pointer outline-none focus-visible:ring-2 focus-visible:ring-pebol-accent/60" : ""} ${
                 p
                   ? isYou
                     ? "border-pebol-accent/50 bg-pebol-accent/10"
@@ -657,6 +713,7 @@ export function Home({
   onOpenProfile,
   onOpenAdmin,
   onOpenAchievements,
+  onOpenRanking,
   onLogout,
   onWorldCup,
   onOpenUpdates,
@@ -664,8 +721,14 @@ export function Home({
   onOpenFeedback,
   onOpenLegal,
   onCareer,
-  onSoon,
 }: HomeProps) {
+  const [viewedProfileEntry, setViewedProfileEntry] = useState<LeaderboardEntry | null>(null);
+  const [viewedProfile, setViewedProfile] = useState<PublicProfile | null>(null);
+  const [profileLoading, setProfileLoading] = useState(false);
+  const [profileError, setProfileError] = useState("");
+  const [sidebarExpanded, setSidebarExpanded] = useState(
+    () => localStorage.getItem("pebol:home-sidebar-expanded") === "true",
+  );
   const [selectedPool, setSelectedPool] = useState<RoomPool>("clubs");
   const [selectedRule, setSelectedRule] = useState<RoomRule>("classico");
   const [roomTab, setRoomTab] = useState<"create" | "join">("create");
@@ -688,27 +751,53 @@ export function Home({
     onCreateRoom(createNameRef.current?.value ?? "", selectedMode, true);
   };
 
+  const changeSidebar = (expanded: boolean) => {
+    setSidebarExpanded(expanded);
+    localStorage.setItem("pebol:home-sidebar-expanded", String(expanded));
+  };
+
+  const viewLeaderboardProfile = async (entry: LeaderboardEntry) => {
+    setViewedProfileEntry(entry);
+    setViewedProfile(null);
+    setProfileError("");
+    setProfileLoading(true);
+    try {
+      const { profile } = await api.publicProfile(entry.userId);
+      setViewedProfile(profile);
+    } catch (error) {
+      setProfileError((error as Error).message);
+    } finally {
+      setProfileLoading(false);
+    }
+  };
+
   return (
     <motion.div
-      className="min-h-screen px-4 py-4 font-body text-pebol-text sm:px-6 lg:px-8"
+      className={`home-shell min-h-screen font-body text-pebol-text ${sidebarExpanded ? "sidebar-open" : ""}`}
       initial="hidden"
       animate="show"
       transition={{ staggerChildren: 0.055, delayChildren: 0.03 }}
     >
-      <div className="mx-auto grid max-w-[96rem] gap-3">
-        <AccountProfile
-          account={account}
-          progress={progress}
-          leaderboard={leaderboard}
-          onOpenLogin={onOpenLogin}
-          onOpenProfile={onOpenProfile}
-          onOpenAdmin={onOpenAdmin}
-          onOpenAchievements={onOpenAchievements}
-          onLogout={onLogout}
-        />
+      <HomeSidebar
+        account={account}
+        progress={progress}
+        leaderboard={leaderboard}
+        expanded={sidebarExpanded}
+        onExpandedChange={changeSidebar}
+        onOpenLogin={onOpenLogin}
+        onOpenProfile={onOpenProfile}
+        onOpenAdmin={onOpenAdmin}
+        onOpenAchievements={onOpenAchievements}
+        onOpenRanking={onOpenRanking}
+        onCareer={onCareer}
+        onLogout={onLogout}
+      />
+
+      <div className="home-content px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto grid max-w-[106rem] gap-3">
 
         <div className="grid gap-3 xl:grid-cols-[minmax(19rem,1fr)_minmax(24rem,1.18fr)_minmax(20rem,1fr)] xl:items-stretch">
-          <div className="grid gap-3">
+          <div className="order-2 xl:col-start-1 xl:row-start-1">
             <RoomPanel
               selectedPool={selectedPool}
               setSelectedPool={setSelectedPool}
@@ -722,34 +811,26 @@ export function Home({
               createNameRef={createNameRef}
               submitCreate={submitCreate}
               submitJoin={submitJoin}
+              onSolo={solo}
             />
-            <SecondaryModes solo={solo} onCareer={onCareer} onSoon={onSoon} />
           </div>
 
-          <div className="grid gap-3">
-            <motion.div variants={cardMotion} className={`${panel} grid min-h-[12rem] place-items-center p-4 text-center`}>
-              <div className="absolute inset-0 bg-[radial-gradient(circle_at_50%_35%,rgba(0,255,135,.16),transparent_42%)]" />
-              <div className="relative">
-                <img
-                  className="home-brand-logo mx-auto w-[min(19rem,78vw)] drop-shadow-[0_26px_34px_rgba(0,0,0,.58)]"
-                  src="/512x512.png"
-                  srcSet="/512x512.png 512w, /1024x1024.png 1024w"
-                  sizes="min(19rem, 78vw)"
-                  alt="Pebol"
-                />
-                <p className="mx-auto mt-2 max-w-sm text-sm font-semibold leading-5 text-pebol-muted">
-                  Monte seu time no draft e desafie um amigo 1v1 ou jogue contra a máquina.
-                </p>
-              </div>
-            </motion.div>
+          <div className="order-1 grid h-full grid-rows-2 gap-3 xl:col-start-2 xl:row-start-1">
+            <CareerFeature locked={!account} onCareer={onCareer} onLogin={onOpenLogin} />
             <WorldCupFeature onWorldCup={onWorldCup} />
+          </div>
+
+          <div className="order-3 xl:col-start-3 xl:row-span-2 xl:row-start-1">
+            <LeaderboardPanel leaderboard={leaderboard} account={account} onViewProfile={viewLeaderboardProfile} />
+          </div>
+
+          <div className="order-4 xl:col-span-2 xl:col-start-1 xl:row-start-2">
             <FeedbackCallout onOpenFeedback={onOpenFeedback} />
           </div>
+        </div>
 
-          <LeaderboardPanel leaderboard={leaderboard} account={account} />
-
-          {import.meta.env.DEV ? (
-            <motion.section variants={cardMotion} className={`${panel} p-4 xl:col-span-2`}>
+        {import.meta.env.DEV ? (
+            <motion.section variants={cardMotion} className={`${panel} p-4`}>
               <div className="mb-3">
                 <span className="font-display text-xs font-extrabold uppercase tracking-[0.14em] text-pebol-blue">
                   Dev
@@ -773,10 +854,9 @@ export function Home({
                 ))}
               </div>
             </motion.section>
-          ) : null}
-        </div>
+        ) : null}
 
-        <motion.footer variants={cardMotion} className="flex flex-wrap items-center justify-center gap-3 pb-4 pt-1 text-xs font-medium text-pebol-faint">
+          <motion.footer variants={cardMotion} className="flex flex-wrap items-center justify-center gap-3 pb-4 pt-1 text-xs font-medium text-pebol-faint">
           <span className="font-display font-extrabold uppercase tracking-[0.14em]">Pebol</span>
           <button type="button" className="transition-colors duration-300 hover:text-pebol-accent" onClick={onOpenUpdates}>
             Novidades
@@ -793,8 +873,19 @@ export function Home({
           <button type="button" className="transition-colors duration-300 hover:text-pebol-accent" onClick={() => onOpenLegal("privacy")}>
             Política de Privacidade
           </button>
-        </motion.footer>
+          </motion.footer>
+        </div>
       </div>
+
+      {viewedProfileEntry ? (
+        <LeaderboardProfileModal
+          entry={viewedProfileEntry}
+          profile={viewedProfile}
+          loading={profileLoading}
+          error={profileError}
+          onClose={() => setViewedProfileEntry(null)}
+        />
+      ) : null}
     </motion.div>
   );
 }

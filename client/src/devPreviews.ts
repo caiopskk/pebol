@@ -1,4 +1,7 @@
 export const DEV_PREVIEWS = [
+  { kind: "login", label: "Login", hash: "#preview-login" },
+  { kind: "leaderboard", label: "Ranking", hash: "#preview-leaderboard" },
+  { kind: "manager-dashboard", label: "Carreira", hash: "#preview-manager-dashboard" },
   { kind: "cup-setup", label: "Copa setup", hash: "#preview-cup-setup" },
   { kind: "cup-draft", label: "Copa draft", hash: "#preview-cup-draft" },
   { kind: "pvp-draft", label: "PvP draft", hash: "#preview-pvp-draft" },

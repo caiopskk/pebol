@@ -108,7 +108,7 @@ export function renderPvpResultPreview({
     formationId: "4-3-3",
     mentality: "pressao",
     attackFocus: "meio",
-    picks: previewPicks("real-madrid-2016", "4-3-3"),
+    picks: previewPicks("real-madrid", "4-3-3"),
   };
   const opp: PlayerPublic = {
     id: "opp-preview",
@@ -118,7 +118,7 @@ export function renderPvpResultPreview({
     formationId: "4-3-3",
     mentality: "posse",
     attackFocus: "lados",
-    picks: previewPicks("barcelona-2011", "4-3-3"),
+    picks: previewPicks("barcelona", "4-3-3"),
   };
   const youStrength = computeStrength(you.picks, you.formationId!);
   const oppStrength = computeStrength(opp.picks, opp.formationId!);

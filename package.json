@@ -16,7 +16,9 @@
     "test:engine:balance": "tsx server/src/engine-balance-test.ts",
     "test:engine:all": "pnpm run test:engine && pnpm run test:engine:balance",
     "test:manager": "tsx client/src/manager-career-test.ts",
+    "test:ball-motion": "tsx client/src/ball-motion-test.ts",
     "test:achievements": "tsx client/src/achievement-rules-test.ts",
+    "test:clubs": "tsx server/src/club-catalog-test.ts",
     "db:sync-worldcup-2026": "tsx scripts/sync-worldcup-2026.ts",
     "preview": "vite preview"
   },

@@ -278,7 +278,24 @@ export function registerApi(app: Express, onOfficialChange: () => void): void {
   );
 
   app.get("/api/leaderboard", async (req, res) => {
-    res.json({ leaderboard: await getLeaderboard(Number(req.query.limit) || 10) });
+    const limit = req.query.all === "1" ? null : Number(req.query.limit) || 10;
+    res.json({ leaderboard: await getLeaderboard(limit) });
+  });
+
+  app.get("/api/users/:id/profile", async (req, res) => {
+    const user = await getPublicUser(req.params.id);
+    if (!user) return res.status(404).json({ error: "Usuário não encontrado." });
+    const [progress, achievements] = await Promise.all([
+      getUserProgress(user.id),
+      getAchievementProgress(user.id),
+    ]);
+    res.json({
+      profile: {
+        user,
+        progress,
+        achievements: achievements.filter((achievement) => achievement.unlockedAt !== null),
+      },
+    });
   });
 
   app.get("/api/progress", requireAuth, async (req: AuthRequest, res) => {

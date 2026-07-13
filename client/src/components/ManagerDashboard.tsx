@@ -4,6 +4,10 @@ import type {
   ManagerDashboard as ManagerDashboardData,
   ManagerInboxItem,
   ManagerSeasonPhase,
+  ManagerSponsorOffer,
+  ManagerStadiumUpgradeOption,
+  ManagerTrainingFocus,
+  ManagerFacilityKind,
 } from "../../../shared/types.js";
 import { MENTALITIES } from "../../../shared/mentalities.js";
 import { managerRecordLabel, moneyLabel, ratingAvg } from "../lib/managerData.js";
@@ -37,7 +41,11 @@ interface ManagerDashboardProps {
   onRejectInbox: (id: string) => void;
   onOpenSquad: () => void;
   onOpenMarket: () => void;
-  onUpgradeStadium: () => void;
+  onUpgradeStadium: (optionId: string) => void;
+  onChooseSponsor: (offerId: string) => void;
+  onTrainingFocus: (focus: ManagerTrainingFocus) => void;
+  onUpgradeFacility: (kind: ManagerFacilityKind) => void;
+  onAdvanceSeason: () => void;
   onBack: () => void;
 }
 
@@ -70,6 +78,21 @@ function emailPreview(body: string): string {
 
 function tacticName<T extends string>(options: Array<{ id: T; name: string }>, id: T): string {
   return options.find((option) => option.id === id)?.name ?? id;
+}
+
+function stadiumEffects(option: ManagerStadiumUpgradeOption): string {
+  const effects = [
+    option.capacityGain ? `+${option.capacityGain.toLocaleString("pt-BR")} lugares` : "",
+    option.ticketPriceGain ? `ingresso +${moneyLabel(option.ticketPriceGain)}` : "",
+    option.supporterBoost ? `+${option.supporterBoost.toLocaleString("pt-BR")} sócios` : "",
+    option.sponsorIncomeBoostPct ? `patrocínio +${option.sponsorIncomeBoostPct}%` : "",
+    option.prestigeGain ? `prestígio +${option.prestigeGain}` : "",
+  ].filter(Boolean);
+  return effects.join(" · ");
+}
+
+function sponsorOfferLine(offer: ManagerSponsorOffer): string {
+  return `${moneyLabel(offer.weeklyIncome)} por rodada · luva ${moneyLabel(offer.signingBonus)} · ${offer.durationSeasons} temp.`;
 }
 
 function StartCareer({
@@ -183,11 +206,19 @@ export function ManagerDashboard({
   onOpenSquad,
   onOpenMarket,
   onUpgradeStadium,
+  onChooseSponsor,
+  onTrainingFocus,
+  onUpgradeFacility,
+  onAdvanceSeason,
   onBack,
 }: ManagerDashboardProps) {
   const squadAvg = useMemo(() => ratingAvg(data?.squad ?? []), [data]);
   const [selectedEmailId, setSelectedEmailId] = useState<string | null>(null);
   const [confirmDeleteOpen, setConfirmDeleteOpen] = useState(false);
+  const [stadiumOpen, setStadiumOpen] = useState(false);
+  const [sponsorOpen, setSponsorOpen] = useState(false);
+  const [trainingOpen, setTrainingOpen] = useState(false);
+  const [facilitiesOpen, setFacilitiesOpen] = useState(false);
   const importInputRef = useRef<HTMLInputElement | null>(null);
 
   if (!data) {
@@ -240,7 +271,7 @@ export function ManagerDashboard({
               <button className={`${secondary} border-red-300/20 text-red-100 hover:border-red-300/45 hover:bg-red-400/10`} onClick={() => setConfirmDeleteOpen(true)}>
                 Apagar carreira
               </button>
-              <button className={action} disabled={seasonPhase === "season-end"} onClick={onPlayRound}>{actionLabel}</button>
+              <button className={action} onClick={seasonPhase === "season-end" ? onAdvanceSeason : onPlayRound}>{actionLabel}</button>
               <button className={secondary} onClick={onBack}>Voltar</button>
             </div>
           </div>
@@ -290,7 +321,16 @@ export function ManagerDashboard({
             <section className={`${panel} grid content-start gap-3`}>
               <div className="flex items-center justify-between gap-3">
                 <h2 className="font-title text-xl uppercase text-white">Diretoria</h2>
-                <button className={`${secondary} min-h-9 px-3 text-xs`} onClick={onUpgradeStadium}>Estádio</button>
+                <div className="flex flex-wrap justify-end gap-2">
+                  <button className={`${secondary} min-h-9 px-3 text-xs`} onClick={() => setTrainingOpen(true)}>Treino</button>
+                  <button className={`${secondary} min-h-9 px-3 text-xs`} onClick={() => setFacilitiesOpen(true)}>Estrutura</button>
+                  {data.sponsorOffers.length ? (
+                    <button className={`${secondary} min-h-9 px-3 text-xs text-pebol-accent`} onClick={() => setSponsorOpen(true)}>
+                      Patrocínios
+                    </button>
+                  ) : null}
+                  <button className={`${secondary} min-h-9 px-3 text-xs`} onClick={() => setStadiumOpen(true)}>Estádio</button>
+                </div>
               </div>
               <p className="text-sm font-semibold leading-5 text-pebol-muted">
                 {data.transferWindowOpen
@@ -303,6 +343,24 @@ export function ManagerDashboard({
                 <span className={`${compactPanel} text-sm font-bold text-pebol-muted`}>Bilheteria <strong className="block text-lg text-white">{moneyLabel(data.commercial.projectedHomeIncome)}</strong></span>
                 <span className={`${compactPanel} text-sm font-bold text-pebol-muted`}>{data.save.sponsorName} <strong className="block text-lg text-white">Nível {data.save.sponsorTier}</strong></span>
               </div>
+              <div className="grid gap-1.5 border-t border-white/10 pt-3">
+                {data.boardObjectives.map((objective) => (
+                  <div key={objective.id} className="grid grid-cols-[auto_minmax(0,1fr)_auto] items-center gap-2 text-xs font-bold">
+                    <span className={`h-2 w-2 rounded-full ${objective.completed ? "bg-pebol-accent" : objective.failed ? "bg-red-300" : "bg-pebol-gold"}`} />
+                    <span className="truncate text-slate-200">{objective.title}</span>
+                    <span className="text-pebol-muted">{objective.progressLabel}</span>
+                  </div>
+                ))}
+              </div>
+              {data.sponsorOffers.length ? (
+                <button
+                  className="rounded-lg border border-pebol-accent/30 bg-pebol-accent/10 px-3 py-2 text-left text-xs font-bold text-slate-200 transition hover:border-pebol-accent/60"
+                  onClick={() => setSponsorOpen(true)}
+                >
+                  <span className="block font-display text-[10px] uppercase tracking-[0.14em] text-pebol-accent">Comercial</span>
+                  {data.sponsorOffers.length} propostas de patrocínio aguardando escolha.
+                </button>
+              ) : null}
             </section>
 
             <section className={`${panel} grid content-start gap-3`}>
@@ -411,6 +469,160 @@ export function ManagerDashboard({
                 Respondido
               </div>
             ) : null}
+          </motion.div>
+        </div>
+      ) : null}
+
+      {stadiumOpen ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 py-6 backdrop-blur-sm"
+          onClick={() => setStadiumOpen(false)}
+        >
+          <motion.div
+            className="max-h-[calc(100vh-2rem)] w-full max-w-4xl overflow-y-auto rounded-lg border border-white/10 bg-pebol-panel p-5 shadow-premium"
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.16 }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+              <div>
+                <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">Estádio</span>
+                <h3 className="mt-1 font-title text-2xl uppercase text-white">Plano de evolução</h3>
+              </div>
+              <button className={`${secondary} min-h-9 px-3 text-xs`} onClick={() => setStadiumOpen(false)}>Fechar</button>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {data.stadiumUpgradeOptions.map((option) => (
+                <div key={option.id} className="grid gap-3 rounded-lg border border-white/10 bg-white/[0.04] p-4">
+                  <div>
+                    <span className="font-display text-[10px] font-black uppercase tracking-[0.14em] text-pebol-muted">{option.kind}</span>
+                    <h4 className="mt-1 font-title text-xl uppercase text-white">{option.title}</h4>
+                    <p className="mt-1 text-sm font-semibold leading-5 text-pebol-muted">{option.description}</p>
+                  </div>
+                  <p className="text-xs font-bold text-slate-300">{stadiumEffects(option)}</p>
+                  <div className="flex items-center justify-between gap-3">
+                    <strong className="font-display text-lg text-white">{moneyLabel(option.cost)}</strong>
+                    <button
+                      className={action}
+                      disabled={data.save.money < option.cost}
+                      onClick={() => {
+                        onUpgradeStadium(option.id);
+                        setStadiumOpen(false);
+                      }}
+                    >
+                      Aprovar
+                    </button>
+                  </div>
+                </div>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      ) : null}
+
+      {sponsorOpen ? (
+        <div
+          className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 py-6 backdrop-blur-sm"
+          onClick={() => setSponsorOpen(false)}
+        >
+          <motion.div
+            className="max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-lg border border-white/10 bg-pebol-panel p-5 shadow-premium"
+            initial={{ opacity: 0, y: 10, scale: 0.98 }}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            transition={{ duration: 0.16 }}
+            onClick={(event) => event.stopPropagation()}
+          >
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+              <div>
+                <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">Patrocínios</span>
+                <h3 className="mt-1 font-title text-2xl uppercase text-white">Escolha comercial</h3>
+              </div>
+              <button className={`${secondary} min-h-9 px-3 text-xs`} onClick={() => setSponsorOpen(false)}>Fechar</button>
+            </div>
+            <div className="mt-4 grid gap-3">
+              {data.sponsorOffers.map((offer) => (
+                <div key={offer.id} className="grid gap-3 rounded-lg border border-white/10 bg-white/[0.04] p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                  <div>
+                    <span className="font-display text-[10px] font-black uppercase tracking-[0.14em] text-pebol-gold">{offer.riskLabel} · Nível {offer.tier}</span>
+                    <h4 className="mt-1 font-title text-xl uppercase text-white">{offer.name}</h4>
+                    <p className="mt-1 text-sm font-semibold leading-5 text-pebol-muted">{offer.description}</p>
+                    <p className="mt-2 text-xs font-bold text-slate-300">{sponsorOfferLine(offer)}</p>
+                  </div>
+                  <button
+                    className={action}
+                    onClick={() => {
+                      onChooseSponsor(offer.id);
+                      setSponsorOpen(false);
+                    }}
+                  >
+                    Assinar
+                  </button>
+                </div>
+              ))}
+              {!data.sponsorOffers.length ? (
+                <p className="text-sm font-semibold text-pebol-muted">Nenhuma proposta nova no momento.</p>
+              ) : null}
+            </div>
+          </motion.div>
+        </div>
+      ) : null}
+
+      {trainingOpen ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 py-6 backdrop-blur-sm" onClick={() => setTrainingOpen(false)}>
+          <motion.div className="max-h-[calc(100vh-2rem)] w-full max-w-4xl overflow-y-auto rounded-lg border border-white/10 bg-pebol-panel p-5 shadow-premium" initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+              <div>
+                <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">Comissão técnica</span>
+                <h3 className="mt-1 font-title text-2xl uppercase text-white">Plano semanal</h3>
+              </div>
+              <button className={`${secondary} min-h-9 px-3 text-xs`} onClick={() => setTrainingOpen(false)}>Fechar</button>
+            </div>
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {data.trainingPlans.map((plan) => (
+                <button
+                  key={plan.id}
+                  className={`grid gap-2 rounded-lg border p-4 text-left transition ${data.trainingFocus === plan.id ? "border-pebol-accent/60 bg-pebol-accent/10" : "border-white/10 bg-white/[0.04] hover:border-white/25"}`}
+                  onClick={() => {
+                    onTrainingFocus(plan.id);
+                    setTrainingOpen(false);
+                  }}
+                >
+                  <span className="flex items-center justify-between gap-3"><strong className="font-title text-xl uppercase text-white">{plan.name}</strong><small className="font-display uppercase text-pebol-gold">Risco {plan.injuryRiskLabel}</small></span>
+                  <span className="text-sm font-semibold leading-5 text-pebol-muted">{plan.description}</span>
+                  <span className="text-xs font-bold text-slate-300">Condição {plan.fitnessEffect >= 0 ? "+" : ""}{plan.fitnessEffect} · Ritmo {plan.sharpnessEffect >= 0 ? "+" : ""}{plan.sharpnessEffect} · Evolução +{plan.developmentEffect}</span>
+                </button>
+              ))}
+            </div>
+          </motion.div>
+        </div>
+      ) : null}
+
+      {facilitiesOpen ? (
+        <div className="fixed inset-0 z-50 grid place-items-center bg-black/70 px-4 py-6 backdrop-blur-sm" onClick={() => setFacilitiesOpen(false)}>
+          <motion.div className="max-h-[calc(100vh-2rem)] w-full max-w-3xl overflow-y-auto rounded-lg border border-white/10 bg-pebol-panel p-5 shadow-premium" initial={{ opacity: 0, y: 10, scale: 0.98 }} animate={{ opacity: 1, y: 0, scale: 1 }} onClick={(event) => event.stopPropagation()}>
+            <div className="flex items-start justify-between gap-4 border-b border-white/10 pb-4">
+              <div>
+                <span className="font-display text-xs font-black uppercase tracking-[0.16em] text-pebol-accent">Clube</span>
+                <h3 className="mt-1 font-title text-2xl uppercase text-white">Infraestrutura</h3>
+              </div>
+              <button className={`${secondary} min-h-9 px-3 text-xs`} onClick={() => setFacilitiesOpen(false)}>Fechar</button>
+            </div>
+            <div className="mt-4 grid gap-3">
+              {data.facilityUpgradeOptions.map((option) => (
+                <div key={option.id} className="grid gap-3 rounded-lg border border-white/10 bg-white/[0.04] p-4 md:grid-cols-[minmax(0,1fr)_auto] md:items-center">
+                  <div>
+                    <span className="font-display text-[10px] font-black uppercase tracking-[0.14em] text-pebol-gold">Nível {option.currentLevel} de 5</span>
+                    <h4 className="mt-1 font-title text-xl uppercase text-white">{option.title}</h4>
+                    <p className="mt-1 text-sm font-semibold text-pebol-muted">{option.description}</p>
+                    <p className="mt-2 text-xs font-bold text-slate-300">{option.benefit}</p>
+                  </div>
+                  <button className={action} disabled={option.maxed || data.save.money < option.cost} onClick={() => onUpgradeFacility(option.id)}>
+                    {option.maxed ? "Máximo" : `${moneyLabel(option.cost)} · Nível ${option.nextLevel}`}
+                  </button>
+                </div>
+              ))}
+            </div>
           </motion.div>
         </div>
       ) : null}

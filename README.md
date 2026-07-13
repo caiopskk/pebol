@@ -4,8 +4,9 @@ Pebol é um jogo web de draft de futebol em tempo real. Você monta um XI titula
 de times sorteados, ajusta formação, mentalidade e foco de ataque, e assiste a uma partida
 narrada lance a lance contra outro jogador ou contra a máquina.
 
-O projeto também tem campanha de Copa do Mundo, contas de usuário, painel administrativo de
-times e jogadores, importação por JSON, conquistas e deploy em porta única para produção.
+O projeto também tem campanha de Copa do Mundo, um Modo Carreira/Manager em beta jogável,
+contas de usuário, perfis, ranking global, painel administrativo de times e jogadores,
+importação por JSON, conquistas e deploy em porta única para produção.
 
 ## Funcionalidades
 
@@ -16,7 +17,8 @@ times e jogadores, importação por JSON, conquistas e deploy em porta única pa
   Contra a máquina, a IA também joga mais forte — mais difícil de vencer, mas não impossível.
 - **XP, níveis e títulos**: ganhe experiência jogando partidas, avançando fases da Copa e
   desbloqueando conquistas; cada 100 XP é um nível, com títulos de Aspirante a Imortal.
-- **Leaderboard por nível** na home, com pódio destacado e seu próprio nome em evidência.
+- **Leaderboard por nível** na home e em uma página completa, com busca, perfis de jogador e
+  galeria de conquistas desbloqueadas.
 - **Atualizações de time/seleção no draft** quando o modo permite reroll: 5 no Clássico/Normal
   e 3 no Hardcore.
 - **10 formações** e **6 mentalidades** para montar o time.
@@ -39,10 +41,25 @@ times e jogadores, importação por JSON, conquistas e deploy em porta única pa
 - **Conquistas** com tela de progresso e popups no estilo Steam quando desbloqueadas.
 - **Página de novidades** com mudanças visíveis para jogadores, sem itens internos de dev.
 - **Tema escuro e tema claro** com alternância rápida no topo da interface.
-- **Modo carreira** e **Modo liga** já aparecem na home como modos futuros.
+- **Modo Carreira/Manager (beta jogável)** com temporadas, pré-temporada, ligas nacionais,
+  copas, competições continentais, mercado, elenco, táticas, finanças, estádio, patrocínios,
+  sócios-torcedores, caixa de entrada e evolução do clube.
+- **Carreira vinculada à conta** no banco, com exportação, importação e opção de apagar o save
+  para começar novamente. Visitantes podem conhecer o modo pela home, mas precisam entrar ou
+  criar uma conta para jogar.
 
 ## Novidades recentes
 
+- A marca e a home receberam uma nova identidade visual, com logo própria, tela de login
+  redesenhada e navegação lateral expansível.
+- O ranking ganhou uma página dedicada com todos os jogadores cadastrados, busca e perfis
+  clicáveis mostrando nível, XP e conquistas.
+- O Modo Carreira evoluiu para um fluxo completo de clube: calendário, pré-jogo tático,
+  escalação, substituições, mercado em janelas, patrocínios por temporada, estádio e inbox.
+- Saves do Manager agora pertencem à conta autenticada e podem ser exportados, importados ou
+  apagados pelo próprio jogador.
+- A animação da bola durante as partidas foi refeita para transmitir rolamento, velocidade e
+  impacto de maneira mais natural.
 - A interface foi modernizada com visual mais premium, cards com profundidade, estados de
   hover mais suaves e melhor legibilidade em telas de jogo.
 - O jogo agora tem tema escuro e tema claro; o modo escuro é o padrão, e o claro fica
@@ -87,7 +104,7 @@ conectar, confira firewall e liberação das portas 5173 e 3001.
 
 ### Solo vs Máquina
 
-Clique em **Jogar sozinho (vs Máquina)**. A máquina sorteia um técnico, escolhe jogadores
+Clique em **Jogar contra IA**. A máquina sorteia um técnico, escolhe jogadores
 automaticamente e espera alguns segundos por rodada para o draft ficar acompanhável.
 
 No solo, a velocidade da partida pode ser alterada entre 1x, 1.5x e 2x.
@@ -99,6 +116,30 @@ disputa 3 jogos de grupo e tenta avançar pelo mata-mata de 32 times até a fina
 
 Durante a campanha, a tela mostra a classificação do grupo ou o chaveamento, o adversário
 atual, ano, bandeira, overall e estratégia.
+
+### Modo Carreira/Manager
+
+O Modo Carreira é uma campanha de clube vinculada à conta do jogador. O fluxo começa pela
+escolha da liga e do clube e continua por várias temporadas:
+
+1. Na pré-temporada, o técnico testa escalações em amistosos e prepara o elenco.
+2. Durante a temporada, liga, copa nacional e competição continental avançam em paralelo.
+3. Antes de cada partida, o pré-jogo mostra o adversário, sua formação, força e estilo. O
+   jogador pode mudar formação, titulares, mentalidade e foco de ataque.
+4. A partida usa a mesma apresentação ao vivo dos outros modos, incluindo intervalo e até
+   cinco substituições.
+5. Entre jogos, o técnico administra elenco, treinos, fadiga, lesões, mercado, funcionários,
+   infraestrutura, estádio, patrocínio, sócios e finanças.
+6. Ao fim da temporada, classificação, títulos, acesso e rebaixamento influenciam o próximo
+   ano e o prestígio do técnico.
+
+Transferências e propostas só acontecem dentro das janelas configuradas. O caixa não recebe
+um prêmio artificial por vitória: receitas vêm da operação do clube, bilheteria, patrocínio,
+sócios, marketing e premiações de ligas e copas. A caixa de entrada reúne resultados,
+decisões da diretoria e propostas por jogadores ou pelo próprio técnico.
+
+O save é sincronizado com o usuário no Turso/libSQL. Também pode ser exportado para JSON,
+importado posteriormente ou apagado para iniciar uma nova carreira.
 
 ## Draft e escalação
 
@@ -223,13 +264,17 @@ A aplicação tem autenticação com usuário e senha:
 - O primeiro usuário cadastrado vira admin.
 - Usuários em `ADMIN_USERS` também viram admin.
 - Usuários comuns jogam, acompanham progresso, conquistas e leaderboard.
+- Qualquer visitante pode consultar o ranking e abrir perfis; jogar o Modo Carreira exige uma
+  conta para que o save seja associado corretamente ao usuário.
 - Admins podem criar, importar, editar e excluir times.
 - Times oficiais de clubes podem aparecer com alias genérico para usuários comuns.
 - Seleções mantêm o nome real; clubes oficiais podem usar alias para evitar exposição
   desnecessária de marcas para usuários comuns.
 
-A tela de gerenciamento aparece apenas para administradores e permite criar, editar, excluir
-e importar times com jogadores. Cada time deve ter 11 titulares e pode ter banco de reservas.
+A tela administrativa de elencos aparece apenas para administradores e permite criar, editar,
+excluir e importar times com jogadores. Cada time deve ter 11 titulares e pode ter banco de
+reservas. Essa tela não deve ser confundida com a gestão de clube do Modo Carreira, disponível
+para qualquer usuário autenticado.
 
 ## Importação por JSON
 
@@ -328,9 +373,10 @@ Regras de nível (em `shared/progression.ts`):
 - O **Modo Hardcore** desbloqueia no **nível 5** (`HARDCORE_UNLOCK_LEVEL`).
 
 O XP é registrado no servidor por evento idempotente (cada concessão tem uma chave única,
-então a mesma ação não pontua duas vezes). A home mostra um **leaderboard por nível** com os
-melhores jogadores, pódio destacado e o jogador atual em evidência. Concessões de XP exibem
-um popup temporário no canto, no mesmo estilo das conquistas.
+então a mesma ação não pontua duas vezes). A home mostra os líderes e a página de ranking lista
+todos os usuários cadastrados. Cada linha abre um perfil com colocação, nível, XP de atividade,
+XP de conquistas e uma galeria rolável. Concessões de XP exibem um popup temporário no canto,
+no mesmo estilo das conquistas.
 
 ## Banco de dados
 
@@ -358,8 +404,9 @@ R2_PUBLIC_BASE_URL=https://cdn.seu-dominio.com
 uploads de imagem de perfil são salvos em `data/uploads`. Em produção, configure um bucket
 Cloudflare R2 e exponha um domínio público em `R2_PUBLIC_BASE_URL`.
 
-O seed roda na inicialização quando a tabela de times está vazia, criando times oficiais,
-seleções históricas e conquistas.
+Na inicialização, o servidor cria registros oficiais ausentes, sincroniza aliases de clubes,
+remove clubes históricos aposentados do catálogo oficial e atualiza as conquistas. Times
+personalizados e saves dos usuários não são removidos por essa sincronização.
 
 ### Schema e migrações (deploy)
 
@@ -374,13 +421,14 @@ vez que o servidor inicia e é idempotente:
   perfil na tabela `users` (`avatar_url`, `avatar_key`), ignorando o erro de coluna duplicada.
 - Preenche atributos ausentes de jogadores já existentes com valores derivados, sem apagar
   jogadores ou times.
-- Re-semeia conquistas com `INSERT OR IGNORE` (novas conquistas entram; as existentes ficam).
+- Atualiza o catálogo oficial e exige que todo clube jogável tenha um alias público.
+- Re-semeia conquistas de forma idempotente (novas conquistas entram e textos podem evoluir).
 
 Pontos de atenção:
 
-- **Times**: o seed só roda quando a tabela `teams` está vazia. Times novos adicionados em
-  `data/teams.ts`/`worldcup.ts` **não** aparecem num banco já populado — adicione-os pelo
-  painel de admin ou limpe a tabela.
+- **Times oficiais**: novos IDs do bundle são inseridos mesmo em bancos já populados. O teste
+  `pnpm test:clubs` garante que referências de temporada existem e que nenhum clube fique sem
+  alias.
 - **Alterar coluna de tabela existente** no futuro exige adicionar uma migração em `migrateDb()`,
   no mesmo padrão do `alt_pos` e dos atributos de jogador.
 - O Turso persiste entre deploys; usuários existentes simplesmente começam com 0 XP quando a
@@ -398,12 +446,17 @@ Rotas principais:
 - `GET /api/achievements`
 - `POST /api/achievements/:id/unlock`
 - `GET /api/leaderboard`
+- `GET /api/leaderboard?all=1`
+- `GET /api/users/:id/profile`
 - `GET /api/progress`
 - `POST /api/xp`
 - `GET /api/teams`
 - `POST /api/teams`
 - `PUT /api/teams/:id`
 - `DELETE /api/teams/:id`
+- `GET /api/manager/career-state`
+- `PUT /api/manager/career-state`
+- `DELETE /api/manager/career-state`
 
 O client consome essas rotas em `client/src/api.ts`.
 
@@ -447,6 +500,10 @@ pnpm bot ABCD
 pnpm test:engine
 pnpm test:engine:balance
 pnpm test:engine:all
+pnpm test:manager
+pnpm test:ball-motion
+pnpm test:clubs
+pnpm test:achievements
 pnpm exec tsc --noEmit
 pnpm exec tsx server/src/solo-test.ts
 pnpm exec tsx server/src/smoke-test.ts
@@ -462,6 +519,7 @@ shared/
   formations.ts        # formações e posições no campo
   mentalities.ts       # mentalidades e modificadores
   progression.ts       # XP por nível, títulos e desbloqueio do Hardcore
+  leagueStructures.ts  # ligas, divisões, acessos e calendário
   playerAttributes.ts  # geração/fallback de atributos estilo EA FC
   engine.ts            # força do time, eventos, partida e pênaltis
   data/
@@ -478,13 +536,15 @@ server/src/
   api.ts               # rotas HTTP
   engine-property-test.ts # invariantes da engine
   engine-balance-test.ts  # sanidade estatística do balanceamento
+  managerEngine.ts     # simulação das rodadas do Manager
+  club-catalog-test.ts # aliases e integridade dos clubes jogáveis
   bot.ts               # bot para testar PvP
   solo-test.ts         # teste headless solo
   smoke-test.ts        # teste headless PvP
 
 client/
   public/
-    pebol_logo.png
+    brand-concepts/     # identidade visual e logos SVG do Pebol
     world_cup_trophy.png
     import_teams_model.json.json
   src/
@@ -492,6 +552,8 @@ client/
     net.ts             # socket client
     api.ts             # client HTTP
     styles.css         # design system
+    components/        # telas isoladas, incluindo Manager e ranking
+    lib/managerCareer.ts # regras e persistência client-side do Manager
 ```
 
 ## Observações para desenvolvimento

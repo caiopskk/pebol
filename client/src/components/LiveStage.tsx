@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { AnimatePresence, motion } from "framer-motion";
 import { useLiveState, useHalftimeState, type HalftimeReserveItem } from "../lib/liveStore.js";
 import { TacticBanner } from "./TacticBanner.js";
@@ -53,24 +53,24 @@ export function PenaltyLabel() {
 
 export function BallSprite({ children }: { children: ReactNode }) {
   const s = useLiveState();
-  const transitionMs = Math.max(420, s.ball.transitionMs);
-  const ballKey = [
-    Math.round(s.ball.left * 10),
-    Math.round(s.ball.top * 10),
-    s.ball.goal ? "goal" : "move",
-  ].join("-");
+  const transitionMs = Math.max(220, s.ball.transitionMs);
+  const style = {
+    left: `${s.ball.left}%`,
+    top: `${s.ball.top}%`,
+    transitionDuration: `${transitionMs}ms`,
+    "--ball-travel-ms": `${transitionMs}ms`,
+    "--ball-roll-from": `${s.ball.rollFrom}deg`,
+    "--ball-roll-to": `${s.ball.rollTo}deg`,
+    "--ball-distance": Math.min(1, s.ball.distance / 45),
+  } as CSSProperties;
   return (
     <div
-      className={`bf-ball ${s.ball.goal ? "goal" : ""}`.trim()}
-      style={{
-        left: `${s.ball.left}%`,
-        top: `${s.ball.top}%`,
-        transitionDuration: `${transitionMs}ms`,
-        ["--ball-travel-ms" as string]: `${transitionMs}ms`,
-      }}
+      className={`bf-ball motion-${s.ball.motion} ${s.ball.goal ? "goal" : ""}`.trim()}
+      style={style}
     >
-      <div key={ballKey} className="bf-ball-core">
-        {children}
+      <span key={`shadow-${s.ball.sequence}`} className="bf-ball-shadow" />
+      <div key={s.ball.sequence} className="bf-ball-flight">
+        <div className="bf-ball-core">{children}</div>
       </div>
     </div>
   );

@@ -21,6 +21,8 @@ export interface GoalEntry {
   side: "you" | "opp";
 }
 
+export type BallMotionKind = "roll" | "pass" | "air" | "strike" | "deflect" | "settle";
+
 export interface BallState {
   /** % from left (0-100). */
   left: number;
@@ -30,6 +32,11 @@ export interface BallState {
   transitionMs: number;
   /** Add the "goal" class when the latest event was a goal. */
   goal: boolean;
+  motion: BallMotionKind;
+  sequence: number;
+  rollFrom: number;
+  rollTo: number;
+  distance: number;
 }
 
 export interface GoalOverlayState {
@@ -89,7 +96,17 @@ const INITIAL: LiveState = {
   minute: 0,
   halfLabel: "1º Tempo",
   paused: false,
-  ball: { left: 50, top: 50, transitionMs: 700, goal: false },
+  ball: {
+    left: 50,
+    top: 50,
+    transitionMs: 700,
+    goal: false,
+    motion: "settle",
+    sequence: 0,
+    rollFrom: 0,
+    rollTo: 0,
+    distance: 0,
+  },
   goal: { show: false, scorer: "" },
   card: { show: false, kind: null, name: "" },
   feed: [],

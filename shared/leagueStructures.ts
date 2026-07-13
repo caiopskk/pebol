@@ -1,4 +1,4 @@
-export type LeagueRegion = "south-america" | "europe";
+export type LeagueRegion = "south-america" | "europe" | "global";
 
 export type LeagueCountry =
   | "brasil"
@@ -8,7 +8,8 @@ export type LeagueCountry =
   | "italia"
   | "alemanha"
   | "franca"
-  | "portugal";
+  | "portugal"
+  | "europa-periferica";
 
 export interface LeagueTeamRef {
   id: string;
@@ -166,7 +167,7 @@ export const LEAGUE_STRUCTURES: LeagueStructure[] = [
         calendarFormat: "double-round-robin",
         continentalSlots: { libertadores: 5, sulamericana: 6 },
         teams: [
-          t("boca-juniors", "Boca Juniors", "Azul e Ouro de Buenos Aires", "boca-2000"),
+          t("boca-juniors", "Boca Juniors", "Azul e Ouro de Buenos Aires"),
           t("river-plate", "River Plate", "Faixa Vermelha de Núñez"),
           t("racing", "Racing Club", "Academia de Avellaneda"),
           t("independiente", "Independiente", "Rei de Copas de Avellaneda"),
@@ -575,7 +576,7 @@ export const LEAGUE_STRUCTURES: LeagueStructure[] = [
         teams: [
           t("benfica", "Benfica", "Vermelho de Lisboa", "benfica"),
           t("sporting", "Sporting CP", "Verde e Branco de Lisboa", "sporting"),
-          t("porto", "Porto", "Dragão do Douro", "porto-2004"),
+          t("porto", "Porto", "Dragão do Douro"),
           t("braga", "Braga", "Arsenal do Minho", "braga"),
           t("vitoria-guimaraes", "Vitória Guimarães", "Conquistadores de Guimarães", "vitoria-guimaraes"),
           t("boavista", "Boavista", "Xadrez do Porto", "boavista"),
@@ -591,6 +592,39 @@ export const LEAGUE_STRUCTURES: LeagueStructure[] = [
           t("farense", "Farense", "Leões de Faro"),
           t("estrela-amadora", "Estrela Amadora", "Tricolor da Amadora"),
           t("avs", "AVS", "Vermelho e Branco das Aves"),
+        ],
+      },
+    ],
+  },
+  {
+    id: "europa-periferica",
+    country: "europa-periferica",
+    region: "europe",
+    name: "Liga Europa Periférica",
+    alias: "Liga Continental Periférica",
+    divisions: [
+      {
+        id: "europa-periferica-primeira",
+        name: "Liga Continental",
+        alias: "Divisão Continental Europeia",
+        tier: 1,
+        promotionSlots: 0,
+        relegationSlots: 0,
+        calendarFormat: "double-round-robin",
+        continentalSlots: { champions: 3, europa: 4 },
+        teams: [
+          t("club-brugge", "Club Brugge", "Azul e Preto de Bruges", "club-brugge"),
+          t("shakhtar", "Shakhtar Donetsk", "Laranja e Preto do Donbass", "shakhtar"),
+          t("feyenoord", "Feyenoord", "Vermelho e Branco de Roterdã", "feyenoord"),
+          t("celtic", "Celtic", "Verde e Branco de Glasgow", "celtic"),
+          t("sturm-graz", "Sturm Graz", "Preto e Branco de Graz", "sturm-graz"),
+          t("psv", "PSV Eindhoven", "Vermelho e Branco de Eindhoven", "psv"),
+          t("salzburg", "Red Bull Salzburg", "Vermelho e Branco de Salzburgo", "salzburg"),
+          t("slovan", "Slovan Bratislava", "Azul e Branco de Bratislava", "slovan"),
+          t("dinamo-zagreb", "Dinamo Zagreb", "Azul de Zagreb", "dinamo-zagreb"),
+          t("young-boys", "Young Boys", "Amarelo e Preto de Berna", "young-boys"),
+          t("crvena-zvezda", "Crvena Zvezda", "Vermelho e Branco de Belgrado", "crvena-zvezda"),
+          t("sparta-praha", "Sparta Praha", "Grená de Praga", "sparta-praha"),
         ],
       },
     ],

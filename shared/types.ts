@@ -54,6 +54,11 @@ export interface ManagerPlayer extends Player {
   countryOrigin: string;
   potentialRating: number;
   morale: number;
+  fitness: number;
+  sharpness: number;
+  developmentProgress: number;
+  injuryRounds: number;
+  suspensionMatches: number;
   individualInstructions: Record<string, unknown>;
   value: number;
   isStarter: boolean;
@@ -135,6 +140,12 @@ export interface ManagerDashboard {
   inbox: ManagerInboxItem[];
   transferWindowOpen: boolean;
   commercial: ManagerCommercialSnapshot;
+  stadiumUpgradeOptions: ManagerStadiumUpgradeOption[];
+  sponsorOffers: ManagerSponsorOffer[];
+  trainingFocus: ManagerTrainingFocus;
+  trainingPlans: ManagerTrainingPlan[];
+  boardObjectives: ManagerBoardObjective[];
+  facilityUpgradeOptions: ManagerFacilityUpgradeOption[];
 }
 
 export interface ManagerRoundResult {
@@ -190,6 +201,76 @@ export interface ManagerCommercialSnapshot {
   sponsorName: string;
   sponsorIncome: number;
   projectedHomeIncome: number;
+}
+
+export type ManagerStadiumUpgradeKind =
+  | "capacity"
+  | "comfort"
+  | "commercial"
+  | "premium";
+
+export interface ManagerStadiumUpgradeOption {
+  id: string;
+  kind: ManagerStadiumUpgradeKind;
+  title: string;
+  description: string;
+  cost: number;
+  capacityGain: number;
+  ticketPriceGain: number;
+  supporterBoost: number;
+  sponsorIncomeBoostPct: number;
+  prestigeGain: number;
+  boardConfidenceGain: number;
+}
+
+export interface ManagerSponsorOffer {
+  id: string;
+  name: string;
+  tier: number;
+  weeklyIncome: number;
+  signingBonus: number;
+  durationSeasons: number;
+  description: string;
+  riskLabel: string;
+}
+
+export type ManagerTrainingFocus =
+  | "balanced"
+  | "recovery"
+  | "physical"
+  | "tactical"
+  | "development";
+
+export interface ManagerTrainingPlan {
+  id: ManagerTrainingFocus;
+  name: string;
+  description: string;
+  fitnessEffect: number;
+  sharpnessEffect: number;
+  developmentEffect: number;
+  injuryRiskLabel: string;
+}
+
+export interface ManagerBoardObjective {
+  id: "league" | "development" | "finance";
+  title: string;
+  description: string;
+  progressLabel: string;
+  completed: boolean;
+  failed: boolean;
+}
+
+export type ManagerFacilityKind = "training" | "medical" | "academy";
+
+export interface ManagerFacilityUpgradeOption {
+  id: ManagerFacilityKind;
+  title: string;
+  description: string;
+  currentLevel: number;
+  nextLevel: number;
+  cost: number;
+  benefit: string;
+  maxed: boolean;
 }
 
 export type Mentality =

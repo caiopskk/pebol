@@ -1,7 +1,7 @@
 import { createClient, type Client } from "@libsql/client";
 import { randomUUID } from "node:crypto";
 import { mkdirSync } from "node:fs";
-import { TEAMS } from "../../shared/data/teams.js";
+import { RETIRED_HISTORICAL_CLUB_IDS, TEAMS } from "../../shared/data/teams.js";
 import {
   WC_DRAFT_TEAMS,
   WC_BOSS,
@@ -245,6 +245,7 @@ export async function initDb(): Promise<void> {
   await backfillPlayerAttributes();
   await seedAchievements();
   await seedIfEmpty();
+  await syncOfficialClubCatalog();
 }
 
 async function migrateDb(): Promise<void> {
@@ -405,12 +406,14 @@ async function seedIfEmpty(): Promise<void> {
   let clubCount = 0;
   let nationalCount = 0;
   for (const t of TEAMS) {
+    const alias = CLUB_ALIASES[t.id];
+    if (!alias) throw new Error(`Missing public alias for official club: ${t.id}`);
     const exists = await db.execute({
       sql: "SELECT 1 FROM teams WHERE id=? LIMIT 1",
       args: [t.id],
     });
     if (exists.rows.length) continue;
-    await writeTeam(t.id, t, "club", null, now, CLUB_ALIASES[t.id] ?? t.name);
+    await writeTeam(t.id, t, "club", null, now, alias);
     clubCount++;
   }
   const nationalTeams = [...new Map(
@@ -428,6 +431,32 @@ async function seedIfEmpty(): Promise<void> {
   console.log(
     `[db] seeded ${clubCount} clubs + ${nationalCount} national teams`,
   );
+}
+
+async function syncOfficialClubCatalog(): Promise<void> {
+  for (const id of RETIRED_HISTORICAL_CLUB_IDS) {
+    await db.execute({
+      sql: `DELETE FROM players
+            WHERE team_id IN (
+              SELECT id FROM teams WHERE id = ? AND owner_id IS NULL AND kind = 'club'
+            )`,
+      args: [id],
+    });
+    await db.execute({
+      sql: "DELETE FROM teams WHERE id = ? AND owner_id IS NULL AND kind = 'club'",
+      args: [id],
+    });
+  }
+
+  for (const team of TEAMS) {
+    const alias = CLUB_ALIASES[team.id];
+    if (!alias) throw new Error(`Missing public alias for official club: ${team.id}`);
+    await db.execute({
+      sql: `UPDATE teams SET alias = ?
+            WHERE id = ? AND owner_id IS NULL AND kind = 'club'`,
+      args: [alias, team.id],
+    });
+  }
 }
 
 // ---- team payload (what the CRUD accepts) ----
@@ -790,8 +819,10 @@ export async function getUserProgress(userId: string): Promise<UserProgress> {
   };
 }
 
-export async function getLeaderboard(limit = 10): Promise<LeaderboardEntry[]> {
-  const safeLimit = Math.max(1, Math.min(50, Math.round(Number(limit) || 10)));
+export async function getLeaderboard(limit: number | null = 10): Promise<LeaderboardEntry[]> {
+  const safeLimit = limit === null
+    ? null
+    : Math.max(1, Math.min(50, Math.round(Number(limit) || 10)));
   const rows = (
     await db.execute({
       sql: `SELECT u.id, u.username, u.avatar_url,
@@ -811,8 +842,8 @@ export async function getLeaderboard(limit = 10): Promise<LeaderboardEntry[]> {
             ) xx ON xx.user_id = u.id
             ORDER BY (COALESCE(ax.xp, 0) + COALESCE(xx.xp, 0)) DESC,
                      u.username ASC
-            LIMIT ?`,
-      args: [safeLimit],
+            ${safeLimit === null ? "" : "LIMIT ?"}`,
+      args: safeLimit === null ? [] : [safeLimit],
     })
   ).rows as unknown as Record<string, unknown>[];
   return rows.map((row, index) => {
@@ -1013,6 +1044,11 @@ function managerPlayerFromRow(row: Record<string, unknown>): ManagerPlayer {
     countryOrigin: String(row.country_origin ?? ""),
     potentialRating: Number(row.potential_rating ?? row.rating ?? 75),
     morale: Number(row.moral ?? 70),
+    fitness: 92,
+    sharpness: 62,
+    developmentProgress: 0,
+    injuryRounds: 0,
+    suspensionMatches: 0,
     individualInstructions: safeInstructions(row.individual_instructions),
     name: String(row.name),
     pos,

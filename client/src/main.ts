@@ -67,6 +67,7 @@ import {
   leaveCurrentRoom,
 } from "./net.js";
 import { Home } from "./components/Home.js";
+import { LeaderboardPage } from "./components/LeaderboardPage.js";
 import { Login } from "./components/Login.js";
 import { Profile } from "./components/Profile.js";
 import { Achievements } from "./components/Achievements.js";
@@ -80,6 +81,7 @@ import { TacticBannerList, type BannerSpec } from "./components/TacticBanner.js"
 import type { PitchSlot } from "./components/Pitch.js";
 import { Overlays } from "./components/Overlays.js";
 import { liveStore, halftimeStore } from "./lib/liveStore.js";
+import { createBallMotionTracker } from "./lib/ballMotion.js";
 import type {
   HalftimeOptions,
   HalftimeCallbacks,
@@ -210,7 +212,9 @@ import {
 } from "./lib/adminTeamState.js";
 import {
   acceptManagerInboxOffer,
+  advanceManagerSeason,
   buyManagerClientPlayer,
+  chooseManagerSponsor,
   createManagerCareer,
   deleteManagerCareer,
   exportManagerCareer,
@@ -225,9 +229,11 @@ import {
   rejectManagerInboxOffer,
   searchManagerClientMarket,
   sellManagerClientPlayer,
+  setManagerTrainingFocus,
   skipManagerClientPreseason,
   startManagerClientRound,
   updateManagerClientLineup,
+  upgradeManagerFacility,
   upgradeManagerClientStadium,
   type ManagerCareerState,
   type ManagerRoundSession,
@@ -312,6 +318,7 @@ interface Local {
     | "admin"
     | "admin-feedback"
     | "achievements"
+    | "leaderboard"
     | "terms"
     | "privacy"
     | "updates"
@@ -432,6 +439,7 @@ function render() {
     else if (L.accountScreen === "profile") renderProfile();
     else if (L.accountScreen === "admin") renderAdmin();
     else if (L.accountScreen === "admin-feedback") renderAdminFeedback();
+    else if (L.accountScreen === "leaderboard") renderLeaderboard();
     else if (L.accountScreen === "terms" || L.accountScreen === "privacy")
       renderLegal(L.accountScreen);
     else if (L.accountScreen === "updates") renderUpdates();
@@ -539,6 +547,7 @@ function renderHome() {
       onOpenProfile: openProfile,
       onOpenAdmin: () => void openAdmin(),
       onOpenAchievements: () => void openAchievements(),
+      onOpenRanking: openLeaderboard,
       onLogout: logout,
       onWorldCup: startCampaign,
       onOpenUpdates: openUpdates,
@@ -546,10 +555,6 @@ function renderHome() {
       onOpenFeedback: openFeedback,
       onOpenLegal: openLegal,
       onCareer: () => void openManager(),
-      onSoon: (mode) =>
-        showToast(
-          `Modo ${mode === "carreira" ? "carreira" : "liga"} estará disponível em breve.`,
-        ),
     }),
   );
 }
@@ -650,7 +655,15 @@ function openFeedback() {
   L.accountScreen = "feedback";
   render();
 }
+function openLeaderboard() {
+  L.accountScreen = "leaderboard";
+  render();
+}
 async function openManager() {
+  if (!L.account) {
+    openLogin();
+    return;
+  }
   L.accountScreen = "manager";
   L.managerLoading = true;
   L.managerTeams = managerStartTeams();
@@ -659,16 +672,12 @@ async function openManager() {
   render();
   const userId = managerUserId();
   try {
-    if (L.account) {
-      const { state } = await api.managerCareerState();
-      L.managerCareer = state ? persistManagerCareer(state, userId) : loadManagerCareer(userId);
-      if (!state && L.managerCareer) syncManagerCareerToServer();
-    } else {
-      L.managerCareer = loadManagerCareer(null);
-    }
+    const { state } = await api.managerCareerState();
+    L.managerCareer = state ? persistManagerCareer(state, userId) : loadManagerCareer(userId);
+    if (!state && L.managerCareer) syncManagerCareerToServer();
     refreshManagerData();
   } catch (e) {
-    L.managerCareer = loadManagerCareer(L.account ? userId : null);
+    L.managerCareer = loadManagerCareer(userId);
     refreshManagerData();
     showToast((e as Error).message);
   }
@@ -679,6 +688,10 @@ function closeAccount() {
   L.accountScreen = null;
   L.editingTeam = null;
   render();
+}
+
+function renderLeaderboard() {
+  renderReact(createElement(LeaderboardPage, { account: L.account, onBack: closeAccount }));
 }
 function goHome() {
   L.state = null;
@@ -841,7 +854,7 @@ function managerActionLabel() {
   if (phase === "league") return "Pré-jogo";
   if (phase === "national-cup") return "Pré-jogo copa";
   if (phase === "continental") return "Pré-jogo continental";
-  if (phase === "season-end") return "Temporada encerrada";
+  if (phase === "season-end") return "Iniciar próxima temporada";
   return "Avançar";
 }
 
@@ -953,11 +966,51 @@ function renderManager() {
         render();
         await searchManagerMarket({});
       },
-      onUpgradeStadium: async () => {
+      onUpgradeStadium: (optionId: string) => {
         if (!L.managerCareer) return;
         try {
-          setManagerCareer(upgradeManagerClientStadium(L.managerCareer));
+          setManagerCareer(upgradeManagerClientStadium(L.managerCareer, optionId));
           showToast("Estádio ampliado.");
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+        render();
+      },
+      onChooseSponsor: (offerId: string) => {
+        if (!L.managerCareer) return;
+        try {
+          setManagerCareer(chooseManagerSponsor(L.managerCareer, offerId));
+          showToast("Patrocínio assinado.");
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+        render();
+      },
+      onTrainingFocus: (focus) => {
+        if (!L.managerCareer) return;
+        try {
+          setManagerCareer(setManagerTrainingFocus(L.managerCareer, focus));
+          showToast("Plano de treino atualizado.");
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+        render();
+      },
+      onUpgradeFacility: (kind) => {
+        if (!L.managerCareer) return;
+        try {
+          setManagerCareer(upgradeManagerFacility(L.managerCareer, kind));
+          showToast("Estrutura evoluída.");
+        } catch (e) {
+          showToast((e as Error).message);
+        }
+        render();
+      },
+      onAdvanceSeason: () => {
+        if (!L.managerCareer) return;
+        try {
+          setManagerCareer(advanceManagerSeason(L.managerCareer));
+          showToast("Nova temporada iniciada.");
         } catch (e) {
           showToast((e as Error).message);
         }
@@ -1817,14 +1870,13 @@ function renderCampaignMatch() {
 
   const pidOf = (side: MatchEvent["side"]) =>
     side === "home" ? "you" : side === "away" ? "opp" : null;
+  const trackBallMotion = createBallMotionTracker();
   function moveBall(ev: MatchEvent, dur: number) {
     if (ev.bx === undefined) return;
-    liveStore.setBall({
-      transitionMs: Math.max(180, Math.min(1300, dur * 0.85)),
-      left: ((ev.bx - 0.5) / 105) * 100,
-      top: ((ev.by! - 0.5) / 68) * 100,
-      goal: ev.type === "goal",
-    });
+    const transitionMs = Math.max(180, Math.min(1300, dur * 0.85));
+    const left = ((ev.bx - 0.5) / 105) * 100;
+    const top = ((ev.by! - 0.5) / 68) * 100;
+    liveStore.setBall(trackBallMotion(ev.type, left, top, transitionMs));
   }
   function addFeed(ev: MatchEvent) {
     const cardKind = ev.type === "card" ? (ev.card === "red" ? "red" : "yellow") : undefined;
@@ -2029,6 +2081,56 @@ function renderDevPreview(kind: DevPreviewKind) {
   L.accountScreen = null;
   lastCampaignPhase = null;
   const previewContext = { renderReact, setMatchSpeed, buildPitchSlots, account: L.account };
+
+  if (kind === "login") {
+    L.campaign = null;
+    renderReact(createElement(Login, { onSubmit: () => {}, onBack: () => {} }));
+    return;
+  }
+
+  if (kind === "leaderboard") {
+    L.campaign = null;
+    renderReact(createElement(LeaderboardPage, { account: PREVIEW_ACCOUNT, onBack: goPreviewHome }));
+    return;
+  }
+
+  if (kind === "manager-dashboard") {
+    L.campaign = null;
+    const teams = managerStartTeams();
+    const previewCareer = createManagerCareer(teams.find((team) => team.id === "flamengo")?.id ?? teams[0].id, "preview-manager");
+    const previewData = managerDashboardData(previewCareer);
+    const firstReserve = previewData.squad.find((player) => !player.isStarter);
+    if (firstReserve) {
+      firstReserve.injuryRounds = 2;
+      firstReserve.fitness = 58;
+    }
+    renderReact(createElement(ManagerDashboard, {
+      data: managerDashboardData(previewCareer),
+      teams,
+      loading: false,
+      seasonPhase: previewCareer.phase,
+      phaseLabel: "Pré-temporada · Jogo 1",
+      actionLabel: "Pré-jogo amistoso",
+      onStart: () => {},
+      onPlayRound: () => {},
+      onSkipPreseason: () => {},
+      onExport: () => {},
+      onImportFile: () => {},
+      onDeleteCareer: () => {},
+      onReadInbox: () => {},
+      onAcceptInbox: () => {},
+      onRejectInbox: () => {},
+      onOpenSquad: () => {},
+      onOpenMarket: () => {},
+      onUpgradeStadium: () => {},
+      onChooseSponsor: () => {},
+      onTrainingFocus: () => {},
+      onUpgradeFacility: () => {},
+      onAdvanceSeason: () => {},
+      onBack: () => {},
+    }));
+    return;
+  }
 
   if (kind === "penalty-modal") {
     L.campaign = null;
@@ -2439,15 +2541,14 @@ function renderLiveMatch() {
     }
     return { bx, by };
   };
+  const trackBallMotion = createBallMotionTracker();
   function moveBall(ev: MatchEvent, durationMs: number) {
     if (ev.bx === undefined) return;
     const { bx, by } = displayCoord(ev);
-    liveStore.setBall({
-      transitionMs: Math.max(180, Math.min(1300, durationMs * 0.85)),
-      left: ((bx - 0.5) / 105) * 100,
-      top: ((by - 0.5) / 68) * 100,
-      goal: ev.type === "goal",
-    });
+    const transitionMs = Math.max(180, Math.min(1300, durationMs * 0.85));
+    const left = ((bx - 0.5) / 105) * 100;
+    const top = ((by - 0.5) / 68) * 100;
+    liveStore.setBall(trackBallMotion(ev.type, left, top, transitionMs));
   }
 
   const goals: Record<string, number> = { [you.id]: 0, [opp.id]: 0 };

@@ -40,6 +40,11 @@ export interface LeaderboardEntry extends UserProgress {
   rank: number;
   avatarUrl: string | null;
 }
+export interface PublicProfile {
+  user: AccountUser;
+  progress: UserProgress;
+  achievements: AchievementProgress[];
+}
 export type FeedbackCategory = "suggestion" | "bug" | "balance" | "other";
 export interface FeedbackPayload {
   category: FeedbackCategory;
@@ -144,6 +149,9 @@ export const api = {
     }
   },
   leaderboard: () => req<{ leaderboard: LeaderboardEntry[] }>("/api/leaderboard"),
+  fullLeaderboard: () => req<{ leaderboard: LeaderboardEntry[] }>("/api/leaderboard?all=1"),
+  publicProfile: (userId: string) =>
+    req<{ profile: PublicProfile }>(`/api/users/${encodeURIComponent(userId)}/profile`),
   progress: () => req<{ progress: UserProgress }>("/api/progress"),
   achievements: () => req<{ achievements: AchievementProgress[] }>("/api/achievements"),
   unlockAchievement: (id: string) =>

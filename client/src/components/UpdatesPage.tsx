@@ -13,6 +13,30 @@ interface UpdateEntry {
 
 const UPDATES: UpdateEntry[] = [
   {
+    date: "13 de julho de 2026",
+    title: "Nova identidade, home e comunidade",
+    summary:
+      "O Pebol ganhou uma apresentação mais própria e novas formas de conhecer quem está jogando.",
+    items: [
+      "A nova identidade visual chegou à home e à tela de login, com logo própria e navegação lateral expansível.",
+      "O ranking agora tem uma página completa com todos os jogadores cadastrados e busca por nome.",
+      "É possível abrir o perfil de qualquer jogador para ver colocação, nível, XP e conquistas desbloqueadas.",
+      "A animação da bola durante as partidas ficou mais fluida e transmite melhor o movimento de rotação e rolamento.",
+    ],
+  },
+  {
+    date: "13 de julho de 2026",
+    title: "Modo Carreira em beta jogável",
+    summary:
+      "O modo Manager cresceu para uma experiência de clube com temporadas, decisões e progressão persistente.",
+    items: [
+      "A carreira agora é vinculada à conta e pode ser exportada, importada ou apagada para começar novamente.",
+      "Pré-temporada, ligas, copas nacionais e torneios continentais fazem parte do calendário do clube.",
+      "Pré-jogo, escalação, formação, mentalidade, foco de ataque e substituições usam a mesma base tática das outras partidas.",
+      "Mercado em janelas, patrocínios, sócios, estádio, infraestrutura, finanças e caixa de entrada ampliam a gestão fora de campo.",
+    ],
+  },
+  {
     date: "1 de julho de 2026",
     title: "Perfil, avatar e compartilhamento",
     summary:
