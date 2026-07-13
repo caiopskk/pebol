@@ -794,7 +794,7 @@ export function Home({
       />
 
       <div className="home-content px-4 py-4 sm:px-6 lg:px-8">
-        <div className="mx-auto grid max-w-[106rem] gap-3">
+        <div className="mx-auto flex w-full max-w-[106rem] flex-1 flex-col gap-3">
 
         <div className="grid gap-3 xl:grid-cols-[minmax(19rem,1fr)_minmax(24rem,1.18fr)_minmax(20rem,1fr)] xl:items-stretch">
           <div className="order-2 xl:col-start-1 xl:row-start-1">
@@ -856,7 +856,7 @@ export function Home({
             </motion.section>
         ) : null}
 
-          <motion.footer variants={cardMotion} className="flex flex-wrap items-center justify-center gap-3 pb-4 pt-1 text-xs font-medium text-pebol-faint">
+          <motion.footer variants={cardMotion} className="mt-auto flex flex-wrap items-center justify-center gap-3 pb-4 pt-4 text-xs font-medium text-pebol-faint">
           <span className="font-display font-extrabold uppercase tracking-[0.14em]">Pebol</span>
           <button type="button" className="transition-colors duration-300 hover:text-pebol-accent" onClick={onOpenUpdates}>
             Novidades
