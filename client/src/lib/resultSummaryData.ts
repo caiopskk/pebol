@@ -16,6 +16,20 @@ interface Leader {
   side: "you" | "opp";
 }
 
+export type MatchOutcome = "win" | "draw" | "lose";
+
+export function matchOutcome(
+  result: MatchResult,
+  youId: string,
+  opponentId: string,
+): MatchOutcome {
+  if (result.penaltyScore) return result.winnerId === youId ? "win" : "lose";
+  const youGoals = result.goals[youId] ?? 0;
+  const opponentGoals = result.goals[opponentId] ?? 0;
+  if (youGoals === opponentGoals) return "draw";
+  return youGoals > opponentGoals ? "win" : "lose";
+}
+
 export function initials(name: string): string {
   const parts = name.trim().split(/\s+/);
   if (parts.length >= 2)
@@ -60,7 +74,9 @@ export function computeLeaders(
 
   const scorer = top(goals, "gol");
   const assist = top(assists, "assistência");
-  const winnerSide: "you" | "opp" = r.winnerId === youId ? "you" : "opp";
+  const opponentId = players.find((player) => player.id !== youId)?.id ?? "";
+  const outcome = matchOutcome(r, youId, opponentId);
+  const winnerSide: "you" | "opp" = outcome === "win" ? "you" : "opp";
   let motm: Leader | null = null;
   let motmGoals = 0;
   for (const [name, n] of goals) {

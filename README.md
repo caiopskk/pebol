@@ -44,6 +44,9 @@ importação por JSON, conquistas e deploy em porta única para produção.
 - **Modo Carreira/Manager (beta jogável)** com temporadas, pré-temporada, ligas nacionais,
   copas, competições continentais, mercado, elenco, táticas, finanças, estádio, patrocínios,
   sócios-torcedores, caixa de entrada e evolução do clube.
+- **Fadiga e rotação de elenco no Manager**: a condição física altera o desempenho real em
+  campo, jogadores utilizados perdem energia conforme os minutos disputados e reservas não
+  utilizados se recuperam entre as rodadas.
 - **Carreira vinculada à conta** no banco, com exportação, importação e opção de apagar o save
   para começar novamente. Visitantes podem conhecer o modo pela home, mas precisam entrar ou
   criar uma conta para jogar.
@@ -56,6 +59,8 @@ importação por JSON, conquistas e deploy em porta única para produção.
   clicáveis mostrando nível, XP e conquistas.
 - O Modo Carreira evoluiu para um fluxo completo de clube: calendário, pré-jogo tático,
   escalação, substituições, mercado em janelas, patrocínios por temporada, estádio e inbox.
+- Condição, ritmo e moral agora formam o desempenho atual dos atletas no Manager. Um reserva
+  descansado pode render mais que um titular tecnicamente superior, mas exausto.
 - Saves do Manager agora pertencem à conta autenticada e podem ser exportados, importados ou
   apagados pelo próprio jogador.
 - A animação da bola durante as partidas foi refeita para transmitir rolamento, velocidade e
@@ -140,6 +145,12 @@ decisões da diretoria e propostas por jogadores ou pelo próprio técnico.
 
 O save é sincronizado com o usuário no Turso/libSQL. Também pode ser exportado para JSON,
 importado posteriormente ou apagado para iniciar uma nova carreira.
+
+A condição física tem efeito direto na força usada pela simulação. Atletas que permanecem os
+90 minutos recebem a carga completa da partida; quem entra ou sai no intervalo acumula uma
+carga proporcional de 45 minutos; jogadores não utilizados recuperam energia. Condição baixa
+reduz o desempenho atual e aumenta moderadamente o risco médico, tornando rotação, treino de
+recuperação e investimento no departamento médico decisões relevantes ao longo da temporada.
 
 ## Draft e escalação
 
@@ -501,6 +512,8 @@ pnpm test:engine
 pnpm test:engine:balance
 pnpm test:engine:all
 pnpm test:manager
+pnpm test:modes
+pnpm test:all
 pnpm test:ball-motion
 pnpm test:clubs
 pnpm test:achievements
@@ -510,6 +523,15 @@ pnpm exec tsx server/src/smoke-test.ts
 ```
 
 Para os testes `solo-test` e `smoke-test`, deixe o servidor rodando antes.
+
+`pnpm test:modes` percorre Clássico e Hardcore, com clubes e seleções, tanto em PvP quanto
+contra IA. O teste cobre draft, pool de times, rerolls, ocultação de ratings, pré-jogo,
+intervalo, resultado e revanche. A mesma suíte valida a campanha da Copa do Mundo, incluindo
+draft por setores, fase de grupos, melhores terceiros, mata-mata e progressão de dificuldade.
+
+`pnpm test:all` executa todas as verificações autocontidas do projeto: modos, campanha, engine,
+balanceamento estatístico, carreira, conquistas, catálogo de clubes e animação da bola. Ele
+não precisa que o servidor de desenvolvimento esteja rodando.
 
 ## Estrutura
 
@@ -536,6 +558,7 @@ server/src/
   api.ts               # rotas HTTP
   engine-property-test.ts # invariantes da engine
   engine-balance-test.ts  # sanidade estatística do balanceamento
+  game-modes-test.ts    # Clássico/Hardcore, clubes/seleções e PvP/IA
   managerEngine.ts     # simulação das rodadas do Manager
   club-catalog-test.ts # aliases e integridade dos clubes jogáveis
   bot.ts               # bot para testar PvP
@@ -554,6 +577,8 @@ client/
     styles.css         # design system
     components/        # telas isoladas, incluindo Manager e ranking
     lib/managerCareer.ts # regras e persistência client-side do Manager
+    lib/managerFatigue.ts # condição, desempenho atual e faixas de fadiga
+    campaign-mode-test.ts # draft, grupos e mata-mata da campanha da Copa
 ```
 
 ## Observações para desenvolvimento

@@ -11,6 +11,12 @@ import { Pitch } from "./Pitch.js";
 import { managerPitchSlots } from "../lib/managerData.js";
 import { ATTACK_FOCUS_OPTIONS } from "./SetupBoard.js";
 import { effectiveRating } from "../../../shared/engine.js";
+import {
+  managerConditionedPlayer,
+  managerFitnessLabel,
+  managerFitnessTone,
+  managerMatchRating,
+} from "../lib/managerFatigue.js";
 
 interface ManagerSquadProps {
   data: ManagerDashboard;
@@ -71,8 +77,8 @@ export function ManagerSquad({ data, onSave, onSell, onBack }: ManagerSquadProps
       const best = [...squad]
         .filter((player) => available(player) && !used.has(player.id))
         .sort((a, b) =>
-          effectiveRating(b, slot.pos) + b.fitness / 25 + b.sharpness / 50 -
-          (effectiveRating(a, slot.pos) + a.fitness / 25 + a.sharpness / 50)
+          effectiveRating(managerConditionedPlayer(b), slot.pos) -
+          effectiveRating(managerConditionedPlayer(a), slot.pos)
         )[0];
       if (!best) continue;
       used.add(best.id);
@@ -143,13 +149,14 @@ export function ManagerSquad({ data, onSave, onSell, onBack }: ManagerSquadProps
                     : "border-white/10 bg-white/[0.04]"
               }`}
             >
-              <button disabled={!available(player)} className="grid h-11 w-11 place-items-center rounded-lg border border-white/10 bg-black/30 font-display text-sm font-black text-pebol-gold" onClick={() => selectPlayer(player.id)}>
-                {player.rating}
+              <button disabled={!available(player)} className="grid h-12 w-12 place-items-center rounded-lg border border-white/10 bg-black/30 font-display font-black text-pebol-gold" onClick={() => selectPlayer(player.id)} title={`Overall ${player.rating} · desempenho atual ${managerMatchRating(player)}`}>
+                <span className="text-base leading-none">{managerMatchRating(player)}</span>
+                <small className="text-[9px] leading-none text-pebol-muted">OVR {player.rating}</small>
               </button>
               <button disabled={!available(player)} className="min-w-0 text-left" onClick={() => selectPlayer(player.id)}>
                 <strong className="block truncate font-display text-sm font-extrabold text-white">{player.name}</strong>
                 <span className="text-xs font-bold text-pebol-muted">
-                  {posLabel(player.pos)} · {player.age} anos · POT {player.potentialRating} · CON {player.fitness} · RIT {player.sharpness}
+                  {posLabel(player.pos)} · {player.age} anos · POT {player.potentialRating} · <span className={managerFitnessTone(player.fitness)}>CON {player.fitness} {managerFitnessLabel(player.fitness)}</span> · RIT {player.sharpness}
                   {player.injuryRounds ? ` · LES ${player.injuryRounds}` : player.suspensionMatches ? ` · SUS ${player.suspensionMatches}` : player.lineupSlotId ? ` · ${player.lineupSlotId}` : ""}
                 </span>
               </button>

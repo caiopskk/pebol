@@ -16,6 +16,8 @@
     "test:engine:balance": "tsx server/src/engine-balance-test.ts",
     "test:engine:all": "pnpm run test:engine && pnpm run test:engine:balance",
     "test:manager": "tsx client/src/manager-career-test.ts",
+    "test:modes": "tsx server/src/game-modes-test.ts && tsx client/src/campaign-mode-test.ts",
+    "test:all": "pnpm run test:modes && pnpm run test:engine:all && pnpm run test:manager && pnpm run test:achievements && pnpm run test:clubs && pnpm run test:ball-motion",
     "test:ball-motion": "tsx client/src/ball-motion-test.ts",
     "test:achievements": "tsx client/src/achievement-rules-test.ts",
     "test:clubs": "tsx server/src/club-catalog-test.ts",

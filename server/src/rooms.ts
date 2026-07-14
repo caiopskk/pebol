@@ -11,7 +11,7 @@ import type {
   HalftimeLineup,
   Position,
 } from "../../shared/types.js";
-import { isHardcoreMode, isWorldCupMode } from "../../shared/gameMode.js";
+import { gameModeStrengthScale, isHardcoreMode, isWorldCupMode } from "../../shared/gameMode.js";
 import { TEAMS, getTeam } from "../../shared/data/teams.js";
 import { WC_DRAFT_TEAMS } from "../../shared/data/worldcup.js";
 import { getFormation, groupOf } from "../../shared/formations.js";
@@ -332,8 +332,11 @@ export function rerollTeam(room: Room, playerId: string): string | null {
   const player = room.players.find((p) => p.id === playerId);
   if (!player) return "Jogador não encontrado.";
   if (player.isAI) return "A máquina não pode atualizar o time.";
+  if (!isPvP(room) && room.players.some((candidate) => candidate.isAI) && isHardcoreMode(room.mode)) {
+    return "Atualizações ficam indisponíveis no Hardcore contra a máquina.";
+  }
   if ((player.rerollsRemaining ?? 0) <= 0)
-    return "Você já usou suas 3 atualizações.";
+    return "Você já usou todas as suas atualizações.";
   if (room.currentTeam) room.usedTeamIds.push(room.currentTeam.id);
   player.rerollsRemaining = (player.rerollsRemaining ?? 0) - 1;
   beginTurn(room);
@@ -358,13 +361,7 @@ function advanceTurn(room: Room) {
   beginTurn(room);
 }
 
-// Hardcore vs the machine: buff the AI's strength so it's harder (not impossible)
-// to win — on top of the hidden ratings. ~+2.5% ≈ the player winning ~40% of even
-// matchups instead of ~50%.
-const HARDCORE_AI_SCALE = 1.025;
-
 function simInput(p: InternalPlayer, room: Room) {
-  const hardcoreAI = p.isAI && isHardcoreMode(room.mode);
   return {
     id: p.id,
     name: p.name,
@@ -372,7 +369,7 @@ function simInput(p: InternalPlayer, room: Room) {
     formationId: p.formationId!,
     mentality: p.mentality!,
     attackFocus: p.attackFocus,
-    strengthScale: hardcoreAI ? HARDCORE_AI_SCALE : 1,
+    strengthScale: gameModeStrengthScale(room.mode, p.isAI),
   };
 }
 

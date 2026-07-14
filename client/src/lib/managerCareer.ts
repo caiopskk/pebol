@@ -50,6 +50,7 @@ import {
   type SimInput,
 } from "../../../shared/engine.js";
 import { managerPicks } from "./managerData.js";
+import { managerConditionedPlayer } from "./managerFatigue.js";
 
 const STORAGE_KEY = "pebol_manager_career_v1";
 const START_MONEY = 25_000_000;
@@ -120,6 +121,7 @@ export interface ManagerRoundSession {
   otherPlayed: ManagerRoundResult["fixtures"];
   settleDraw: boolean;
   expelled: Record<string, string[]>;
+  initialUserStarterIds: string[];
   finalized: boolean;
 }
 
@@ -792,13 +794,6 @@ function playerAvailable(player: ManagerPlayer): boolean {
   return player.injuryRounds <= 0 && player.suspensionMatches <= 0;
 }
 
-function conditionedPlayer(player: ManagerPlayer): ManagerPlayer {
-  const fitnessMod = player.fitness >= 88 ? 1 : player.fitness >= 72 ? 0 : -Math.ceil((72 - player.fitness) / 7);
-  const sharpnessMod = player.sharpness >= 82 ? 1 : player.sharpness < 45 ? -2 : 0;
-  const moraleMod = player.morale >= 82 ? 1 : player.morale < 42 ? -1 : 0;
-  return { ...player, rating: clamp(player.rating + fitnessMod + sharpnessMod + moraleMod, 40, 99) };
-}
-
 function ensureAvailableUserLineup(state: ManagerCareerState): void {
   const squad = state.squads[state.save.teamId] ?? [];
   const formation = getFormation(state.save.formationId) ?? FORMATIONS[0];
@@ -854,7 +849,7 @@ function simInput(state: ManagerCareerState, teamId: string): SimInput {
   const squad = state.squads[teamId] ?? [];
   if (teamId === state.save.teamId) {
     const formation = getFormation(state.save.formationId) ?? FORMATIONS[0];
-    const picks = managerPicks(formation, squad.map(conditionedPlayer));
+    const picks = managerPicks(formation, squad.map(managerConditionedPlayer));
     if (picks.length === 11) {
       return {
         id: teamId,
@@ -1260,19 +1255,25 @@ function applySquadRoundEffects(
   ga: number,
   timeline: MatchEvent[],
   userSide: "home" | "away",
+  initialStarterIds?: Iterable<string>,
 ): void {
   const squad = state.squads[state.save.teamId] ?? [];
   const plan = TRAINING_PLANS.find((candidate) => candidate.id === state.trainingFocus) ?? TRAINING_PLANS[0];
   const developmentScale = 0.8 + state.save.trainingCenterLevel * 0.2;
+  const initialStarters = new Set(initialStarterIds ?? squad.filter((player) => player.isStarter).map((player) => player.id));
   let developed = 0;
 
   for (const player of squad) {
     player.injuryRounds = Math.max(0, player.injuryRounds - 1);
     player.suspensionMatches = Math.max(0, player.suspensionMatches - 1);
-    const played = player.isStarter;
-    const matchLoad = played ? (state.phase === "preseason" ? 7 : 12) : -4;
+    const startedFirstHalf = initialStarters.has(player.id);
+    const startedSecondHalf = player.isStarter;
+    const minutesPlayed = (startedFirstHalf ? 45 : 0) + (startedSecondHalf ? 45 : 0);
+    const played = minutesPlayed > 0;
+    const fullMatchLoad = state.phase === "preseason" ? 10 : 16;
+    const matchLoad = played ? Math.round(fullMatchLoad * ((minutesPlayed / 90) ** 0.85)) : -4;
     player.fitness = clamp(player.fitness + plan.fitnessEffect - matchLoad + state.save.medicalDepartmentLevel, 35, 100);
-    player.sharpness = clamp(player.sharpness + plan.sharpnessEffect + (played ? 4 : -2), 25, 100);
+    player.sharpness = clamp(player.sharpness + plan.sharpnessEffect + (minutesPlayed === 90 ? 4 : minutesPlayed === 45 ? 2 : -2), 25, 100);
     player.morale = clamp(player.morale + (gf > ga ? (played ? 4 : 2) : gf === ga ? 0 : played ? -3 : -1), 20, 100);
 
     if (player.potentialRating > player.rating && player.injuryRounds === 0) {
@@ -1305,9 +1306,15 @@ function applySquadRoundEffects(
   const rng = rngFor(`medical:${state.save.id}:${state.save.season}:${state.phase}:${state.phaseRound}`);
   const loadRisk = state.trainingFocus === "physical" ? 1.55 : state.trainingFocus === "recovery" ? 0.35 : 1;
   const medicalProtection = 1 - (state.save.medicalDepartmentLevel - 1) * 0.11;
-  const candidates = squad.filter((player) => player.isStarter && player.injuryRounds === 0);
-  if (candidates.length && rng() < 0.065 * loadRisk * medicalProtection) {
-    const injured = candidates[Math.floor(rng() * candidates.length)];
+  const candidates = squad.filter((player) =>
+    (initialStarters.has(player.id) || player.isStarter) && player.injuryRounds === 0
+  );
+  const fatigueRisk = candidates.length
+    ? candidates.reduce((sum, player) => sum + Math.max(0, 78 - player.fitness) / 100, 0) / candidates.length
+    : 0;
+  if (candidates.length && rng() < 0.065 * loadRisk * medicalProtection * (1 + fatigueRisk)) {
+    const weighted = candidates.flatMap((player) => Array.from({ length: 1 + Math.max(0, Math.floor((80 - player.fitness) / 8)) }, () => player));
+    const injured = weighted[Math.floor(rng() * weighted.length)];
     injured.injuryRounds = Math.max(1, Math.ceil((1 + rng() * 3) - state.save.medicalDepartmentLevel * 0.35));
     addInbox(state, {
       type: "board",
@@ -1387,6 +1394,7 @@ function applyCompletedUserFixture(
     ga,
     result.timeline,
     fixture.homeTeamId === state.save.teamId ? "home" : "away",
+    session.initialUserStarterIds,
   );
   if (userWonKnockout && state.phase === "national-cup") {
     state.nationalCupChampionId = state.save.teamId;
@@ -1485,12 +1493,12 @@ function advancePhase(state: ManagerCareerState): void {
   }
 }
 
-export function managerClientBench(state: ManagerCareerState): Array<Player & { fromTeamId: string }> {
+export function managerClientBench(state: ManagerCareerState): Array<ManagerPlayer & { fromTeamId: string }> {
   return (state.squads[state.save.teamId] ?? [])
     .filter((player) => !player.isStarter && playerAvailable(player))
     .sort((a, b) => b.rating - a.rating)
     .slice(0, 12)
-    .map((player) => ({ ...conditionedPlayer(player), fromTeamId: player.teamId }));
+    .map((player) => ({ ...managerConditionedPlayer(player), fromTeamId: player.teamId }));
 }
 
 export function startManagerClientRound(state: ManagerCareerState): ManagerRoundStart {
@@ -1583,6 +1591,7 @@ export function startManagerClientRound(state: ManagerCareerState): ManagerRound
       otherPlayed,
       settleDraw,
       expelled: firstHalf.expelled,
+      initialUserStarterIds: (state.squads[state.save.teamId] ?? []).filter((player) => player.isStarter).map((player) => player.id),
       finalized: false,
     },
   };

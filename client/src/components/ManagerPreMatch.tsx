@@ -13,6 +13,12 @@ import { MENTALITIES } from "../../../shared/mentalities.js";
 import { ATTACK_FOCUS_OPTIONS } from "./SetupBoard.js";
 import { Pitch } from "./Pitch.js";
 import { managerPitchSlots, ratingAvg } from "../lib/managerData.js";
+import {
+  managerConditionedPlayer,
+  managerFitnessLabel,
+  managerFitnessTone,
+  managerMatchRating,
+} from "../lib/managerFatigue.js";
 
 interface ManagerPreMatchProps {
   data: ManagerDashboard;
@@ -54,8 +60,8 @@ function autoAssignSquad(squad: ManagerPlayer[], formation: Formation): ManagerP
     let best: ManagerPlayer | null = null;
     let bestScore = -1;
     for (const player of squad) {
-      if (used.has(player.id)) continue;
-      const score = effectiveRating(player, slot.pos);
+      if (used.has(player.id) || player.injuryRounds > 0 || player.suspensionMatches > 0) continue;
+      const score = effectiveRating(managerConditionedPlayer(player), slot.pos);
       if (score > bestScore) {
         best = player;
         bestScore = score;
@@ -215,25 +221,32 @@ export function ManagerPreMatch({
             <section className={`${panel} grid max-h-[33rem] content-start gap-2 overflow-y-auto`}>
               <div className="mb-1 flex items-center justify-between gap-3">
                 <h2 className="font-title text-xl uppercase text-white">Elenco</h2>
-                <span className="text-sm font-bold text-pebol-muted">Média {ratingAvg(starters)}</span>
+                <span className="text-sm font-bold text-pebol-muted">Desempenho {ratingAvg(starters.map(managerConditionedPlayer))}</span>
               </div>
               {squad.map((player) => (
                 <button
                   key={player.id}
                   type="button"
                   className={`grid min-h-14 grid-cols-[3rem_minmax(0,1fr)_auto] items-center gap-3 rounded-lg border p-2 text-left ${
+                    player.injuryRounds > 0 || player.suspensionMatches > 0
+                      ? "border-red-300/25 bg-red-400/[0.06] opacity-70"
+                      :
                     selectedId === player.id
                       ? "border-pebol-accent bg-pebol-accent/10"
                       : player.isStarter
                         ? "border-pebol-blue/35 bg-pebol-blue/10"
                         : "border-white/10 bg-white/[0.04]"
                   }`}
+                  disabled={player.injuryRounds > 0 || player.suspensionMatches > 0}
                   onClick={() => setSelectedId((current) => (current === player.id ? null : player.id))}
                 >
-                  <span className="grid h-10 w-10 place-items-center rounded-lg border border-white/10 bg-black/30 font-display text-sm font-black text-pebol-gold">{player.rating}</span>
+                  <span className="grid h-11 w-11 place-items-center rounded-lg border border-white/10 bg-black/30 font-display font-black text-pebol-gold" title={`Overall ${player.rating} · desempenho atual ${managerMatchRating(player)}`}>
+                    <span className="text-sm leading-none">{managerMatchRating(player)}</span>
+                    <small className="text-[8px] leading-none text-pebol-muted">OVR {player.rating}</small>
+                  </span>
                   <span className="min-w-0">
                     <strong className="block truncate font-display text-sm font-extrabold text-white">{player.name}</strong>
-                    <span className="text-xs font-bold text-pebol-muted">{posLabel(player.pos)} {player.lineupSlotId ? `· ${player.lineupSlotId}` : ""}</span>
+                    <span className="text-xs font-bold text-pebol-muted">{posLabel(player.pos)} · <span className={managerFitnessTone(player.fitness)}>CON {player.fitness} {managerFitnessLabel(player.fitness)}</span> {player.lineupSlotId ? `· ${player.lineupSlotId}` : ""}</span>
                   </span>
                   <span className="font-display text-xs font-black uppercase text-pebol-muted">{player.isStarter ? "Titular" : "Banco"}</span>
                 </button>

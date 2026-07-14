@@ -165,6 +165,7 @@ import {
   eventLogParts,
   initials,
   leaderCardData,
+  matchOutcome,
   strengthRow,
 } from "./lib/resultSummaryData.js";
 import {
@@ -204,6 +205,8 @@ import {
   drawCampaignTeam,
   placeCampaignPlayer,
   relocateCampaignPick,
+  rerollCampaignTeam,
+  startCampaignDraft,
 } from "./lib/campaignDraftLogic.js";
 import { createInitialCampaignState } from "./lib/campaignStateFactory.js";
 import {
@@ -1484,10 +1487,7 @@ function renderCampaignSetup() {
         render();
       },
       onStart: () => {
-        // Reroll allowance follows the chosen mode: Normal = 5, Hardcore = 3.
-        c.rerollsRemaining = c.mode === "hardcore" ? 3 : 5;
-        c.phase = "draft";
-        campaignDrawTeam();
+        startCampaignDraft(c);
         render();
       },
     }),
@@ -1501,13 +1501,11 @@ function campaignDrawTeam() {
 
 function campaignRerollTeam() {
   const c = L.campaign!;
-  if (c.phase !== "draft") return;
-  if (c.rerollsRemaining <= 0)
-    return showToast("Você já usou suas atualizações.");
-  if (c.currentTeam) c.usedTeamIds.push(c.currentTeam.id);
-  c.rerollsRemaining--;
-  c.selectedPlayer = null;
-  campaignDrawTeam();
+  const result = rerollCampaignTeam(c);
+  if (result === "wrong-phase") return;
+  if (result === "exhausted") return showToast("Você já usou suas atualizações.");
+  if (result === "draw-failed") return showToast("Não foi possível sortear outra seleção.");
+  cupDraftScrollTop = 0;
   render();
 }
 
@@ -3000,7 +2998,38 @@ function renderLiveMatch() {
     render();
   }
 
-  liveSkipRef.current = finish;
+  function skipLiveMatch() {
+    if (L.managerRoundSession && !r.secondHalfReady) {
+      const completed = completeManagerClientSecondHalf(L.managerRoundSession, {
+        formationId: you.formationId ?? L.formationId,
+        mentality: you.mentality ?? L.mentality,
+        attackFocus: you.attackFocus ?? L.attackFocus,
+        picks: you.picks,
+      });
+      L.managerRoundSession = completed.session;
+      setManagerCareer(completed.state);
+      L.state = completed.session.room;
+      r = completed.session.room.result!;
+      finish();
+      return;
+    }
+
+    if (!r.secondHalfReady) {
+      goals[you.id] = r.firstHalfGoals[you.id] ?? 0;
+      goals[opp.id] = r.firstHalfGoals[opp.id] ?? 0;
+      updateScore();
+      minute = 45;
+      evIdx = r.timeline.length;
+      liveStore.setMinute(45);
+      liveStore.setHalfLabel("Intervalo");
+      showHalftimePanel();
+      return;
+    }
+
+    finish();
+  }
+
+  liveSkipRef.current = skipLiveMatch;
   schedule(700);
 }
 
@@ -3022,9 +3051,8 @@ function renderSummary() {
   const you = me()!;
   const opp = opponent()!;
   if (!L.managerRoundSession) awardRegularMatchAchievements();
-  const youWon = r.winnerId === you.id;
-  const isDraw = !r.penaltyScore && (r.goals[you.id] ?? 0) === (r.goals[opp.id] ?? 0);
-  const outcome = isDraw ? "draw" : youWon ? "win" : "lose";
+  const outcome = matchOutcome(r, you.id, opp.id);
+  const youWon = outcome === "win";
   const managerMatch = !!L.managerRoundSession;
   const ys = r.strengths[you.id];
   const os = r.strengths[opp.id];

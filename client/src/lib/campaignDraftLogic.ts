@@ -39,6 +39,23 @@ export function drawCampaignTeam(c: CampaignState): boolean {
   return false;
 }
 
+export function startCampaignDraft(c: CampaignState): boolean {
+  c.rerollsRemaining = c.mode === "hardcore" ? 3 : 5;
+  c.phase = "draft";
+  return drawCampaignTeam(c);
+}
+
+export type CampaignRerollResult = "ok" | "wrong-phase" | "exhausted" | "draw-failed";
+
+export function rerollCampaignTeam(c: CampaignState): CampaignRerollResult {
+  if (c.phase !== "draft") return "wrong-phase";
+  if (c.rerollsRemaining <= 0) return "exhausted";
+  if (c.currentTeam) c.usedTeamIds.push(c.currentTeam.id);
+  c.rerollsRemaining--;
+  c.selectedPlayer = null;
+  return drawCampaignTeam(c) ? "ok" : "draw-failed";
+}
+
 export function placeCampaignPlayer(
   c: CampaignState,
   slotId: string,

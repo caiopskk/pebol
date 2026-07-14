@@ -13,6 +13,19 @@ interface UpdateEntry {
 
 const UPDATES: UpdateEntry[] = [
   {
+    date: "14 de julho de 2026",
+    title: "Fadiga e rotação no Modo Carreira",
+    summary:
+      "A condição física agora transforma escalação, substituições e recuperação em decisões reais de temporada.",
+    items: [
+      "A condição dos jogadores passou a afetar diretamente o desempenho usado durante as partidas.",
+      "Atletas que jogam os 90 minutos recebem a carga completa; quem entra ou sai no intervalo acumula apenas a carga proporcional.",
+      "Reservas não utilizados recuperam energia, criando espaço para rodar o elenco durante calendários mais exigentes.",
+      "Elenco e pré-jogo agora mostram overall original, desempenho atual e estados como Pronto, Cansado ou Exausto.",
+      "Baixa condição aumenta moderadamente o risco de lesão, valorizando treino de recuperação e departamento médico.",
+    ],
+  },
+  {
     date: "13 de julho de 2026",
     title: "Nova identidade, home e comunidade",
     summary:

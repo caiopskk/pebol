@@ -6,6 +6,7 @@ import type {
 } from "../../../shared/types.js";
 import { effectiveRating } from "../../../shared/engine.js";
 import type { PitchSlot } from "../components/Pitch.js";
+import { managerConditionedPlayer } from "./managerFatigue.js";
 
 export function moneyLabel(value: number): string {
   return new Intl.NumberFormat("pt-BR", {
@@ -36,7 +37,8 @@ export function managerPitchSlots(
   );
   return formation.slots.map((slot) => {
     const player = bySlot.get(slot.id);
-    const rating = player ? effectiveRating(player, slot.pos) : undefined;
+    const matchPlayer = player ? managerConditionedPlayer(player) : undefined;
+    const rating = matchPlayer ? effectiveRating(matchPlayer, slot.pos) : undefined;
     return {
       id: slot.id,
       pos: slot.pos,
@@ -45,7 +47,7 @@ export function managerPitchSlots(
       filled: !!player,
       label: player?.name.split(" ").at(-1) ?? slot.id,
       rating,
-      penalty: player ? rating !== player.rating : false,
+      penalty: matchPlayer ? rating !== matchPlayer.rating : false,
       showPos: true,
       open: !!selectedPlayerId && !player,
       selectedSub: player?.id === selectedPlayerId,

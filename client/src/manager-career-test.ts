@@ -24,6 +24,8 @@ if (!globalThis.crypto?.randomUUID) {
 }
 
 const manager = await import("./lib/managerCareer.js");
+const { managerMatchRating } = await import("./lib/managerFatigue.js");
+const { matchOutcome } = await import("./lib/resultSummaryData.js");
 const { getLeagueDivision } = await import("../../shared/leagueStructures.js");
 const { TEAMS } = await import("../../shared/data/teams.js");
 
@@ -61,6 +63,17 @@ function assertCreateExportImport(): ManagerCareerState {
   assert.equal(dashboard.facilityUpgradeOptions.length, 3, "club should expose training, medical and academy facilities");
   assert.ok(dashboard.squad.every((player) => player.fitness > 0 && player.sharpness > 0));
   assert.equal(dashboard.squad.filter((player) => player.isStarter).length, 11);
+  const reference = dashboard.squad[0];
+  const exhaustedStar = { ...reference, rating: 84, fitness: 50, sharpness: 70, morale: 70 };
+  const restedReserve = { ...reference, rating: 78, fitness: 100, sharpness: 70, morale: 70 };
+  assert.ok(
+    managerMatchRating(restedReserve) > managerMatchRating(exhaustedStar),
+    "a rested reserve should outperform a significantly fatigued star",
+  );
+  assert.ok(
+    managerMatchRating({ ...reference, fitness: 100 }) > managerMatchRating({ ...reference, fitness: 60 }),
+    "fitness must directly reduce match performance",
+  );
   assert.ok(state.preseasonFixtures.length >= 3, "preseason should offer short friendly slate");
   assert.ok(state.leagueFixtures.length > 0, "league calendar should be generated");
 
@@ -186,17 +199,56 @@ function assertRoundScenarios(initial: ManagerCareerState): ManagerCareerState {
     "first half should include the halftime event",
   );
   const user = liveStart.session.room.players.find((player) => player.id === liveStart.session!.state.save.teamId)!;
+  const bench = manager.managerClientBench(liveStart.session.state);
+  assert.ok(bench.length >= 2, "live manager match should expose substitutes");
+  const outgoingPick = user.picks.at(-1)!;
+  const incoming = bench[0];
+  const unused = bench[1];
+  const stayingPick = user.picks[0];
+  const fitnessBeforeHalf = new Map(
+    liveStart.session.state.squads[liveStart.session.state.save.teamId].map((player) => [player.id, player.fitness]),
+  );
+  const halftimePicks = user.picks.map((pick) => pick === outgoingPick
+    ? { ...pick, player: incoming, fromTeamId: incoming.fromTeamId, effectiveRating: incoming.rating }
+    : pick
+  );
   const completedLive = manager.completeManagerClientSecondHalf(liveStart.session, {
     formationId: user.formationId!,
     mentality: user.mentality!,
     attackFocus: user.attackFocus ?? "equilibrado",
-    picks: user.picks,
+    picks: halftimePicks,
   });
   state = completedLive.state;
+  const squadAfterHalf = state.squads[state.save.teamId];
+  const outgoingId = squadAfterHalf.find((player) => player.name === outgoingPick.player.name && player.pos === outgoingPick.player.pos)!.id;
+  const stayingId = squadAfterHalf.find((player) => player.name === stayingPick.player.name && player.pos === stayingPick.player.pos)!.id;
+  const fitnessDelta = (playerId: string) => fitnessBeforeHalf.get(playerId)! - squadAfterHalf.find((player) => player.id === playerId)!.fitness;
+  assert.ok(
+    fitnessDelta(stayingId) > fitnessDelta(outgoingId),
+    "a player substituted at halftime should lose less fitness than a 90-minute starter",
+  );
+  assert.equal(
+    fitnessDelta(incoming.id),
+    fitnessDelta(outgoingId),
+    "players entering and leaving at halftime should receive the same 45-minute load",
+  );
+  assert.ok(fitnessDelta(unused.id) < 0, "an unused substitute should recover fitness");
   assert.equal(completedLive.session.room.result?.secondHalfReady, true, "second half should be generated after halftime confirmation");
   assert.ok(
     completedLive.session.room.result?.timeline.some((event) => event.type === "fulltime"),
     "completed live manager match should include fulltime",
+  );
+  const completedResult = completedLive.session.room.result!;
+  const opponent = completedLive.session.room.players.find((player) => player.id !== user.id)!;
+  const expectedOutcome = completedResult.penaltyScore
+    ? completedResult.winnerId === user.id ? "win" : "lose"
+    : completedResult.goals[user.id] === completedResult.goals[opponent.id]
+      ? "draw"
+      : completedResult.goals[user.id] > completedResult.goals[opponent.id] ? "win" : "lose";
+  assert.equal(
+    matchOutcome(completedResult, user.id, opponent.id),
+    expectedOutcome,
+    "manager result text must agree with the displayed score",
   );
 
   state = manager.skipManagerClientPreseason(state);
